@@ -16,7 +16,7 @@ services:
     # Git source — replace USER/REPO with your GitHub repo once it exists.
     # Pushing to `main` triggers an auto-deploy.
     git:
-      repo_clone_url: https://github.com/PLACEHOLDER/furnish-hope.git
+      repo_clone_url: https://github.com/BendOregonGuy/furnish-hope.git
       branch: main
 
     # Single-service build: install everything, build the React bundle, then
