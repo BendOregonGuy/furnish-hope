@@ -80,10 +80,16 @@ services:
         scope: RUN_TIME
 
 databases:
+  # Reuse the existing managed cluster `db-postgresql-nyc1-37318` (pg17,
+  # db-s-1vcpu-1gb, $15/mo) which is also hosting the ParkDB project.
+  # App Platform will:
+  #   - add this app as a trusted source on the cluster
+  #   - wire ${db.HOSTNAME}/${db.PORT}/etc. to the cluster's private endpoint
+  #   - use the dedicated furnish_hope database + furnish_hope_app user
+  # we provisioned manually (see DEPLOY.md).
   - name: db
+    cluster_name: db-postgresql-nyc1-37318
+    db_name: furnish_hope
+    db_user: furnish_hope_app
     engine: PG
-    version: "16"
-    # $15/mo dev tier. Upgrade to db-s-1vcpu-1gb (production tier) before v1.0.
-    size: db-s-dev-database
-    num_nodes: 1
-    production: false
+    production: true
