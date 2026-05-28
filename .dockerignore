@@ -1,0 +1,12 @@
+node_modules
+api/node_modules
+web/node_modules
+api/dist
+web/dist
+.git
+.env
+.env.local
+*.log
+.vscode
+.idea
+.DS_Store

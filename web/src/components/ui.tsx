@@ -1,0 +1,77 @@
+import { ReactNode } from 'react';
+
+export function PageHeader({
+  title,
+  emphasis,
+  subtitle,
+  actions,
+}: {
+  title: string;
+  emphasis?: string;
+  subtitle?: string;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="flex justify-between items-end mb-7 pb-5 border-b border-hairline">
+      <div>
+        <h1 className="font-display font-medium text-3xl leading-tight tracking-tight m-0">
+          {title}
+          {emphasis ? <em className="not-italic font-display italic text-terracotta"> {emphasis}</em> : null}
+        </h1>
+        {subtitle && <p className="text-sm text-ink-soft mt-1 max-w-xl">{subtitle}</p>}
+      </div>
+      {actions && <div className="flex gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+export function StatusPill({ status }: { status: string }) {
+  const cls = pillClassFor(status);
+  return <span className={`pill ${cls}`}>{status}</span>;
+}
+
+function pillClassFor(status: string): string {
+  const s = status.toLowerCase();
+  if (s === 'available' || s === 'delivered' || s === 'active' || s === 'ready to schedule' || s === 'completed' || s === 'fulfilled') return 'pill-sage';
+  if (s === 'matching' || s === 'reserved' || s === 'scheduled' || s === 'in transit' || s === 'in progress') return 'pill-gold';
+  if (s === 'new' || s === 'out' || s === 'cancelled' || s === 'failed' || s === 'intake') return 'pill-terra';
+  if (s === 'closed' || s === 'served' || s === 'rescheduled') return 'pill-slate';
+  return 'pill-muted';
+}
+
+export function Avatar({ name, size = 'sm' }: { name: string; size?: 'sm' | 'md' | 'lg' }) {
+  const parts = name.trim().split(/\s+/);
+  const init = parts.length === 1 ? parts[0].slice(0,2) : (parts[0][0] + parts[parts.length-1][0]);
+
+  const dims = size === 'lg' ? 'w-14 h-14 text-xl' : size === 'md' ? 'w-9 h-9 text-sm' : 'w-7 h-7 text-[10px]';
+  const isLg = size === 'lg' || size === 'md';
+
+  return (
+    <div className={`${dims} rounded-full flex items-center justify-center font-medium flex-shrink-0
+                     ${isLg ? 'bg-terracotta text-paper font-display' : 'bg-cream-deep text-ink-soft'}`}>
+      {init.toUpperCase()}
+    </div>
+  );
+}
+
+export function Loading() {
+  return <div className="p-10 text-center text-ink-faint text-sm">Loading…</div>;
+}
+
+export function ErrorBox({ error }: { error: unknown }) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    <div className="p-4 bg-terracotta-soft text-terracotta-deep rounded-md text-sm">
+      Couldn’t load this: {message}
+    </div>
+  );
+}
+
+export function EmptyState({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div className="p-12 text-center">
+      <div className="font-display text-lg text-ink-soft">{title}</div>
+      {hint && <div className="text-sm text-ink-faint mt-1">{hint}</div>}
+    </div>
+  );
+}

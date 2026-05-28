@@ -1,0 +1,89 @@
+# DigitalOcean App Platform spec for Furnish Hope.
+# https://docs.digitalocean.com/glossary/app-spec/
+#
+# Apply this with:
+#   doctl apps create --spec .do/app.yaml
+# Or update an existing one:
+#   doctl apps update <APP_ID> --spec .do/app.yaml
+#
+# The repo_clone_url placeholder is filled in when we wire up the Git host.
+
+name: furnish-hope
+region: nyc
+
+services:
+  - name: web
+    # Git source — replace USER/REPO with your GitHub repo once it exists.
+    # Pushing to `main` triggers an auto-deploy.
+    git:
+      repo_clone_url: https://github.com/PLACEHOLDER/furnish-hope.git
+      branch: main
+
+    # Single-service build: install everything, build the React bundle, then
+    # compile the API. `npm start` runs `node api/dist/index.js`, which serves
+    # both the API and the static React files when NODE_ENV=production.
+    build_command: npm run build
+    run_command: npm start
+
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: basic-xxs   # $5/mo, 512 MB RAM — plenty for 20 users
+    http_port: 8080
+
+    # The /api/health endpoint is mounted before requireUser so this works
+    # without credentials.
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 20
+      period_seconds: 10
+      timeout_seconds: 3
+      failure_threshold: 3
+
+    envs:
+      - key: NODE_ENV
+        value: production
+        scope: RUN_AND_BUILD_TIME
+
+      - key: PORT
+        value: "8080"
+        scope: RUN_TIME
+
+      # CHANGE ME — generate a fresh value with:
+      #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      # Set as a SECRET in the App Platform UI; don't commit the real value.
+      - key: SESSION_SECRET
+        value: "REPLACE_ME_BEFORE_FIRST_DEPLOY"
+        scope: RUN_TIME
+        type: SECRET
+
+      - key: SESSION_SECURE
+        value: "true"
+        scope: RUN_TIME
+
+      # Postgres connection — bound to the managed DB defined below.
+      # App Platform substitutes the real values at runtime.
+      - key: PGHOST
+        value: ${db.HOSTNAME}
+        scope: RUN_TIME
+      - key: PGPORT
+        value: ${db.PORT}
+        scope: RUN_TIME
+      - key: PGUSER
+        value: ${db.USERNAME}
+        scope: RUN_TIME
+      - key: PGPASSWORD
+        value: ${db.PASSWORD}
+        scope: RUN_TIME
+        type: SECRET
+      - key: PGDATABASE
+        value: ${db.DATABASE}
+        scope: RUN_TIME
+
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    # $15/mo dev tier. Upgrade to db-s-1vcpu-1gb (production tier) before v1.0.
+    size: db-s-dev-database
+    num_nodes: 1
+    production: false

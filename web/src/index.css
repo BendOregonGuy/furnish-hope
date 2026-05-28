@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    @apply bg-cream text-ink font-sans;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  /* Pill component used for statuses everywhere */
+  .pill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium;
+  }
+  .pill::before {
+    content: "";
+    @apply w-1.5 h-1.5 rounded-full inline-block;
+  }
+  .pill-sage  { @apply bg-sage-soft text-[#3F4A33]; }
+  .pill-sage::before  { @apply bg-sage; }
+  .pill-gold  { @apply bg-gold-soft text-[#6B4D1E]; }
+  .pill-gold::before  { @apply bg-gold; }
+  .pill-terra { @apply bg-terracotta-soft text-terracotta-deep; }
+  .pill-terra::before { @apply bg-terracotta; }
+  .pill-slate { @apply bg-slate-soft text-[#2F3742]; }
+  .pill-slate::before { @apply bg-slate; }
+  .pill-muted { @apply bg-cream-deep text-ink-soft; }
+  .pill-muted::before { @apply bg-hairline-strong; }
+
+  .btn-primary {
+    @apply bg-terracotta text-paper px-4 py-2 rounded-md text-sm font-medium
+           inline-flex items-center gap-2 hover:bg-terracotta-deep transition;
+  }
+  .btn-ghost {
+    @apply bg-transparent text-ink border border-hairline-strong px-4 py-2
+           rounded-md text-sm font-medium hover:bg-cream/50 transition;
+  }
+
+  .card {
+    @apply bg-paper border border-hairline rounded-[10px] p-5;
+  }
+  .card-head {
+    @apply flex items-baseline justify-between mb-4 pb-3 border-b border-hairline;
+  }
+
+  .field-label {
+    @apply block text-[11px] tracking-widest uppercase text-ink-faint font-medium mb-1.5;
+  }
+  .field-input {
+    @apply w-full bg-cream border border-hairline-strong px-3 py-2 rounded-md
+           text-sm font-sans text-ink focus:outline-none focus:border-terracotta
+           focus:bg-paper focus:ring-2 focus:ring-terracotta/10;
+  }
+
+  /* Applied to a wrapper div around .field-input when the field has a
+     validation error. The descendant selector keeps the error styling
+     visually consistent across all field input variants. */
+  .admin-field-error .field-input,
+  .admin-field-error > div > .field-input,
+  .admin-field-error button.field-input {
+    @apply border-terracotta bg-terracotta-soft/40;
+  }
+}
