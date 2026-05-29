@@ -58,6 +58,395 @@ const MIGRATIONS: Migration[] = [
       await query(`CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire")`);
     },
   },
+
+  // ============================================================
+  // Donations expansion v1 (2026-05-29)
+  // - app-level settings (configurable from /admin/settings)
+  // - per-fiscal-year receipt counter for sequential receipt numbers
+  // - 7 new lookup tables (funds, restrictions, payment methods, etc.)
+  // - tbl_pledge (commitments separate from gifts)
+  // - tbl_donation_designation (split a gift across multiple funds)
+  // - tbl_donation_securities + tbl_donation_check (sidecars for stock/check details)
+  // - tbl_donation enhanced with payment_method, designations, receipt #,
+  //   pledge linkage, soft credit, QBO sync columns, etc.
+  // - tbl_donor enhanced with DAF name, employer-match flag, do-not-contact
+  // - Seed default rows for all new lookup tables.
+  // ============================================================
+  {
+    name: 'tbl_app_setting',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_app_setting (
+          setting_key   VARCHAR(50)  PRIMARY KEY,
+          setting_value TEXT NOT NULL,
+          description   VARCHAR(200),
+          updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_by_user_account_id INTEGER
+            REFERENCES tbl_user_account(user_account_id)
+        )
+      `);
+    },
+  },
+  {
+    name: 'tbl_receipt_counter',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_receipt_counter (
+          fiscal_year  INTEGER PRIMARY KEY,
+          next_number  INTEGER NOT NULL DEFAULT 1,
+          updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+    },
+  },
+  {
+    name: 'lkp_payment_method',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_payment_method (
+          payment_method_id SERIAL PRIMARY KEY,
+          payment_method    VARCHAR(50) NOT NULL UNIQUE,
+          description       VARCHAR(200)
+        )
+      `);
+      await query(`
+        INSERT INTO lkp_payment_method (payment_method, description) VALUES
+          ('Cash',            'Physical currency'),
+          ('Check',           'Paper check or e-check'),
+          ('Credit card',     'Online or in-person card payment'),
+          ('ACH / bank transfer', 'Direct bank-to-bank transfer'),
+          ('Wire transfer',   'Wire from donor''s bank'),
+          ('Stock',           'Gift of publicly-traded shares'),
+          ('Bond',            'Gift of bonds or fixed-income securities'),
+          ('Cryptocurrency',  'Bitcoin, Ethereum, or other digital asset'),
+          ('Real estate',     'Real property gift'),
+          ('Other',           'Anything else — note the method in description')
+        ON CONFLICT (payment_method) DO NOTHING
+      `);
+    },
+  },
+  {
+    name: 'lkp_restriction_type',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_restriction_type (
+          restriction_type_id SERIAL PRIMARY KEY,
+          restriction_type    VARCHAR(50) NOT NULL UNIQUE,
+          description         VARCHAR(200)
+        )
+      `);
+      await query(`
+        INSERT INTO lkp_restriction_type (restriction_type, description) VALUES
+          ('Unrestricted',             'Donor placed no restrictions on use of funds'),
+          ('Temporarily restricted',   'Restricted to a specific purpose or time period'),
+          ('Permanently restricted',   'Endowment-style; principal preserved in perpetuity')
+        ON CONFLICT (restriction_type) DO NOTHING
+      `);
+    },
+  },
+  {
+    name: 'lkp_fund',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_fund (
+          fund_id    SERIAL PRIMARY KEY,
+          fund_name  VARCHAR(100) NOT NULL UNIQUE,
+          default_restriction_type_id INTEGER
+            REFERENCES lkp_restriction_type(restriction_type_id),
+          is_active  BOOLEAN NOT NULL DEFAULT true,
+          description VARCHAR(200)
+        )
+      `);
+      // Seed with starter funds. Admins can rename, add, or deactivate via the
+      // admin tool (or once we ship /admin/settings, the dedicated fund manager).
+      await query(`
+        INSERT INTO lkp_fund (fund_name, default_restriction_type_id, description) VALUES
+          ('General operating',
+            (SELECT restriction_type_id FROM lkp_restriction_type WHERE restriction_type='Unrestricted'),
+            'Day-to-day operations; rent, payroll, utilities'),
+          ('Housing program',
+            (SELECT restriction_type_id FROM lkp_restriction_type WHERE restriction_type='Temporarily restricted'),
+            'Direct support to households being resettled'),
+          ('Furniture program',
+            (SELECT restriction_type_id FROM lkp_restriction_type WHERE restriction_type='Temporarily restricted'),
+            'Furniture acquisition, storage, and delivery'),
+          ('Infrastructure',
+            (SELECT restriction_type_id FROM lkp_restriction_type WHERE restriction_type='Temporarily restricted'),
+            'Warehouse, vehicles, equipment, software'),
+          ('Education program',
+            (SELECT restriction_type_id FROM lkp_restriction_type WHERE restriction_type='Temporarily restricted'),
+            'Training and education initiatives'),
+          ('Capital campaign',
+            (SELECT restriction_type_id FROM lkp_restriction_type WHERE restriction_type='Temporarily restricted'),
+            'Multi-year fundraising for major projects'),
+          ('Volunteer program',
+            (SELECT restriction_type_id FROM lkp_restriction_type WHERE restriction_type='Temporarily restricted'),
+            'Volunteer recruitment, training, recognition')
+        ON CONFLICT (fund_name) DO NOTHING
+      `);
+    },
+  },
+  {
+    name: 'lkp_pledge_status',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_pledge_status (
+          pledge_status_id SERIAL PRIMARY KEY,
+          pledge_status    VARCHAR(50) NOT NULL UNIQUE,
+          description      VARCHAR(200)
+        )
+      `);
+      await query(`
+        INSERT INTO lkp_pledge_status (pledge_status, description) VALUES
+          ('Open',                'Pledge made, no payments yet'),
+          ('Partially fulfilled', 'Some payments received, more expected'),
+          ('Fulfilled',           'Pledge paid in full'),
+          ('Lapsed',              'Pledge unpaid past expected fulfillment date'),
+          ('Cancelled',           'Pledge withdrawn by donor or written off')
+        ON CONFLICT (pledge_status) DO NOTHING
+      `);
+    },
+  },
+  {
+    name: 'lkp_solicitation_method',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_solicitation_method (
+          solicitation_method_id SERIAL PRIMARY KEY,
+          solicitation_method    VARCHAR(50) NOT NULL UNIQUE,
+          description            VARCHAR(200)
+        )
+      `);
+      await query(`
+        INSERT INTO lkp_solicitation_method (solicitation_method, description) VALUES
+          ('Direct mail',     'Physical mail appeal'),
+          ('Email',           'Email campaign or appeal'),
+          ('Phone',           'Phonathon or personal call'),
+          ('In-person',       'Face-to-face ask'),
+          ('Event',           'Fundraising event'),
+          ('Web form',        'Online donation form'),
+          ('Word of mouth',   'Referral from friend or family'),
+          ('Unsolicited',     'Donor gave without being asked'),
+          ('Other',           'Custom — note in description')
+        ON CONFLICT (solicitation_method) DO NOTHING
+      `);
+    },
+  },
+  {
+    name: 'lkp_acknowledgement_status',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_acknowledgement_status (
+          acknowledgement_status_id SERIAL PRIMARY KEY,
+          acknowledgement_status    VARCHAR(50) NOT NULL UNIQUE,
+          description               VARCHAR(200)
+        )
+      `);
+      await query(`
+        INSERT INTO lkp_acknowledgement_status (acknowledgement_status, description) VALUES
+          ('Not yet sent',    'Acknowledgement letter has not been generated'),
+          ('Sent',            'Letter sent and assumed delivered'),
+          ('Returned',        'Letter returned undeliverable — address needs update'),
+          ('Not required',    'Donor anonymous or amount below threshold')
+        ON CONFLICT (acknowledgement_status) DO NOTHING
+      `);
+    },
+  },
+  {
+    name: 'lkp_donation_type additions',
+    async run() {
+      // Existing seed: In-kind, Monetary, Mixed. Add the financial-instrument
+      // categories. Using ON CONFLICT against the unique-ish name column.
+      // If the seed never created a unique index on this column we'll catch
+      // it here by checking for the row first.
+      const types = ['Stock', 'Bond', 'Real estate', 'Planned gift', 'Cryptocurrency'];
+      for (const t of types) {
+        const existing = await queryOne<{ id: number }>(
+          `SELECT donation_type_id AS id FROM lkp_donation_type WHERE donation_type = $1`, [t],
+        );
+        if (!existing) {
+          await query(`INSERT INTO lkp_donation_type (donation_type) VALUES ($1)`, [t]);
+        }
+      }
+    },
+  },
+  {
+    name: 'lkp_donor_type additions',
+    async run() {
+      // Existing: Individual, Corporate, Organization, Estate sale, Anonymous.
+      // Add donor-source categories needed for foundations/DAFs/etc.
+      const types = [
+        'Donor-Advised Fund',
+        'Private Foundation',
+        'Community Foundation',
+        'Government Grant',
+        'Estate / Planned Gift',
+        'Corporate Matching',
+      ];
+      for (const t of types) {
+        const existing = await queryOne<{ id: number }>(
+          `SELECT donor_type_id AS id FROM lkp_donor_type WHERE donor_type = $1`, [t],
+        );
+        if (!existing) {
+          await query(`INSERT INTO lkp_donor_type (donor_type) VALUES ($1)`, [t]);
+        }
+      }
+    },
+  },
+  {
+    name: 'tbl_pledge',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_pledge (
+          pledge_id  SERIAL PRIMARY KEY,
+          donor_id   INTEGER NOT NULL REFERENCES tbl_donor(donor_id),
+          fund_id    INTEGER REFERENCES lkp_fund(fund_id),
+          total_pledged_amount NUMERIC(12,2) NOT NULL,
+          amount_fulfilled     NUMERIC(12,2) NOT NULL DEFAULT 0,
+          pledge_date          DATE NOT NULL,
+          expected_fulfillment_date DATE,
+          pledge_status_id     INTEGER NOT NULL REFERENCES lkp_pledge_status(pledge_status_id),
+          solicitation_method_id INTEGER REFERENCES lkp_solicitation_method(solicitation_method_id),
+          campaign_id INTEGER, -- forward-ref to tbl_campaign (added in fundraising phase)
+          notes      TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id),
+          description VARCHAR(100)
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_pledge_donor_id ON tbl_pledge(donor_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_pledge_pledge_status_id ON tbl_pledge(pledge_status_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_pledge_fund_id ON tbl_pledge(fund_id)`);
+    },
+  },
+  {
+    name: 'tbl_donation_designation',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_donation_designation (
+          donation_designation_id SERIAL PRIMARY KEY,
+          donation_id INTEGER NOT NULL REFERENCES tbl_donation(donation_id) ON DELETE CASCADE,
+          fund_id     INTEGER NOT NULL REFERENCES lkp_fund(fund_id),
+          amount      NUMERIC(12,2) NOT NULL,
+          description VARCHAR(100)
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_donation_designation_donation_id ON tbl_donation_designation(donation_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_donation_designation_fund_id ON tbl_donation_designation(fund_id)`);
+    },
+  },
+  {
+    name: 'tbl_donation_securities',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_donation_securities (
+          donation_securities_id SERIAL PRIMARY KEY,
+          donation_id  INTEGER NOT NULL REFERENCES tbl_donation(donation_id) ON DELETE CASCADE,
+          security_type VARCHAR(20) NOT NULL, -- 'Stock' | 'Bond' | 'Other'
+          ticker       VARCHAR(20),
+          security_description VARCHAR(200),
+          shares       NUMERIC(15,4),
+          gift_date_fmv NUMERIC(12,2),
+          sale_proceeds NUMERIC(12,2),
+          broker_name  VARCHAR(100)
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_donation_securities_donation_id ON tbl_donation_securities(donation_id)`);
+    },
+  },
+  {
+    name: 'tbl_donation_check',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_donation_check (
+          donation_check_id SERIAL PRIMARY KEY,
+          donation_id  INTEGER NOT NULL REFERENCES tbl_donation(donation_id) ON DELETE CASCADE,
+          check_number VARCHAR(20),
+          check_date   DATE,
+          bank_name    VARCHAR(100)
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_donation_check_donation_id ON tbl_donation_check(donation_id)`);
+    },
+  },
+  {
+    name: 'tbl_donation new columns',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_donation
+          ADD COLUMN IF NOT EXISTS payment_method_id        INTEGER REFERENCES lkp_payment_method(payment_method_id),
+          ADD COLUMN IF NOT EXISTS solicitation_method_id   INTEGER REFERENCES lkp_solicitation_method(solicitation_method_id),
+          ADD COLUMN IF NOT EXISTS tax_deductible_amount    NUMERIC(12,2),
+          ADD COLUMN IF NOT EXISTS acknowledgement_status_id INTEGER REFERENCES lkp_acknowledgement_status(acknowledgement_status_id),
+          ADD COLUMN IF NOT EXISTS acknowledgement_sent_date DATE,
+          ADD COLUMN IF NOT EXISTS receipt_number           VARCHAR(50),
+          ADD COLUMN IF NOT EXISTS pledge_id                INTEGER REFERENCES tbl_pledge(pledge_id),
+          ADD COLUMN IF NOT EXISTS soft_credit_contact_id   INTEGER REFERENCES tbl_contact(contact_id),
+          ADD COLUMN IF NOT EXISTS gift_in_honor_of         TEXT,
+          ADD COLUMN IF NOT EXISTS external_transaction_id  VARCHAR(100),
+          ADD COLUMN IF NOT EXISTS received_via             VARCHAR(50),
+          ADD COLUMN IF NOT EXISTS campaign_id              INTEGER, -- FK to tbl_campaign in fundraising phase
+          ADD COLUMN IF NOT EXISTS qbo_sync_status          VARCHAR(20),
+          ADD COLUMN IF NOT EXISTS qbo_transaction_id       VARCHAR(50),
+          ADD COLUMN IF NOT EXISTS qbo_last_synced_at       TIMESTAMPTZ
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_donation_payment_method_id ON tbl_donation(payment_method_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_donation_pledge_id ON tbl_donation(pledge_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_donation_receipt_number ON tbl_donation(receipt_number)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_donation_qbo_sync_status ON tbl_donation(qbo_sync_status) WHERE qbo_sync_status IS NOT NULL`);
+    },
+  },
+  {
+    name: 'tbl_donor new columns',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_donor
+          ADD COLUMN IF NOT EXISTS donor_advised_fund_name   VARCHAR(100),
+          ADD COLUMN IF NOT EXISTS employer_match_eligible   BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS do_not_contact            BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS preferred_contact_method_id INTEGER REFERENCES lkp_communication_method(communication_method_id)
+      `);
+    },
+  },
+  {
+    name: 'tbl_app_setting defaults',
+    async run() {
+      // Seed only if missing — admins can change these from /admin/settings.
+      const defaults: Array<[string, string, string]> = [
+        ['fiscal_year_start_month', '1',
+          `Month (1-12) when the org's fiscal year begins. 1 = January (calendar year).`],
+        ['org_name',                'Furnish Hope',
+          'Org name as it appears on receipts.'],
+        ['org_address_line1',       '',
+          'Mailing address line 1 (for receipts).'],
+        ['org_address_line2',       '',
+          'Mailing address line 2 (suite, etc).'],
+        ['org_city',                'Bend',
+          'Org city.'],
+        ['org_state',               'OR',
+          'Org state / region.'],
+        ['org_postalcode',          '',
+          'Org ZIP / postal code.'],
+        ['org_ein',                 '',
+          'Federal Employer Identification Number (XX-XXXXXXX). Required on US tax-deductible receipts.'],
+        ['org_phone',               '',
+          'Public phone number for receipts.'],
+        ['org_email',               '',
+          'Public email for receipts and acknowledgement letters.'],
+        ['receipt_prefix',          'FH',
+          'Prefix on generated receipt numbers, e.g. "FH" produces "FH-2026-0001".'],
+        ['acknowledgement_threshold', '250',
+          'Donations at or above this amount get a tax-deductible acknowledgement letter (IRS threshold is $250+).'],
+      ];
+      for (const [key, value, desc] of defaults) {
+        await query(`
+          INSERT INTO tbl_app_setting (setting_key, setting_value, description)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (setting_key) DO NOTHING
+        `, [key, value, desc]);
+      }
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */
