@@ -2,12 +2,29 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
+/**
+ * SSL config driven by PGSSLMODE:
+ *   - unset / "disable"            → no TLS (local dev against localhost)
+ *   - "require" / "prefer"         → TLS, but don't verify the CA chain
+ *     (DigitalOcean Managed Postgres uses their own CA which Node doesn't
+ *     trust by default; verifying would throw SELF_SIGNED_CERT_IN_CHAIN)
+ *   - "verify-ca" / "verify-full"  → would need a PGSSLROOTCERT path; not
+ *     wired up here. Add it when packaging for an environment that has its
+ *     own CA bundle.
+ */
+const sslMode = (process.env.PGSSLMODE ?? '').toLowerCase();
+const sslConfig =
+  sslMode === '' || sslMode === 'disable'
+    ? false
+    : { rejectUnauthorized: false };
+
 export const pool = new Pool({
   host: process.env.PGHOST ?? 'localhost',
   port: Number(process.env.PGPORT ?? 5432),
   database: process.env.PGDATABASE ?? 'furnish_hope',
   user: process.env.PGUSER ?? 'postgres',
   password: process.env.PGPASSWORD ?? 'postgres',
+  ssl: sslConfig,
   max: 10,
 });
 
