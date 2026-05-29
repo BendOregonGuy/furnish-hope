@@ -27,6 +27,7 @@ import { AdminIndex } from './pages/admin/AdminIndex.tsx';
 import { AdminList } from './pages/admin/AdminList.tsx';
 import { AdminForm } from './pages/admin/AdminForm.tsx';
 import { AdminActivity } from './pages/admin/AdminActivity.tsx';
+import { AdminSettings } from './pages/admin/AdminSettings.tsx';
 
 export function App() {
   return (
@@ -87,6 +88,7 @@ function AppShell() {
               a friendly "admins only" screen for non-admin users. */}
           <Route path="/admin" element={<RequireAdmin><AdminIndex /></RequireAdmin>} />
           <Route path="/admin/activity" element={<RequireAdmin><AdminActivity /></RequireAdmin>} />
+          <Route path="/admin/settings" element={<RequireAdmin><AdminSettings /></RequireAdmin>} />
           <Route path="/admin/:table" element={<RequireAdmin><AdminList /></RequireAdmin>} />
           <Route path="/admin/:table/new" element={<RequireAdmin><AdminForm /></RequireAdmin>} />
           <Route path="/admin/:table/:id" element={<RequireAdmin><AdminForm /></RequireAdmin>} />
