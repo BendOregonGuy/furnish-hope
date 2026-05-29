@@ -18,6 +18,9 @@ import { lookupsRouter } from './routes/lookups.js';
 import { adminRouter } from './routes/admin.js';
 import { activityRouter } from './routes/activity.js';
 import { authRouter } from './routes/auth.js';
+import { settingsRouter } from './routes/settings.js';
+import { donationsRouter } from './routes/donations.js';
+import { pledgesRouter } from './routes/pledges.js';
 import { createSessionMiddleware } from './auth/session.js';
 import { runAuthMigrations } from './auth/migrations.js';
 import { requireUser, requireAdmin } from './auth/middleware.js';
@@ -64,9 +67,10 @@ app.use('/api/auth', authRouter);
 app.use('/api', requireUser);
 
 // Admin tool requires admin role on top of being signed in. The dedicated
-// activity viewer is mounted FIRST so /api/admin/activity doesn't fall
-// through to the generic admin router's /:table catch-all.
+// activity viewer + settings are mounted FIRST so they don't fall through
+// to the generic admin router's /:table catch-all.
 app.use('/api/admin/activity', requireAdmin, activityRouter);
+app.use('/api/admin/settings', requireAdmin, settingsRouter);
 app.use('/api/admin', requireAdmin, adminRouter);
 
 // Operational routes — any signed-in user can access.
@@ -78,6 +82,8 @@ app.use('/api/deliveries', deliveriesRouter);
 app.use('/api/pickups',    pickupsRouter);
 app.use('/api/volunteers', volunteersRouter);
 app.use('/api/lookups',    lookupsRouter);
+app.use('/api/donations',  donationsRouter);
+app.use('/api/pledges',    pledgesRouter);
 
 // 404 for unmatched /api routes (before the static-file fallback so a typo
 // like /api/clientx returns JSON, not the HTML index).
