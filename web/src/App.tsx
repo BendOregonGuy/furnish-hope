@@ -23,6 +23,9 @@ import { PickupForm } from './pages/PickupForm.tsx';
 import { Volunteers } from './pages/Volunteers.tsx';
 import { VolunteerDetail } from './pages/VolunteerDetail.tsx';
 import { VolunteerForm } from './pages/VolunteerForm.tsx';
+import { Donations } from './pages/Donations.tsx';
+import { DonationDetail } from './pages/DonationDetail.tsx';
+import { DonationForm } from './pages/DonationForm.tsx';
 import { AdminIndex } from './pages/admin/AdminIndex.tsx';
 import { AdminList } from './pages/admin/AdminList.tsx';
 import { AdminForm } from './pages/admin/AdminForm.tsx';
@@ -83,6 +86,11 @@ function AppShell() {
           <Route path="/volunteers/new" element={<VolunteerForm />} />
           <Route path="/volunteers/:id/edit" element={<VolunteerForm />} />
           <Route path="/volunteers/:id" element={<VolunteerDetail />} />
+
+          <Route path="/donations" element={<Donations />} />
+          <Route path="/donations/new" element={<DonationForm />} />
+          <Route path="/donations/:id/edit" element={<DonationForm />} />
+          <Route path="/donations/:id" element={<DonationDetail />} />
 
           {/* Admin section is admin-only. The RequireAdmin wrapper renders
               a friendly "admins only" screen for non-admin users. */}
