@@ -1,0 +1,219 @@
+/**
+ * Read-only event detail with attendee list + one-click check-in.
+ */
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { apiDelete, apiGet, apiPost, formatLongDate, formatMoney } from '../lib/api.ts';
+import { Loading, ErrorBox, Avatar } from '../components/ui.tsx';
+import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
+
+interface Detail {
+  event: any;
+  attendees: Array<{
+    event_attendee_id: number;
+    contact_id: number;
+    rsvp_status: string | null;
+    attended: boolean | null;
+    amount_contributed: number | string | null;
+    ticket_count: number;
+    checked_in_at: string | null;
+    notes: string | null;
+    name: string;
+    email: string | null;
+    mobile_phone: string | null;
+  }>;
+  prevId: number | null;
+  nextId: number | null;
+}
+
+export function EventDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, error } = useQuery<Detail>({
+    queryKey: ['event', id],
+    queryFn: () => apiGet(`/api/events/${id}`),
+  });
+
+  const checkInMut = useMutation({
+    mutationFn: (attendeeId: number) => apiPost(`/api/events/${id}/check-in/${attendeeId}`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['event', id] }),
+    onError: (err: any) => window.alert(err.message ?? 'Check-in failed'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => apiDelete(`/api/events/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      navigate('/events');
+    },
+    onError: (err: any) => window.alert(err.message ?? 'Delete failed'),
+  });
+
+  function handleDelete() {
+    if (window.confirm('Permanently delete this event and its attendee list?')) deleteMut.mutate();
+  }
+
+  if (isLoading) return <Loading />;
+  if (error) return <ErrorBox error={error} />;
+  if (!data) return null;
+
+  const e = data.event;
+  const totalContributed = data.attendees.reduce((s, a) => s + Number(a.amount_contributed ?? 0), 0);
+  const checkedIn = data.attendees.filter(a => a.checked_in_at).length;
+
+  return (
+    <>
+      <DetailNavBar
+        listLabel="events" singularLabel="event" basePath="/events"
+        prevId={data.prevId} nextId={data.nextId}
+        actions={
+          <>
+            <Link to="/events/new" className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta">
+              + New event
+            </Link>
+            <Link to={`/events/${id}/edit`} className="btn-primary text-xs py-1.5">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              Edit
+            </Link>
+          </>
+        }
+      />
+
+      <div className="flex gap-5 p-5 bg-cream border border-hairline rounded-[10px] mb-6">
+        <div className="flex-1">
+          <div className="flex items-baseline gap-3.5 mb-1 flex-wrap">
+            <div className="font-display text-2xl font-medium">{e.event_name}</div>
+            <span className="pill pill-terra">{e.event_type}</span>
+            {e.campaign_name && <Link to={`/campaigns?search=${encodeURIComponent(e.campaign_name)}`} className="pill pill-muted hover:underline">{e.campaign_name}</Link>}
+            {e.is_public && <span className="pill pill-sage">Public</span>}
+          </div>
+          <div className="flex gap-4 text-sm text-ink-soft flex-wrap">
+            <span>{formatLongDate(e.event_date)}</span>
+            {e.start_time && <><span>·</span><span>{formatTime(e.start_time)}{e.end_time && ` – ${formatTime(e.end_time)}`}</span></>}
+            {e.address && <><span>·</span><span>{e.address}{e.address2 ? `, ${e.address2}` : ''}, {e.city}</span></>}
+            {e.ticket_price != null && <><span>·</span><span>Tickets {formatMoney(e.ticket_price)}</span></>}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[11px] text-ink-faint tracking-widest uppercase font-medium">Raised</div>
+          <div className="font-display text-3xl font-medium leading-none">
+            {e.amount_raised != null ? formatMoney(e.amount_raised) : formatMoney(totalContributed)}
+          </div>
+          {e.goal_amount != null && Number(e.goal_amount) > 0 && (
+            <div className="text-[11px] text-ink-soft mt-1">Goal {formatMoney(e.goal_amount)}</div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-3 mb-5">
+        <Stat label="RSVPs" value={String(data.attendees.length)} />
+        <Stat label="Checked in" value={String(checkedIn)} />
+        <Stat label="Attended" value={String(data.attendees.filter(a => a.attended).length)} />
+        <Stat label="Contributions" value={formatMoney(totalContributed)} />
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <h3 className="font-display font-medium text-[17px] m-0">Attendees</h3>
+          <span className="text-xs text-ink-faint">{data.attendees.length} total</span>
+        </div>
+        {data.attendees.length === 0 ? (
+          <div className="text-sm text-ink-faint italic">No attendees yet. Add them via Edit.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <Th>Name</Th>
+                <Th>RSVP</Th>
+                <Th className="text-right">Tickets</Th>
+                <Th className="text-right">Contributed</Th>
+                <Th>Status</Th>
+                <Th>{' '}</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.attendees.map(a => (
+                <tr key={a.event_attendee_id} className="border-t border-hairline">
+                  <td className="py-2.5 pr-3">
+                    <div className="flex items-center gap-2.5">
+                      <Avatar name={a.name} />
+                      <div>
+                        <div className="font-medium text-sm">{a.name}</div>
+                        <div className="text-[11px] text-ink-faint">{a.email ?? a.mobile_phone ?? '—'}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-2.5 pr-3 text-xs">{a.rsvp_status ?? '—'}</td>
+                  <td className="py-2.5 pr-3 text-right text-xs">{a.ticket_count}</td>
+                  <td className="py-2.5 pr-3 text-right font-display font-medium text-sm">
+                    {a.amount_contributed != null ? formatMoney(a.amount_contributed) : '—'}
+                  </td>
+                  <td className="py-2.5 pr-3 text-xs">
+                    {a.checked_in_at
+                      ? <span className="text-sage">✓ Checked in</span>
+                      : a.attended === false
+                      ? <span className="text-terracotta-deep">No-show</span>
+                      : <span className="text-ink-faint">Pending</span>}
+                  </td>
+                  <td className="py-2.5 text-right">
+                    {!a.checked_in_at && (
+                      <button
+                        onClick={() => checkInMut.mutate(a.event_attendee_id)}
+                        disabled={checkInMut.isPending}
+                        className="text-xs text-terracotta hover:text-terracotta-deep disabled:opacity-50"
+                      >
+                        Check in
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {e.notes && (
+        <div className="card mt-5">
+          <div className="card-head" style={{marginBottom:'10px', paddingBottom:'8px'}}>
+            <h3 className="font-display font-medium text-sm m-0">Notes</h3>
+          </div>
+          <div className="text-sm text-ink-soft whitespace-pre-line">{e.notes}</div>
+        </div>
+      )}
+
+      <button onClick={handleDelete} disabled={deleteMut.isPending}
+        className="mt-5 text-xs text-terracotta hover:text-terracotta-deep disabled:opacity-50">
+        {deleteMut.isPending ? 'Deleting…' : 'Delete this event'}
+      </button>
+    </>
+  );
+}
+
+function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return <th className={`text-left text-[11px] tracking-widest uppercase text-ink-faint font-medium pb-2 ${className}`}>{children}</th>;
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="card">
+      <div className="text-[10px] tracking-widest uppercase text-ink-faint font-medium">{label}</div>
+      <div className="font-display text-2xl font-medium leading-none mt-1">{value}</div>
+    </div>
+  );
+}
+
+function formatTime(t: string | null): string {
+  if (!t) return '';
+  const [hh, mm] = t.split(':');
+  const h = Number(hh);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${mm} ${ampm}`;
+}

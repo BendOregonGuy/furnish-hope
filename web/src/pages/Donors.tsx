@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { apiGet, formatMoney, formatShortDate } from '../lib/api.ts';
 import { PageHeader, Avatar, Loading, ErrorBox, EmptyState } from '../components/ui.tsx';
+import { FkSelect } from '../components/admin/FkSelect.tsx';
 
 interface DonorRow {
   donor_id: number;
@@ -18,6 +19,8 @@ interface DonorRow {
   donor_type: string;
   is_recurring: boolean;
   do_not_contact: boolean;
+  donor_stage_id: number | null;
+  donor_stage: string | null;
   lifetime_giving: number | string;
   ytd_giving: number | string;
   last_gift_date: string | null;
@@ -26,10 +29,14 @@ interface DonorRow {
 
 export function Donors() {
   const [search, setSearch] = useState('');
+  const [stageId, setStageId] = useState<number | null>(null);
 
   const { data, isLoading, error } = useQuery<DonorRow[]>({
-    queryKey: ['donors', search],
-    queryFn: () => apiGet('/api/donors', { search: search || undefined }),
+    queryKey: ['donors', search, stageId],
+    queryFn: () => apiGet('/api/donors', {
+      search: search || undefined,
+      stage_id: stageId ? String(stageId) : undefined,
+    }),
   });
 
   const totalLifetime = data?.reduce((s, d) => s + Number(d.lifetime_giving ?? 0), 0) ?? 0;
@@ -48,15 +55,24 @@ export function Donors() {
         }
       />
 
-      <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
-        <input
-          type="text"
-          className="field-input max-w-sm"
-          placeholder="Search by name or email…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        <div className="text-xs text-ink-faint">
+      <div className="card mb-3">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_240px] gap-3">
+          <div>
+            <label className="field-label">Search</label>
+            <input
+              type="text"
+              className="field-input"
+              placeholder="Name or email…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="field-label">Pipeline stage</label>
+            <FkSelect fkTable="lkp_donor_stage" value={stageId} onChange={setStageId} />
+          </div>
+        </div>
+        <div className="mt-3 pt-3 border-t border-hairline text-xs text-ink-faint">
           {(data?.length ?? 0).toLocaleString()} donor{(data?.length ?? 0) === 1 ? '' : 's'} ·
           Lifetime <span className="text-ink font-medium">{formatMoney(totalLifetime)}</span> ·
           YTD <span className="text-ink font-medium">{formatMoney(totalYTD)}</span>
@@ -78,6 +94,7 @@ export function Donors() {
               <tr>
                 <Th>Donor</Th>
                 <Th>Type</Th>
+                <Th>Stage</Th>
                 <Th className="text-right">Lifetime</Th>
                 <Th className="text-right">YTD</Th>
                 <Th className="text-right">Gifts</Th>
@@ -101,6 +118,11 @@ export function Donors() {
                     </Link>
                   </td>
                   <td className="px-5 py-3 text-xs text-ink-soft">{d.donor_type}</td>
+                  <td className="px-5 py-3 text-xs">
+                    {d.donor_stage
+                      ? <span className="pill pill-muted">{d.donor_stage}</span>
+                      : <span className="text-ink-faint">—</span>}
+                  </td>
                   <td className="px-5 py-3 text-right font-display font-medium">{formatMoney(d.lifetime_giving)}</td>
                   <td className="px-5 py-3 text-right text-xs">{formatMoney(d.ytd_giving)}</td>
                   <td className="px-5 py-3 text-right text-xs text-ink-soft">{d.gift_count}</td>

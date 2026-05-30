@@ -21,6 +21,8 @@ export const donorsRouter = Router();
 donorsRouter.get('/', async (req, res, next) => {
   try {
     const search = (req.query.search as string | undefined) || null;
+    const stageId = req.query.stage_id ? Number(req.query.stage_id) : null;
+    const typeId  = req.query.type_id  ? Number(req.query.type_id)  : null;
     const conds: string[] = [];
     const params: any[] = [];
     if (search) {
@@ -29,6 +31,8 @@ donorsRouter.get('/', async (req, res, next) => {
                   OR contact.last_name ILIKE $${params.length}
                   OR contact.email ILIKE $${params.length})`);
     }
+    if (stageId) { params.push(stageId); conds.push(`donor.donor_stage_id = $${params.length}`); }
+    if (typeId)  { params.push(typeId);  conds.push(`donor.donor_type_id = $${params.length}`); }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
     const rows = await query(`
@@ -40,6 +44,8 @@ donorsRouter.get('/', async (req, res, next) => {
         dt.donor_type,
         donor.is_recurring,
         donor.do_not_contact,
+        donor.donor_stage_id,
+        ds.donor_stage,
         COALESCE(SUM(d.total_value), 0)::numeric(12,2) AS lifetime_giving,
         COALESCE(SUM(CASE WHEN EXTRACT(YEAR FROM d.donation_date) = EXTRACT(YEAR FROM CURRENT_DATE)
                           THEN d.total_value ELSE 0 END), 0)::numeric(12,2) AS ytd_giving,
@@ -48,11 +54,13 @@ donorsRouter.get('/', async (req, res, next) => {
       FROM tbl_donor donor
       JOIN tbl_contact contact ON contact.contact_id = donor.contact_id
       JOIN lkp_donor_type dt ON dt.donor_type_id = donor.donor_type_id
+      LEFT JOIN lkp_donor_stage ds ON ds.donor_stage_id = donor.donor_stage_id
       LEFT JOIN tbl_donation d ON d.donor_id = donor.donor_id
       ${where}
       GROUP BY donor.donor_id, contact.first_name, contact.last_name,
                contact.mobile_phone, contact.email, dt.donor_type,
-               donor.is_recurring, donor.do_not_contact
+               donor.is_recurring, donor.do_not_contact,
+               donor.donor_stage_id, ds.donor_stage
       ORDER BY lifetime_giving DESC NULLS LAST, contact.last_name
       LIMIT 500
     `, params);
@@ -82,6 +90,10 @@ donorsRouter.get('/:id', async (req, res, next) => {
         donor.employer_match_eligible,
         donor.do_not_contact,
         donor.preferred_contact_method_id,
+        donor.donor_stage_id,
+        donor.stage_notes,
+        donor.stage_updated_at,
+        ds.donor_stage,
         contact.first_name,
         contact.middle_name,
         contact.last_name,
@@ -106,6 +118,7 @@ donorsRouter.get('/:id', async (req, res, next) => {
       LEFT JOIN lkp_state st ON st.state_id = addr.state_id
       LEFT JOIN lkp_howtheyfoundus howtheyfoundus ON howtheyfoundus.howtheyfoundus_id = donor.howtheyfoundus_id
       LEFT JOIN lkp_communication_method cm ON cm.communication_method_id = donor.preferred_contact_method_id
+      LEFT JOIN lkp_donor_stage ds ON ds.donor_stage_id = donor.donor_stage_id
       WHERE donor.donor_id = $1
     `, [id]);
 

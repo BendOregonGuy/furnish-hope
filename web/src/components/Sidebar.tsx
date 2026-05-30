@@ -36,6 +36,8 @@ const sections: NavSection[] = [
   {
     label: 'Fundraising',
     items: [
+      { to: '/campaigns', name: 'Campaigns',           icon: 'flag' },
+      { to: '/events',    name: 'Events',              icon: 'calendar' },
       { to: '/donors',    name: 'Donors',              icon: 'sparkle' },
       { to: '/donations', name: 'Donations',           icon: 'gift' },
       { to: '/pledges',   name: 'Pledges',             icon: 'handshake' },
@@ -69,6 +71,8 @@ function Icon({ name }: { name: string }) {
     case 'gift':       return <svg {...common}><path d="M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>;
     case 'handshake':  return <svg {...common}><path d="M11 17l2 2a1 1 0 0 0 3-3l-1-1M14 14l3 3a1 1 0 0 0 3-3l-3-3M8 14l-3-3a1 1 0 0 0-3 3l3 3M11 11l-3-3a1 1 0 0 0-3 3l3 3M14 11l3-3a1 1 0 1 1 3 3l-3 3M11 14l-3 3a1 1 0 0 0 3 3l3-3"/></svg>;
     case 'sparkle':    return <svg {...common}><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M19 14l.8 2.3L22 17l-2.2.7L19 20l-.8-2.3L16 17l2.2-.7L19 14z"/></svg>;
+    case 'flag':       return <svg {...common}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7"/></svg>;
+    case 'calendar':   return <svg {...common}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>;
     default: return null;
   }
 }

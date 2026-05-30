@@ -31,6 +31,12 @@ import { PledgeDetail } from './pages/PledgeDetail.tsx';
 import { PledgeForm } from './pages/PledgeForm.tsx';
 import { Donors } from './pages/Donors.tsx';
 import { DonorDetail } from './pages/DonorDetail.tsx';
+import { Campaigns } from './pages/Campaigns.tsx';
+import { CampaignDetail } from './pages/CampaignDetail.tsx';
+import { CampaignForm } from './pages/CampaignForm.tsx';
+import { Events } from './pages/Events.tsx';
+import { EventDetail } from './pages/EventDetail.tsx';
+import { EventForm } from './pages/EventForm.tsx';
 import { AdminIndex } from './pages/admin/AdminIndex.tsx';
 import { AdminList } from './pages/admin/AdminList.tsx';
 import { AdminForm } from './pages/admin/AdminForm.tsx';
@@ -104,6 +110,16 @@ function AppShell() {
 
           <Route path="/donors" element={<Donors />} />
           <Route path="/donors/:id" element={<DonorDetail />} />
+
+          <Route path="/campaigns" element={<Campaigns />} />
+          <Route path="/campaigns/new" element={<CampaignForm />} />
+          <Route path="/campaigns/:id/edit" element={<CampaignForm />} />
+          <Route path="/campaigns/:id" element={<CampaignDetail />} />
+
+          <Route path="/events" element={<Events />} />
+          <Route path="/events/new" element={<EventForm />} />
+          <Route path="/events/:id/edit" element={<EventForm />} />
+          <Route path="/events/:id" element={<EventDetail />} />
 
           {/* Admin section is admin-only. The RequireAdmin wrapper renders
               a friendly "admins only" screen for non-admin users. */}

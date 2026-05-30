@@ -149,6 +149,37 @@ dashboardRouter.get('/', async (_req, res, next) => {
       LIMIT 6
     `);
 
+    const activeCampaigns = await query(`
+      SELECT
+        c.campaign_id,
+        c.campaign_name,
+        c.goal_amount,
+        c.end_date,
+        ct.campaign_type,
+        COALESCE((SELECT SUM(total_value) FROM tbl_donation WHERE campaign_id = c.campaign_id), 0)::numeric(12,2) AS raised
+      FROM tbl_campaign c
+      JOIN lkp_campaign_type ct ON ct.campaign_type_id = c.campaign_type_id
+      JOIN lkp_campaign_status cs ON cs.campaign_status_id = c.campaign_status_id
+      WHERE cs.campaign_status = 'Active'
+      ORDER BY c.end_date NULLS LAST, c.campaign_id
+      LIMIT 5
+    `);
+
+    const upcomingEvents = await query(`
+      SELECT
+        e.event_id, e.event_name, e.event_date, e.start_time,
+        e.goal_amount, e.amount_raised,
+        et.event_type,
+        c.campaign_name,
+        (SELECT COUNT(*)::int FROM tbl_event_attendee WHERE event_id = e.event_id) AS attendee_count
+      FROM tbl_event e
+      JOIN lkp_event_type et ON et.event_type_id = e.event_type_id
+      LEFT JOIN tbl_campaign c ON c.campaign_id = e.campaign_id
+      WHERE e.event_date >= CURRENT_DATE
+      ORDER BY e.event_date, e.start_time
+      LIMIT 5
+    `);
+
     res.json({
       metrics,
       pendingRequests,
@@ -156,6 +187,8 @@ dashboardRouter.get('/', async (_req, res, next) => {
       giving,
       byFundYtd,
       topDonorsYtd,
+      activeCampaigns,
+      upcomingEvents,
     });
   } catch (err) {
     next(err);

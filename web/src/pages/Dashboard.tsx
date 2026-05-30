@@ -38,6 +38,15 @@ type DashboardData = {
   };
   byFundYtd: Array<{ fund_name: string; total: number | string }>;
   topDonorsYtd: Array<{ donor_id: number; donor_name: string; ytd_total: number | string; gift_count: number }>;
+  activeCampaigns: Array<{
+    campaign_id: number; campaign_name: string; goal_amount: number | string | null;
+    end_date: string | null; campaign_type: string; raised: number | string;
+  }>;
+  upcomingEvents: Array<{
+    event_id: number; event_name: string; event_date: string; start_time: string | null;
+    goal_amount: number | string | null; amount_raised: number | string | null;
+    event_type: string; campaign_name: string | null; attendee_count: number;
+  }>;
 };
 
 export function Dashboard() {
@@ -146,6 +155,66 @@ export function Dashboard() {
               </table>
             )}
           </div>
+
+          {/* Active campaigns */}
+          {data.activeCampaigns.length > 0 && (
+            <div className="card">
+              <div className="card-head">
+                <h3 className="font-display font-medium text-[17px] m-0">Active campaigns</h3>
+                <Link to="/campaigns" className="text-xs text-terracotta font-medium">All →</Link>
+              </div>
+              <div className="space-y-3">
+                {data.activeCampaigns.map(c => {
+                  const goal = Number(c.goal_amount ?? 0);
+                  const raised = Number(c.raised);
+                  const pct = goal > 0 ? Math.min(100, Math.round((raised / goal) * 100)) : 0;
+                  return (
+                    <Link key={c.campaign_id} to={`/campaigns/${c.campaign_id}`} className="block hover:bg-terracotta/[0.025] -mx-2 px-2 py-1.5 rounded">
+                      <div className="flex justify-between items-baseline text-xs mb-1">
+                        <span className="font-medium text-ink truncate pr-2">{c.campaign_name}</span>
+                        <span className="text-ink-soft whitespace-nowrap">
+                          {formatMoney(raised)}{goal > 0 && <span className="text-ink-faint"> / {formatMoney(goal)}</span>}
+                        </span>
+                      </div>
+                      {goal > 0 && (
+                        <div className="w-full h-1.5 bg-cream-deep rounded-full overflow-hidden">
+                          <div className="h-full bg-sage" style={{ width: `${pct}%` }} />
+                        </div>
+                      )}
+                      <div className="text-[10px] text-ink-faint mt-0.5">{c.campaign_type}{c.end_date && ` · ends ${formatShortDate(c.end_date)}`}</div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Upcoming events */}
+          {data.upcomingEvents.length > 0 && (
+            <div className="card">
+              <div className="card-head">
+                <h3 className="font-display font-medium text-[17px] m-0">Upcoming events</h3>
+                <Link to="/events" className="text-xs text-terracotta font-medium">All →</Link>
+              </div>
+              <div className="space-y-2">
+                {data.upcomingEvents.map(ev => (
+                  <Link key={ev.event_id} to={`/events/${ev.event_id}`} className="flex items-baseline justify-between hover:bg-terracotta/[0.025] -mx-2 px-2 py-1.5 rounded">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm truncate">{ev.event_name}</div>
+                      <div className="text-[10px] text-ink-faint">
+                        {ev.event_type}
+                        {ev.campaign_name && ` · ${ev.campaign_name}`}
+                        {` · ${ev.attendee_count} RSVP${ev.attendee_count === 1 ? '' : 's'}`}
+                      </div>
+                    </div>
+                    <div className="text-xs text-ink-soft whitespace-nowrap ml-3">
+                      {formatShortDate(ev.event_date)}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* YTD revenue by fund */}
           <div className="card">

@@ -408,6 +408,184 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  // ============================================================
+  // Phase 2 — Fundraising campaigns + events + donor pipeline
+  // ============================================================
+  {
+    name: 'lkp_campaign_type',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_campaign_type (
+          campaign_type_id SERIAL PRIMARY KEY,
+          campaign_type    VARCHAR(50) NOT NULL UNIQUE,
+          description      VARCHAR(200)
+        )
+      `);
+      await query(`
+        INSERT INTO lkp_campaign_type (campaign_type, description) VALUES
+          ('Annual fund',     'Yearly unrestricted operating support'),
+          ('Capital campaign', 'Major multi-year drive for buildings, vehicles, or expansion'),
+          ('Special appeal',  'Time-limited push for a specific need'),
+          ('Event-based',     'Fundraising tied to a single event (gala, auction)'),
+          ('Peer-to-peer',    'Supporters fundraise on the org''s behalf'),
+          ('Planned giving',  'Bequests, estate gifts, charitable trusts'),
+          ('Endowment',       'Principal preserved, earnings spent'),
+          ('Grant cycle',     'Specific grant proposal or reporting period')
+        ON CONFLICT (campaign_type) DO NOTHING
+      `);
+    },
+  },
+  {
+    name: 'lkp_campaign_status',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_campaign_status (
+          campaign_status_id SERIAL PRIMARY KEY,
+          campaign_status    VARCHAR(50) NOT NULL UNIQUE,
+          description        VARCHAR(200)
+        )
+      `);
+      await query(`
+        INSERT INTO lkp_campaign_status (campaign_status, description) VALUES
+          ('Planning',  'Being scoped; not yet accepting gifts'),
+          ('Active',    'Currently accepting gifts'),
+          ('Paused',    'Temporarily not soliciting (e.g. waiting on next milestone)'),
+          ('Completed', 'Closed successfully'),
+          ('Cancelled', 'Closed before goal was met or before launch')
+        ON CONFLICT (campaign_status) DO NOTHING
+      `);
+    },
+  },
+  {
+    name: 'lkp_donor_stage',
+    async run() {
+      // Standard major-gifts pipeline. Smaller orgs may only use a couple
+      // of stages; bigger ones can model full moves management here.
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_donor_stage (
+          donor_stage_id SERIAL PRIMARY KEY,
+          donor_stage    VARCHAR(50) NOT NULL UNIQUE,
+          stage_order    INTEGER NOT NULL DEFAULT 0,
+          description    VARCHAR(200)
+        )
+      `);
+      await query(`
+        INSERT INTO lkp_donor_stage (donor_stage, stage_order, description) VALUES
+          ('Identification', 10, 'Prospect identified but not yet researched'),
+          ('Qualification',  20, 'Researched and confirmed as a real prospect'),
+          ('Cultivation',    30, 'Building the relationship; not yet ready to ask'),
+          ('Solicitation',   40, 'Currently being asked for a gift'),
+          ('Stewardship',    50, 'Gave; now being thanked, retained, upgraded'),
+          ('Lapsed',         60, 'Was a donor; hasn''t given in 24+ months')
+        ON CONFLICT (donor_stage) DO NOTHING
+      `);
+    },
+  },
+  {
+    name: 'tbl_campaign',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_campaign (
+          campaign_id        SERIAL PRIMARY KEY,
+          campaign_name      VARCHAR(150) NOT NULL,
+          campaign_type_id   INTEGER NOT NULL REFERENCES lkp_campaign_type(campaign_type_id),
+          campaign_status_id INTEGER NOT NULL REFERENCES lkp_campaign_status(campaign_status_id),
+          fund_id            INTEGER REFERENCES lkp_fund(fund_id),
+          goal_amount        NUMERIC(12,2),
+          start_date         DATE,
+          end_date           DATE,
+          manager_facility_staff_id INTEGER REFERENCES tbl_facility_staff(facility_staff_id),
+          public_url         VARCHAR(255),
+          notes              TEXT,
+          created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id),
+          description        VARCHAR(100)
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_campaign_status ON tbl_campaign(campaign_status_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_campaign_type   ON tbl_campaign(campaign_type_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_campaign_fund   ON tbl_campaign(fund_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_campaign_dates  ON tbl_campaign(start_date, end_date)`);
+    },
+  },
+  {
+    name: 'tbl_donation.campaign_id FK',
+    async run() {
+      // Forward-reference column was created in Phase 1 without FK. Add the
+      // real FK now that tbl_campaign exists. Wrapped in DO block so it's
+      // idempotent on re-runs.
+      await query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.table_constraints
+             WHERE constraint_name = 'fk_tbl_donation_campaign_id'
+          ) THEN
+            ALTER TABLE tbl_donation
+              ADD CONSTRAINT fk_tbl_donation_campaign_id
+              FOREIGN KEY (campaign_id) REFERENCES tbl_campaign(campaign_id);
+          END IF;
+        END $$
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_donation_campaign_id ON tbl_donation(campaign_id)`);
+    },
+  },
+  {
+    name: 'tbl_pledge.campaign_id FK',
+    async run() {
+      await query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.table_constraints
+             WHERE constraint_name = 'fk_tbl_pledge_campaign_id'
+          ) THEN
+            ALTER TABLE tbl_pledge
+              ADD CONSTRAINT fk_tbl_pledge_campaign_id
+              FOREIGN KEY (campaign_id) REFERENCES tbl_campaign(campaign_id);
+          END IF;
+        END $$
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_pledge_campaign_id ON tbl_pledge(campaign_id)`);
+    },
+  },
+  {
+    name: 'tbl_event campaign linkage + RSVP enhancements',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_event
+          ADD COLUMN IF NOT EXISTS campaign_id INTEGER REFERENCES tbl_campaign(campaign_id),
+          ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS ticket_price NUMERIC(12,2),
+          ADD COLUMN IF NOT EXISTS notes TEXT
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_event_campaign_id ON tbl_event(campaign_id)`);
+    },
+  },
+  {
+    name: 'tbl_event_attendee check-in + ticket tracking',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_event_attendee
+          ADD COLUMN IF NOT EXISTS checked_in_at TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS ticket_count INTEGER NOT NULL DEFAULT 1,
+          ADD COLUMN IF NOT EXISTS notes TEXT
+      `);
+    },
+  },
+  {
+    name: 'tbl_donor.donor_stage_id',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_donor
+          ADD COLUMN IF NOT EXISTS donor_stage_id INTEGER REFERENCES lkp_donor_stage(donor_stage_id),
+          ADD COLUMN IF NOT EXISTS stage_notes TEXT,
+          ADD COLUMN IF NOT EXISTS stage_updated_at TIMESTAMPTZ
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_donor_stage_id ON tbl_donor(donor_stage_id)`);
+    },
+  },
+
   {
     name: 'tbl_app_setting defaults',
     async run() {

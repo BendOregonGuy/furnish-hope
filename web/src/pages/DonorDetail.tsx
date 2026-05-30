@@ -91,6 +91,7 @@ export function DonorDetail() {
             {d.is_recurring && <span className="pill pill-sage">Recurring</span>}
             {d.do_not_contact && <span className="pill pill-terra">Do not contact</span>}
             {d.employer_match_eligible && <span className="pill pill-gold">Employer match</span>}
+            {d.donor_stage && <span className="pill pill-muted">Stage: {d.donor_stage}</span>}
           </div>
           <div className="flex gap-4 text-sm text-ink-soft flex-wrap">
             {d.mobile_phone && <span>{d.mobile_phone}</span>}
