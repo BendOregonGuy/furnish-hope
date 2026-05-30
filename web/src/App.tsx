@@ -26,6 +26,11 @@ import { VolunteerForm } from './pages/VolunteerForm.tsx';
 import { Donations } from './pages/Donations.tsx';
 import { DonationDetail } from './pages/DonationDetail.tsx';
 import { DonationForm } from './pages/DonationForm.tsx';
+import { Pledges } from './pages/Pledges.tsx';
+import { PledgeDetail } from './pages/PledgeDetail.tsx';
+import { PledgeForm } from './pages/PledgeForm.tsx';
+import { Donors } from './pages/Donors.tsx';
+import { DonorDetail } from './pages/DonorDetail.tsx';
 import { AdminIndex } from './pages/admin/AdminIndex.tsx';
 import { AdminList } from './pages/admin/AdminList.tsx';
 import { AdminForm } from './pages/admin/AdminForm.tsx';
@@ -91,6 +96,14 @@ function AppShell() {
           <Route path="/donations/new" element={<DonationForm />} />
           <Route path="/donations/:id/edit" element={<DonationForm />} />
           <Route path="/donations/:id" element={<DonationDetail />} />
+
+          <Route path="/pledges" element={<Pledges />} />
+          <Route path="/pledges/new" element={<PledgeForm />} />
+          <Route path="/pledges/:id/edit" element={<PledgeForm />} />
+          <Route path="/pledges/:id" element={<PledgeDetail />} />
+
+          <Route path="/donors" element={<Donors />} />
+          <Route path="/donors/:id" element={<DonorDetail />} />
 
           {/* Admin section is admin-only. The RequireAdmin wrapper renders
               a friendly "admins only" screen for non-admin users. */}

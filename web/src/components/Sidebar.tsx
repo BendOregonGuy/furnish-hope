@@ -36,7 +36,9 @@ const sections: NavSection[] = [
   {
     label: 'Fundraising',
     items: [
+      { to: '/donors',    name: 'Donors',              icon: 'sparkle' },
       { to: '/donations', name: 'Donations',           icon: 'gift' },
+      { to: '/pledges',   name: 'Pledges',             icon: 'handshake' },
     ],
   },
   {
@@ -65,6 +67,8 @@ function Icon({ name }: { name: string }) {
     case 'activity':   return <svg {...common}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>;
     case 'gear':       return <svg {...common}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
     case 'gift':       return <svg {...common}><path d="M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>;
+    case 'handshake':  return <svg {...common}><path d="M11 17l2 2a1 1 0 0 0 3-3l-1-1M14 14l3 3a1 1 0 0 0 3-3l-3-3M8 14l-3-3a1 1 0 0 0-3 3l3 3M11 11l-3-3a1 1 0 0 0-3 3l3 3M14 11l3-3a1 1 0 1 1 3 3l-3 3M11 14l-3 3a1 1 0 0 0 3 3l3-3"/></svg>;
+    case 'sparkle':    return <svg {...common}><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M19 14l.8 2.3L22 17l-2.2.7L19 20l-.8-2.3L16 17l2.2-.7L19 14z"/></svg>;
     default: return null;
   }
 }

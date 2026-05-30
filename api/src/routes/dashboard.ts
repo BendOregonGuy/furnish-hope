@@ -94,10 +94,68 @@ dashboardRouter.get('/', async (_req, res, next) => {
       LIMIT 8
     `);
 
+    // Giving snapshot: YTD revenue, by-fund split, top donors, outstanding pledges.
+    const giving = await queryOne<{
+      ytd_giving: number;
+      ytd_gift_count: number;
+      ytd_tax_deductible: number;
+      outstanding_pledges: number;
+    }>(`
+      SELECT
+        COALESCE((SELECT SUM(total_value)
+                    FROM tbl_donation
+                   WHERE EXTRACT(YEAR FROM donation_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+                ), 0)::numeric(12,2) AS ytd_giving,
+        COALESCE((SELECT COUNT(*)::int
+                    FROM tbl_donation
+                   WHERE EXTRACT(YEAR FROM donation_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+                ), 0) AS ytd_gift_count,
+        COALESCE((SELECT SUM(tax_deductible_amount)
+                    FROM tbl_donation
+                   WHERE EXTRACT(YEAR FROM donation_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+                ), 0)::numeric(12,2) AS ytd_tax_deductible,
+        COALESCE((SELECT SUM(total_pledged_amount - amount_fulfilled)
+                    FROM tbl_pledge p
+                    JOIN lkp_pledge_status ps ON ps.pledge_status_id = p.pledge_status_id
+                   WHERE ps.pledge_status NOT IN ('Fulfilled', 'Cancelled')
+                ), 0)::numeric(12,2) AS outstanding_pledges
+    `);
+
+    const byFundYtd = await query(`
+      SELECT
+        COALESCE(f.fund_name, 'Undesignated') AS fund_name,
+        SUM(dd.amount)::numeric(12,2) AS total
+      FROM tbl_donation d
+      JOIN tbl_donation_designation dd ON dd.donation_id = d.donation_id
+      LEFT JOIN lkp_fund f ON f.fund_id = dd.fund_id
+      WHERE EXTRACT(YEAR FROM d.donation_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+      GROUP BY f.fund_name
+      ORDER BY total DESC
+      LIMIT 6
+    `);
+
+    const topDonorsYtd = await query(`
+      SELECT
+        donor.donor_id,
+        contact.first_name || ' ' || contact.last_name AS donor_name,
+        SUM(d.total_value)::numeric(12,2) AS ytd_total,
+        COUNT(d.donation_id)::int AS gift_count
+      FROM tbl_donation d
+      JOIN tbl_donor donor ON donor.donor_id = d.donor_id
+      JOIN tbl_contact contact ON contact.contact_id = donor.contact_id
+      WHERE EXTRACT(YEAR FROM d.donation_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+      GROUP BY donor.donor_id, contact.first_name, contact.last_name
+      ORDER BY ytd_total DESC
+      LIMIT 6
+    `);
+
     res.json({
       metrics,
       pendingRequests,
       recentDonations,
+      giving,
+      byFundYtd,
+      topDonorsYtd,
     });
   } catch (err) {
     next(err);
