@@ -125,18 +125,40 @@ export async function syncDonationToQbo(donationId: number, userAccountId: numbe
     ORDER BY dd.donation_designation_id
   `, [donationId]);
 
-  if (desigs.length === 0) {
-    return logAndReturn(donationId, userAccountId, 'failed',
-      'Donation has no designations',
-      'This donation has no fund designations. Add at least one designation (fund + amount) before syncing.');
-  }
-
-  const unmapped = desigs.filter(d => !d.qbo_account_id);
-  if (unmapped.length > 0) {
-    const names = unmapped.map(d => d.fund_name).join(', ');
-    return logAndReturn(donationId, userAccountId, 'failed',
-      `Unmapped funds: ${names}`,
-      `These funds aren't mapped to QuickBooks accounts yet: ${names}. Map them in Settings → QuickBooks → Account mapping.`);
+  // Build the sales-receipt line items. Designated donations get one line
+  // per designation (each posting to its mapped income account).
+  // Undesignated donations (no rows in tbl_donation_designation) get a
+  // single line posting to the qbo_undesignated_account_id from settings.
+  let lines: Array<{ amount: number; description: string; incomeAccountId: string }>;
+  if (desigs.length > 0) {
+    const unmapped = desigs.filter(d => !d.qbo_account_id);
+    if (unmapped.length > 0) {
+      const names = unmapped.map(d => d.fund_name).join(', ');
+      return logAndReturn(donationId, userAccountId, 'failed',
+        `Unmapped funds: ${names}`,
+        `These funds aren't mapped to QuickBooks accounts yet: ${names}. Map them in Settings → QuickBooks → Account mapping.`);
+    }
+    lines = desigs.map(d => ({
+      amount: Number(d.amount),
+      description: `${d.fund_name}${don.description ? ' — ' + don.description : ''}`,
+      incomeAccountId: d.qbo_account_id!,
+    }));
+  } else {
+    // Undesignated donation — needs a fallback income account.
+    const undesigSetting = await queryOne<{ setting_value: string }>(
+      `SELECT setting_value FROM tbl_app_setting WHERE setting_key = 'qbo_undesignated_account_id'`,
+    );
+    const undesigAccountId = undesigSetting?.setting_value?.trim();
+    if (!undesigAccountId) {
+      return logAndReturn(donationId, userAccountId, 'failed',
+        'No undesignated income account configured',
+        'This donation has no fund designations. Either add a designation in the donation editor, or pick a default income account for undesignated donations in Settings → QuickBooks.');
+    }
+    lines = [{
+      amount: Number(don.total_value),
+      description: don.description ?? 'Undesignated donation',
+      incomeAccountId: undesigAccountId,
+    }];
   }
 
   // Load deposit account from app settings.
@@ -159,13 +181,6 @@ export async function syncDonationToQbo(donationId: number, userAccountId: numbe
       err.message ?? 'Customer link failed',
       `Couldn't link donor to a QuickBooks customer: ${err.message ?? err}`);
   }
-
-  // Build line items.
-  const lines = desigs.map(d => ({
-    amount: Number(d.amount),
-    description: `${d.fund_name}${don.description ? ' — ' + don.description : ''}`,
-    incomeAccountId: d.qbo_account_id!,
-  }));
 
   // Create sales receipt.
   try {

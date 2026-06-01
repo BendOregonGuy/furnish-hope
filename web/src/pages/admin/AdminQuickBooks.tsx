@@ -90,6 +90,7 @@ export function AdminQuickBooks() {
       {status?.connected && (
         <>
           <DepositAccountCard onChange={() => qc.invalidateQueries({ queryKey: ['qbo'] })} />
+          <UndesignatedAccountCard onChange={() => qc.invalidateQueries({ queryKey: ['qbo'] })} />
           <MappingsCard />
           <SyncLogCard />
         </>
@@ -222,6 +223,72 @@ function DepositAccountCard({ onChange }: { onChange: () => void }) {
           >
             <option value="">— Pick an account —</option>
             {depositAccounts.map(a => (
+              <option key={a.id} value={a.id}>{a.name} ({a.subtype ?? a.type})</option>
+            ))}
+          </select>
+          <button
+            onClick={() => saveMut.mutate(value)}
+            disabled={saveMut.isPending || value === currentId}
+            className="btn-primary disabled:opacity-50"
+          >
+            {saveMut.isPending ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------- */
+/*  Undesignated-donation income account                              */
+/* ----------------------------------------------------------------- */
+
+function UndesignatedAccountCard({ onChange }: { onChange: () => void }) {
+  const { data: settings } = useQuery<{ settings: SettingRow[] }>({
+    queryKey: ['admin', 'settings'],
+    queryFn: () => apiGet('/api/admin/settings'),
+  });
+  const { data: incomeAccounts, isLoading, error } = useQuery<QboAccount[]>({
+    queryKey: ['qbo', 'income-accounts'],
+    queryFn: () => apiGet('/api/quickbooks/accounts'),
+  });
+
+  const currentId = settings?.settings.find(s => s.setting_key === 'qbo_undesignated_account_id')?.setting_value ?? '';
+  const [value, setValue] = useState('');
+  useEffect(() => { setValue(currentId); }, [currentId]);
+
+  const saveMut = useMutation({
+    mutationFn: (v: string) => {
+      const acct = incomeAccounts?.find(a => a.id === v);
+      return apiPut('/api/admin/settings', { changes: {
+        qbo_undesignated_account_id: v,
+        qbo_undesignated_account_name: acct?.name ?? '',
+      }});
+    },
+    onSuccess: () => onChange(),
+  });
+
+  return (
+    <div className="card mb-5">
+      <div className="card-head">
+        <div>
+          <h3 className="font-display font-medium text-[17px] m-0">Undesignated donations</h3>
+          <div className="text-xs text-ink-faint mt-0.5">
+            Where undesignated/unrestricted donations (no specific fund) post in QuickBooks. Most orgs pick a "General Donations" income account here.
+          </div>
+        </div>
+      </div>
+      {isLoading && <Loading />}
+      {error && <ErrorBox error={error} />}
+      {incomeAccounts && (
+        <div className="flex items-center gap-3">
+          <select
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            className="field-input max-w-md"
+          >
+            <option value="">— Pick an income account —</option>
+            {incomeAccounts.map(a => (
               <option key={a.id} value={a.id}>{a.name} ({a.subtype ?? a.type})</option>
             ))}
           </select>

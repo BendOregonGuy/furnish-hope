@@ -805,6 +805,10 @@ const MIGRATIONS: Migration[] = [
           'QBO Payment Method ID applied to sales receipts. Leave blank to use the QBO default.'],
         ['qbo_default_deposit_account_id', '',
           'QBO Deposit Account ID (Undeposited Funds or a specific bank account). Required for sales receipts; set during initial mapping.'],
+        ['qbo_undesignated_account_id', '',
+          'QBO income account ID for donations that have no fund designations (e.g. unrestricted gifts). Required if you want to sync undesignated donations.'],
+        ['qbo_undesignated_account_name', '',
+          'Friendly name of the undesignated income account (denormalized for display).'],
       ];
       for (const [key, value, desc] of defaults) {
         await query(`
