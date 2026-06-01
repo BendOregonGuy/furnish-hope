@@ -272,13 +272,18 @@ async function logSync(
   errorMsg: string | null,
   payloadSummary: string | null,
 ): Promise<number> {
+  // Compute synced_at in JS so we don't reuse the same parameter inside both
+  // a VARCHAR column value and a TIMESTAMPTZ-returning CASE expression —
+  // PostgreSQL refuses to unify the parameter's type across those contexts
+  // ("inconsistent types deduced for parameter").
+  const syncedAt = status === 'synced' ? new Date() : null;
   const r = await queryOne<{ sync_id: number }>(`
     INSERT INTO tbl_quickbooks_donation_sync
       (donation_id, qbo_sales_receipt_id, sync_status,
        synced_at, attempted_by_user_account_id, error_message, payload_summary)
-    VALUES ($1, $2, $3, CASE WHEN $3 = 'synced' THEN NOW() END, $4, $5, $6)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING sync_id
-  `, [donationId, qboReceiptId, status, userId, errorMsg, payloadSummary]);
+  `, [donationId, qboReceiptId, status, syncedAt, userId, errorMsg, payloadSummary]);
   // Update the denormalized status pointer (but don't touch qbo_current_sync_id for skipped — keep the prior successful link).
   if (status !== 'skipped') {
     await query(`
