@@ -114,7 +114,7 @@ export async function syncDonationToQbo(donationId: number, userAccountId: numbe
   const desigs = await query<DesignationForSync>(`
     SELECT
       dd.fund_id,
-      f.fund AS fund_name,
+      f.fund_name,
       dd.amount,
       m.qbo_account_id,
       m.qbo_account_name

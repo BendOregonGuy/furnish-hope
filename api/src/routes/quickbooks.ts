@@ -212,12 +212,12 @@ quickbooksRouter.get('/mappings', async (_req, res, next) => {
     // the full list and mark unmapped ones.
     const rows = await query(`
       SELECT
-        f.fund_id, f.fund AS fund_name, f.description AS fund_description,
+        f.fund_id, f.fund_name, f.description AS fund_description,
         m.mapping_id, m.qbo_account_id, m.qbo_account_name, m.qbo_account_type,
         m.created_at, m.updated_at
       FROM lkp_fund f
       LEFT JOIN tbl_quickbooks_account_mapping m ON m.fund_id = f.fund_id
-      ORDER BY f.fund
+      ORDER BY f.fund_name
     `);
     res.json(rows);
   } catch (err) { next(err); }
