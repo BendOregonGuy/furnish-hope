@@ -126,6 +126,8 @@ donationsRouter.get('/', async (req, res, next) => {
         d.receipt_number,
         d.acknowledgement_status_id,
         d.donor_id,
+        d.qbo_sync_status,
+        d.qbo_synced_at,
         contact.first_name || ' ' || contact.last_name AS donor_name,
         dt.donation_type,
         pm.payment_method,

@@ -25,6 +25,7 @@ import { donorsRouter } from './routes/donors.js';
 import { campaignsRouter } from './routes/campaigns.js';
 import { eventsRouter } from './routes/events.js';
 import { emailRouter } from './routes/email.js';
+import { quickbooksRouter } from './routes/quickbooks.js';
 import { createSessionMiddleware } from './auth/session.js';
 import { runAuthMigrations } from './auth/migrations.js';
 import { requireUser, requireAdmin } from './auth/middleware.js';
@@ -92,6 +93,8 @@ app.use('/api/donors',     donorsRouter);
 app.use('/api/campaigns',  campaignsRouter);
 app.use('/api/events',     eventsRouter);
 app.use('/api/email',      emailRouter);
+// QuickBooks integration — admin-only because accounting touches the books.
+app.use('/api/quickbooks', requireAdmin, quickbooksRouter);
 
 // 404 for unmatched /api routes (before the static-file fallback so a typo
 // like /api/clientx returns JSON, not the HTML index).

@@ -22,6 +22,8 @@ interface DonationRow {
   donation_type: string;
   payment_method: string | null;
   acknowledgement_status: string | null;
+  qbo_sync_status: 'synced' | 'failed' | 'skipped' | 'pending' | null;
+  qbo_synced_at: string | null;
 }
 
 export function Donations() {
@@ -136,6 +138,7 @@ export function Donations() {
                 <Th className="text-right">Amount</Th>
                 <Th>Receipt #</Th>
                 <Th>Ack</Th>
+                <Th>QBO</Th>
               </tr>
             </thead>
             <tbody>
@@ -157,6 +160,12 @@ export function Donations() {
                     {d.acknowledgement_status
                       ? <StatusPill status={d.acknowledgement_status} />
                       : <span className="text-[11px] text-ink-faint">—</span>}
+                  </td>
+                  <td className="px-5 py-3">
+                    {d.qbo_sync_status === 'synced'  && <span className="pill pill-sage" title={d.qbo_synced_at ? `Synced ${new Date(d.qbo_synced_at).toLocaleString()}` : undefined}>✓</span>}
+                    {d.qbo_sync_status === 'failed'  && <span className="pill pill-terra" title="Last sync failed">!</span>}
+                    {d.qbo_sync_status === 'pending' && <span className="pill pill-gold">…</span>}
+                    {!d.qbo_sync_status && <span className="text-[11px] text-ink-faint">—</span>}
                   </td>
                 </tr>
               ))}

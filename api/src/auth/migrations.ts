@@ -663,6 +663,158 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+
+  // ============================================================
+  // Phase 3 — QuickBooks Online integration
+  // ------------------------------------------------------------
+  // - tbl_quickbooks_connection: per-org OAuth tokens (encrypted) + realm_id.
+  //   Only one row is is_active=true at a time. Connection is org-wide
+  //   (accounting is shared) but is_admin-gated.
+  // - tbl_quickbooks_account_mapping: which QBO income account each
+  //   FH designation/fund maps to. Required before donations can sync.
+  // - tbl_quickbooks_donor_link: FH donor ↔ QBO customer. Auto-created
+  //   on first donation sync if no row exists.
+  // - tbl_quickbooks_donation_sync: per-donation sync history (each sync
+  //   attempt is a row). tbl_donation gets qbo_synced_at + qbo_sync_status
+  //   + qbo_current_sync_id pointers so the list view doesn't have to
+  //   join this table.
+  // ============================================================
+  {
+    name: 'tbl_quickbooks_connection',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_quickbooks_connection (
+          qbo_connection_id        SERIAL PRIMARY KEY,
+          realm_id                 VARCHAR(50)  NOT NULL,
+          environment              VARCHAR(20)  NOT NULL DEFAULT 'production',
+          access_token_encrypted   TEXT         NOT NULL,
+          refresh_token_encrypted  TEXT         NOT NULL,
+          access_token_expires_at  TIMESTAMPTZ  NOT NULL,
+          refresh_token_expires_at TIMESTAMPTZ,
+          is_active                BOOLEAN      NOT NULL DEFAULT true,
+          connected_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id),
+          connected_at             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          last_sync_at             TIMESTAMPTZ,
+          last_refresh_at          TIMESTAMPTZ,
+          disconnected_at          TIMESTAMPTZ,
+          description              VARCHAR(200)
+        )
+      `);
+      // Only one row can be active at a time. Partial unique index lets us
+      // keep history of past connections (when someone disconnects and
+      // reconnects to a different QBO company).
+      await query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_quickbooks_connection_active
+          ON tbl_quickbooks_connection (is_active) WHERE is_active = true
+      `);
+    },
+  },
+  {
+    name: 'tbl_quickbooks_account_mapping',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_quickbooks_account_mapping (
+          mapping_id          SERIAL PRIMARY KEY,
+          fund_id             INTEGER REFERENCES lkp_fund(fund_id) ON DELETE CASCADE,
+          qbo_account_id      VARCHAR(50)  NOT NULL,
+          qbo_account_name    VARCHAR(255) NOT NULL,
+          qbo_account_type    VARCHAR(50),
+          created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          created_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id),
+          updated_at          TIMESTAMPTZ
+        )
+      `);
+      // One mapping per fund.
+      await query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_quickbooks_account_mapping_fund
+          ON tbl_quickbooks_account_mapping (fund_id)
+      `);
+    },
+  },
+  {
+    name: 'tbl_quickbooks_donor_link',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_quickbooks_donor_link (
+          donor_link_id    SERIAL PRIMARY KEY,
+          donor_id         INTEGER NOT NULL REFERENCES tbl_donor(donor_id) ON DELETE CASCADE,
+          qbo_customer_id  VARCHAR(50)  NOT NULL,
+          qbo_customer_display_name VARCHAR(255),
+          created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          last_synced_at   TIMESTAMPTZ
+        )
+      `);
+      await query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_quickbooks_donor_link_donor
+          ON tbl_quickbooks_donor_link (donor_id)
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_quickbooks_donor_link_customer
+          ON tbl_quickbooks_donor_link (qbo_customer_id)
+      `);
+    },
+  },
+  {
+    name: 'tbl_quickbooks_donation_sync',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_quickbooks_donation_sync (
+          sync_id                  SERIAL PRIMARY KEY,
+          donation_id              INTEGER NOT NULL REFERENCES tbl_donation(donation_id) ON DELETE CASCADE,
+          qbo_sales_receipt_id     VARCHAR(50),
+          sync_status              VARCHAR(20) NOT NULL,  -- 'pending', 'synced', 'failed', 'skipped'
+          attempted_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          synced_at                TIMESTAMPTZ,
+          attempted_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id),
+          error_message            TEXT,
+          payload_summary          TEXT
+        )
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_quickbooks_donation_sync_donation
+          ON tbl_quickbooks_donation_sync (donation_id)
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_quickbooks_donation_sync_status_attempted
+          ON tbl_quickbooks_donation_sync (sync_status, attempted_at DESC)
+      `);
+    },
+  },
+  {
+    // Add denormalized sync-state columns to tbl_donation so the list view
+    // can show "synced / pending / failed" pills without joining the sync
+    // log table. qbo_current_sync_id points to the latest row in
+    // tbl_quickbooks_donation_sync; qbo_synced_at is the success timestamp.
+    name: 'tbl_donation qbo sync columns',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_donation
+          ADD COLUMN IF NOT EXISTS qbo_current_sync_id INTEGER REFERENCES tbl_quickbooks_donation_sync(sync_id),
+          ADD COLUMN IF NOT EXISTS qbo_sync_status     VARCHAR(20),
+          ADD COLUMN IF NOT EXISTS qbo_synced_at       TIMESTAMPTZ
+      `);
+    },
+  },
+  {
+    name: 'tbl_app_setting QBO defaults',
+    async run() {
+      const defaults: Array<[string, string, string]> = [
+        ['qbo_auto_sync_donations', 'false',
+          'When true, donations sync to QuickBooks automatically on save. When false, sync is manual via the "Sync to QBO" button.'],
+        ['qbo_default_payment_method_id', '',
+          'QBO Payment Method ID applied to sales receipts. Leave blank to use the QBO default.'],
+        ['qbo_default_deposit_account_id', '',
+          'QBO Deposit Account ID (Undeposited Funds or a specific bank account). Required for sales receipts; set during initial mapping.'],
+      ];
+      for (const [key, value, desc] of defaults) {
+        await query(`
+          INSERT INTO tbl_app_setting (setting_key, setting_value, description)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (setting_key) DO NOTHING
+        `, [key, value, desc]);
+      }
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

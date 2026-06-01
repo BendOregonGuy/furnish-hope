@@ -10,6 +10,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, apiPost, formatLongDate, formatMoney } from '../lib/api.ts';
 import { Avatar, Loading, ErrorBox, StatusPill } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
+import { useAuth } from '../lib/auth.tsx';
+import { useState } from 'react';
 
 interface Detail {
   donation: any;
@@ -24,6 +26,8 @@ export function DonationDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = !!user?.is_admin;
 
   const { data, isLoading, error } = useQuery<Detail>({
     queryKey: ['donation', id],
@@ -196,6 +200,10 @@ export function DonationDetail() {
             {d.soft_credit_name && <Detail label="Soft credit" value={d.soft_credit_name} />}
           </div>
 
+          {isAdmin && (
+            <QuickBooksCard donationId={Number(id)} donation={d} />
+          )}
+
           {(d.received_via || d.external_transaction_id) && (
             <div className="card">
               <div className="card-head" style={{marginBottom:'10px', paddingBottom:'8px'}}>
@@ -230,6 +238,110 @@ function Detail({ label, value, mono }: { label: string; value: string; mono?: b
     <div className="grid grid-cols-[100px_1fr] gap-2 py-1.5 text-xs">
       <div className="text-ink-faint uppercase tracking-wider text-[10px] font-medium">{label}</div>
       <div className={'text-ink ' + (mono ? 'font-mono' : '')}>{value}</div>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------- */
+/*  QuickBooks card — admin-only, on the right column                 */
+/* ----------------------------------------------------------------- */
+
+interface SyncHistoryRow {
+  sync_id: number;
+  qbo_sales_receipt_id: string | null;
+  sync_status: 'synced' | 'failed' | 'skipped' | 'pending';
+  attempted_at: string;
+  synced_at: string | null;
+  error_message: string | null;
+  attempted_by_username: string | null;
+}
+
+function QuickBooksCard({ donationId, donation }: { donationId: number; donation: any }) {
+  const qc = useQueryClient();
+  const [showHistory, setShowHistory] = useState(false);
+  const [lastResult, setLastResult] = useState<{ status: string; message: string } | null>(null);
+
+  const { data: history } = useQuery<SyncHistoryRow[]>({
+    queryKey: ['qbo', 'donation', donationId, 'history'],
+    queryFn: () => apiGet(`/api/quickbooks/donations/${donationId}/sync-history`),
+    enabled: showHistory,
+  });
+
+  const syncMut = useMutation({
+    mutationFn: () => apiPost<{ status: string; message: string }>(`/api/quickbooks/sync/${donationId}`, {}),
+    onSuccess: (r) => {
+      setLastResult(r);
+      qc.invalidateQueries({ queryKey: ['donation', String(donationId)] });
+      qc.invalidateQueries({ queryKey: ['qbo', 'donation', donationId, 'history'] });
+      qc.invalidateQueries({ queryKey: ['donations'] });
+    },
+    onError: (e: any) => {
+      setLastResult({ status: 'failed', message: e.message ?? 'Sync failed' });
+    },
+  });
+
+  const status = donation.qbo_sync_status as string | null;
+  const syncedAt = donation.qbo_synced_at as string | null;
+
+  return (
+    <div className="card">
+      <div className="card-head" style={{marginBottom:'10px', paddingBottom:'8px'}}>
+        <h3 className="font-display font-medium text-sm m-0">QuickBooks</h3>
+        {status === 'synced'  && <span className="pill pill-sage text-[10px]">Synced</span>}
+        {status === 'failed'  && <span className="pill pill-terra text-[10px]">Failed</span>}
+        {status === 'skipped' && <span className="pill pill-muted text-[10px]">Skipped</span>}
+        {!status && <span className="pill pill-muted text-[10px]">Not synced</span>}
+      </div>
+
+      {syncedAt && status === 'synced' && (
+        <div className="text-[11px] text-ink-faint mb-2">
+          Synced {new Date(syncedAt).toLocaleString()}
+        </div>
+      )}
+
+      {lastResult && (
+        <div className={`p-2 rounded text-[11px] mb-2 ${
+          lastResult.status === 'synced'  ? 'bg-sage-soft text-[#3F4A33]' :
+          lastResult.status === 'skipped' ? 'bg-cream text-ink-soft' :
+          'bg-terracotta-soft text-terracotta-deep'
+        }`}>
+          {lastResult.message}
+        </div>
+      )}
+
+      <div className="flex gap-2 flex-wrap">
+        <button
+          onClick={() => syncMut.mutate()}
+          disabled={syncMut.isPending}
+          className="btn-primary text-xs py-1.5 disabled:opacity-60"
+        >
+          {syncMut.isPending ? 'Syncing…' : status === 'synced' ? 'Re-sync to QBO' : 'Sync to QBO'}
+        </button>
+        <button
+          onClick={() => setShowHistory(s => !s)}
+          className="text-[11px] text-ink-faint hover:text-terracotta self-center"
+        >
+          {showHistory ? 'Hide history' : 'History'}
+        </button>
+      </div>
+
+      {showHistory && history && (
+        <div className="mt-3 space-y-1.5 max-h-60 overflow-y-auto">
+          {history.length === 0 && <div className="text-[11px] text-ink-faint italic">No sync attempts yet.</div>}
+          {history.map(h => (
+            <div key={h.sync_id} className="text-[11px] border-l-2 pl-2 py-1"
+                 style={{ borderColor: h.sync_status === 'synced' ? '#7C8B5E' : h.sync_status === 'failed' ? '#C7704A' : '#999' }}>
+              <div className="flex justify-between gap-2">
+                <span className="font-medium">{h.sync_status}</span>
+                <span className="text-ink-faint">{new Date(h.attempted_at).toLocaleString()}</span>
+              </div>
+              {h.qbo_sales_receipt_id && <div className="text-ink-faint">Sales Receipt {h.qbo_sales_receipt_id}</div>}
+              {h.error_message && <div className="text-terracotta-deep">{h.error_message}</div>}
+              {h.attempted_by_username && <div className="text-ink-faint text-[10px]">by {h.attempted_by_username}</div>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
