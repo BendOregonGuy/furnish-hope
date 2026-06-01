@@ -44,6 +44,13 @@ const sections: NavSection[] = [
     ],
   },
   {
+    label: 'Email',
+    items: [
+      { to: '/email/compose',  name: 'Compose',        icon: 'pencil' },
+      { to: '/email/accounts', name: 'Accounts',       icon: 'mail' },
+    ],
+  },
+  {
     label: 'System',
     items: [
       { to: '/admin/settings', name: 'Settings',       icon: 'gear',     adminOnly: true },
@@ -73,6 +80,8 @@ function Icon({ name }: { name: string }) {
     case 'sparkle':    return <svg {...common}><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M19 14l.8 2.3L22 17l-2.2.7L19 20l-.8-2.3L16 17l2.2-.7L19 14z"/></svg>;
     case 'flag':       return <svg {...common}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7"/></svg>;
     case 'calendar':   return <svg {...common}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>;
+    case 'mail':       return <svg {...common}><path d="M4 4h16c1 0 2 1 2 2v12c0 1-1 2-2 2H4c-1 0-2-1-2-2V6c0-1 1-2 2-2zM2 6l10 7L22 6"/></svg>;
+    case 'pencil':     return <svg {...common}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
     default: return null;
   }
 }

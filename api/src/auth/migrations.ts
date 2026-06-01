@@ -409,6 +409,44 @@ const MIGRATIONS: Migration[] = [
     },
   },
   // ============================================================
+  // Phase 4A — Email account connections (per-user)
+  // ============================================================
+  {
+    name: 'tbl_email_account',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_email_account (
+          email_account_id SERIAL PRIMARY KEY,
+          user_account_id  INTEGER NOT NULL REFERENCES tbl_user_account(user_account_id) ON DELETE CASCADE,
+          display_name     VARCHAR(100),
+          email_address    VARCHAR(255) NOT NULL,
+          provider         VARCHAR(20)  NOT NULL, -- gmail | icloud | outlook | yahoo | proton | imap
+          auth_type        VARCHAR(20)  NOT NULL DEFAULT 'password', -- password | oauth (future)
+          imap_host        VARCHAR(255),
+          imap_port        INTEGER,
+          imap_secure      BOOLEAN NOT NULL DEFAULT true,
+          smtp_host        VARCHAR(255),
+          smtp_port        INTEGER,
+          smtp_secure      BOOLEAN NOT NULL DEFAULT true,
+          username         VARCHAR(255),
+          encrypted_password TEXT, -- AES-256-GCM, base64(iv):base64(tag):base64(ciphertext)
+          is_default_send  BOOLEAN NOT NULL DEFAULT false,
+          last_tested_at   TIMESTAMPTZ,
+          last_test_status VARCHAR(20), -- success | failure
+          last_test_error  TEXT,
+          created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          description      VARCHAR(100)
+        )
+      `);
+      await query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_email_account_user_email
+          ON tbl_email_account (user_account_id, LOWER(email_address))
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_email_account_user ON tbl_email_account(user_account_id)`);
+    },
+  },
+
+  // ============================================================
   // Phase 2 — Fundraising campaigns + events + donor pipeline
   // ============================================================
   {

@@ -24,6 +24,7 @@ import { pledgesRouter } from './routes/pledges.js';
 import { donorsRouter } from './routes/donors.js';
 import { campaignsRouter } from './routes/campaigns.js';
 import { eventsRouter } from './routes/events.js';
+import { emailRouter } from './routes/email.js';
 import { createSessionMiddleware } from './auth/session.js';
 import { runAuthMigrations } from './auth/migrations.js';
 import { requireUser, requireAdmin } from './auth/middleware.js';
@@ -90,6 +91,7 @@ app.use('/api/pledges',    pledgesRouter);
 app.use('/api/donors',     donorsRouter);
 app.use('/api/campaigns',  campaignsRouter);
 app.use('/api/events',     eventsRouter);
+app.use('/api/email',      emailRouter);
 
 // 404 for unmatched /api routes (before the static-file fallback so a typo
 // like /api/clientx returns JSON, not the HTML index).

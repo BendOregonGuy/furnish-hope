@@ -37,6 +37,8 @@ import { CampaignForm } from './pages/CampaignForm.tsx';
 import { Events } from './pages/Events.tsx';
 import { EventDetail } from './pages/EventDetail.tsx';
 import { EventForm } from './pages/EventForm.tsx';
+import { EmailAccounts } from './pages/EmailAccounts.tsx';
+import { EmailCompose } from './pages/EmailCompose.tsx';
 import { AdminIndex } from './pages/admin/AdminIndex.tsx';
 import { AdminList } from './pages/admin/AdminList.tsx';
 import { AdminForm } from './pages/admin/AdminForm.tsx';
@@ -120,6 +122,9 @@ function AppShell() {
           <Route path="/events/new" element={<EventForm />} />
           <Route path="/events/:id/edit" element={<EventForm />} />
           <Route path="/events/:id" element={<EventDetail />} />
+
+          <Route path="/email/accounts" element={<EmailAccounts />} />
+          <Route path="/email/compose" element={<EmailCompose />} />
 
           {/* Admin section is admin-only. The RequireAdmin wrapper renders
               a friendly "admins only" screen for non-admin users. */}
