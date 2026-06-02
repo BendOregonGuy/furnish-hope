@@ -67,8 +67,11 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
     smtp_secure: false, // STARTTLS on 587
     app_password_url: 'https://account.microsoft.com/security',
     notes:
-      'Outlook.com / Hotmail accounts with 2FA need an App Password — generate one at account.microsoft.com/security. ' +
-      'Microsoft 365 work accounts often disable IMAP entirely; ask your IT admin or wait for OAuth support.',
+      '⚠️ Microsoft disabled basic authentication for all personal Outlook.com / Hotmail accounts in September 2024 ' +
+      '(Microsoft 365 work accounts since 2022). Password-based IMAP/SMTP — including app passwords — will fail with ' +
+      '"535 5.7.139 Authentication unsuccessful, basic authentication is disabled." OAuth 2.0 is the only path forward; ' +
+      'we have not implemented OAuth for Microsoft yet. Workaround: forward Outlook → Gmail and connect the Gmail ' +
+      'account here, or use a different provider.',
     requires_app_password: true,
   },
   yahoo: {
