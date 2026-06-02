@@ -39,6 +39,8 @@ import { EventDetail } from './pages/EventDetail.tsx';
 import { EventForm } from './pages/EventForm.tsx';
 import { EmailAccounts } from './pages/EmailAccounts.tsx';
 import { EmailCompose } from './pages/EmailCompose.tsx';
+import { PickupManifest } from './pages/PickupManifest.tsx';
+import { DeliveryManifest } from './pages/DeliveryManifest.tsx';
 import { AdminIndex } from './pages/admin/AdminIndex.tsx';
 import { AdminList } from './pages/admin/AdminList.tsx';
 import { AdminForm } from './pages/admin/AdminForm.tsx';
@@ -89,11 +91,13 @@ function AppShell() {
           <Route path="/deliveries" element={<Deliveries />} />
           <Route path="/deliveries/new" element={<DeliveryForm />} />
           <Route path="/deliveries/:id/edit" element={<DeliveryForm />} />
+          <Route path="/deliveries/:id/manifest" element={<DeliveryManifest />} />
           <Route path="/deliveries/:id" element={<DeliveryDetail />} />
 
           <Route path="/pickups" element={<Pickups />} />
           <Route path="/pickups/new" element={<PickupForm />} />
           <Route path="/pickups/:id/edit" element={<PickupForm />} />
+          <Route path="/pickups/:id/manifest" element={<PickupManifest />} />
           <Route path="/pickups/:id" element={<PickupDetail />} />
 
           <Route path="/volunteers" element={<Volunteers />} />

@@ -87,21 +87,35 @@ pickupsRouter.get('/:id', async (req, res, next) => {
         ct.first_name || ' ' || ct.last_name AS donor_name,
         ct.mobile_phone AS donor_phone,
         ct.email AS donor_email,
+        donor.is_anonymous,
         addr.address,
         addr.address2,
         city.city,
+        st.state,
         addr.postalcode,
         v.vehicle_license,
-        lead.first_name || ' ' || lead.last_name AS team_lead
+        lead.first_name || ' ' || lead.last_name AS team_lead,
+        -- Crew lead's home facility — manifests use this as the route's
+        -- origin so the QR-code Google Maps URL starts from the right place.
+        fac.facility_name AS lead_facility_name,
+        fac_addr.address  AS lead_facility_address,
+        fac_city.city     AS lead_facility_city,
+        fac_st.state      AS lead_facility_state,
+        fac_addr.postalcode AS lead_facility_postalcode
       FROM tbl_donation_pickup p
       JOIN lkp_pickup_status ps ON ps.pickup_status_id = p.pickup_status_id
       JOIN tbl_donor donor ON donor.donor_id = p.donor_id
       JOIN tbl_contact ct ON ct.contact_id = donor.contact_id
       JOIN tbl_address addr ON addr.address_id = p.pickup_address_id
       LEFT JOIN lkp_city city ON city.city_id = addr.city_id
+      LEFT JOIN lkp_state st ON st.state_id = addr.state_id
       LEFT JOIN tbl_vehicle v ON v.vehicle_id = p.assigned_vehicle_id
       LEFT JOIN tbl_facility_staff lead_fs ON lead_fs.facility_staff_id = p.assigned_lead_facility_staff_id
       LEFT JOIN tbl_contact lead ON lead.contact_id = lead_fs.contact_id
+      LEFT JOIN tbl_corp_facility fac ON fac.corp_facility_id = lead_fs.corp_facility_id
+      LEFT JOIN tbl_address fac_addr ON fac_addr.address_id = fac.address_id
+      LEFT JOIN lkp_city fac_city ON fac_city.city_id = fac_addr.city_id
+      LEFT JOIN lkp_state fac_st ON fac_st.state_id = fac_addr.state_id
       WHERE p.donation_pickup_id = $1
     `, [id]);
 

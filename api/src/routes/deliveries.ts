@@ -133,6 +133,7 @@ deliveriesRouter.get('/:id', async (req, res, next) => {
         addr.address,
         addr.address2,
         city.city,
+        st.state,
         addr.postalcode,
         r.client_provisioning_request_id AS request_id,
         r.client_request_note,
@@ -146,7 +147,14 @@ deliveriesRouter.get('/:id', async (req, res, next) => {
         dv.fuel_cost,
         v.vehicle_license,
         vt.vehicle_type,
-        ra.rental_agency
+        ra.rental_agency,
+        -- Fulfilling facility — manifests use this as the route's origin
+        -- so the QR-code Google Maps URL starts from the right warehouse.
+        fac.facility_name AS fulfill_facility_name,
+        fac_addr.address  AS fulfill_facility_address,
+        fac_city.city     AS fulfill_facility_city,
+        fac_st.state      AS fulfill_facility_state,
+        fac_addr.postalcode AS fulfill_facility_postalcode
       FROM tbl_client_deliveries d
       JOIN lkp_delivery_status s ON s.delivery_status_id = d.delivery_status_id
       JOIN tbl_client_provisioning_request r ON r.client_provisioning_request_id = d.client_provisioning_request_id
@@ -154,12 +162,17 @@ deliveriesRouter.get('/:id', async (req, res, next) => {
       JOIN tbl_contact contact ON contact.contact_id = c.contact_id
       LEFT JOIN tbl_address addr ON addr.address_id = contact.address_id
       LEFT JOIN lkp_city city ON city.city_id = addr.city_id
+      LEFT JOIN lkp_state st ON st.state_id = addr.state_id
       LEFT JOIN tbl_facility_staff scheduler_fs ON scheduler_fs.facility_staff_id = d.facility_staff_id
       LEFT JOIN tbl_contact scheduler ON scheduler.contact_id = scheduler_fs.contact_id
       LEFT JOIN tbl_delivery_vehicle dv ON dv.client_deliveries_id = d.client_deliveries_id
       LEFT JOIN tbl_vehicle v ON v.vehicle_id = dv.vehicle_id
       LEFT JOIN lkp_vehicle_type vt ON vt.vehicle_type_id = v.vehicle_type_id
       LEFT JOIN lkp_rental_agency ra ON ra.rental_agency_id = dv.rental_agency_id
+      LEFT JOIN tbl_corp_facility fac ON fac.corp_facility_id = r.fulfillment_corp_facility_id
+      LEFT JOIN tbl_address fac_addr ON fac_addr.address_id = fac.address_id
+      LEFT JOIN lkp_city fac_city ON fac_city.city_id = fac_addr.city_id
+      LEFT JOIN lkp_state fac_st ON fac_st.state_id = fac_addr.state_id
       WHERE d.client_deliveries_id = $1
     `, [id]);
 
