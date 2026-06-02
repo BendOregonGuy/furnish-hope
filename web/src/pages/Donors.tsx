@@ -8,7 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { apiGet, formatMoney, formatShortDate } from '../lib/api.ts';
-import { PageHeader, Avatar, Loading, ErrorBox, EmptyState } from '../components/ui.tsx';
+import { PageHeader, Avatar, Loading, ErrorBox, EmptyState, AnonPill } from '../components/ui.tsx';
 import { FkSelect } from '../components/admin/FkSelect.tsx';
 
 interface DonorRow {
@@ -18,6 +18,7 @@ interface DonorRow {
   email: string | null;
   donor_type: string;
   is_recurring: boolean;
+  is_anonymous: boolean;
   do_not_contact: boolean;
   donor_stage_id: number | null;
   donor_stage: string | null;
@@ -108,7 +109,10 @@ export function Donors() {
                     <Link to={`/donors/${d.donor_id}`} className="flex items-center gap-2.5">
                       <Avatar name={d.donor_name} />
                       <div>
-                        <div className="font-medium">{d.donor_name}</div>
+                        <div className="font-medium flex items-center gap-1.5 flex-wrap">
+                          {d.donor_name}
+                          {d.is_anonymous && <AnonPill />}
+                        </div>
                         <div className="text-[11px] text-ink-faint">
                           {d.email ?? d.mobile_phone ?? '—'}
                           {d.is_recurring && <span className="ml-2 pill pill-sage text-[9px] py-0">Recurring</span>}

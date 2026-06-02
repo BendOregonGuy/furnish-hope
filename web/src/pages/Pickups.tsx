@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { apiGet, formatLongDate } from '../lib/api.ts';
-import { PageHeader, StatusPill, Avatar, Loading, ErrorBox, EmptyState } from '../components/ui.tsx';
+import { PageHeader, StatusPill, Avatar, Loading, ErrorBox, EmptyState, AnonPill } from '../components/ui.tsx';
 
 type Pickup = {
   pickup_id: number;
@@ -11,6 +11,7 @@ type Pickup = {
   time_window_end: string | null;
   pickup_status: string;
   donor_name: string;
+  is_anonymous: boolean;
   donor_type: string;
   address: string;
   city: string | null;
@@ -67,7 +68,10 @@ export function Pickups() {
                 <div className="flex items-center gap-2.5">
                   <Avatar name={p.donor_name} />
                   <div>
-                    <div className="font-medium">{p.donor_name}</div>
+                    <div className="font-medium flex items-center gap-1.5 flex-wrap">
+                      {p.donor_name}
+                      {p.is_anonymous && <AnonPill />}
+                    </div>
                     <div className="text-[11px] text-ink-faint">{p.donor_type}</div>
                   </div>
                 </div>

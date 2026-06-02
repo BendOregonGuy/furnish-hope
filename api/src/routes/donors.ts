@@ -48,6 +48,7 @@ interface DonorCreatePayload {
     donor_type_id: number;
     howtheyfoundus_id: number;
     is_recurring?: boolean;
+    is_anonymous?: boolean;
     donor_advised_fund_name?: string | null;
     description?: string | null;
   };
@@ -82,6 +83,7 @@ donorsRouter.get('/', async (req, res, next) => {
         contact.email,
         dt.donor_type,
         donor.is_recurring,
+        donor.is_anonymous,
         donor.do_not_contact,
         donor.donor_stage_id,
         ds.donor_stage,
@@ -98,7 +100,7 @@ donorsRouter.get('/', async (req, res, next) => {
       ${where}
       GROUP BY donor.donor_id, contact.first_name, contact.last_name,
                contact.mobile_phone, contact.email, dt.donor_type,
-               donor.is_recurring, donor.do_not_contact,
+               donor.is_recurring, donor.is_anonymous, donor.do_not_contact,
                donor.donor_stage_id, ds.donor_stage
       ORDER BY lifetime_giving DESC NULLS LAST, contact.last_name
       LIMIT 500
@@ -125,6 +127,7 @@ donorsRouter.get('/:id', async (req, res, next) => {
         donor.address_id,
         donor.howtheyfoundus_id,
         donor.is_recurring,
+        donor.is_anonymous,
         donor.donor_advised_fund_name,
         donor.employer_match_eligible,
         donor.do_not_contact,
@@ -280,12 +283,13 @@ donorsRouter.post('/', async (req, res, next) => {
       const d = await tx.queryOne<Record<string, any>>(`
         INSERT INTO tbl_donor
           (donor_type_id, contact_id, address_id, howtheyfoundus_id, is_recurring,
-           donor_advised_fund_name, description)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+           is_anonymous, donor_advised_fund_name, description)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *
       `, [
         body.donor.donor_type_id, c!.contact_id, a!.address_id,
         body.donor.howtheyfoundus_id, body.donor.is_recurring ?? false,
+        body.donor.is_anonymous ?? false,
         body.donor.donor_advised_fund_name ?? null, body.donor.description ?? null,
       ]);
 

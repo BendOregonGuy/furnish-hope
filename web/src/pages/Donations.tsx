@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { apiGet, formatMoney, formatShortDate } from '../lib/api.ts';
-import { PageHeader, Loading, ErrorBox, EmptyState, StatusPill } from '../components/ui.tsx';
+import { PageHeader, Loading, ErrorBox, EmptyState, StatusPill, AnonPill } from '../components/ui.tsx';
 import { FkSelect } from '../components/admin/FkSelect.tsx';
 
 interface DonationRow {
@@ -24,6 +24,7 @@ interface DonationRow {
   acknowledgement_status: string | null;
   qbo_sync_status: 'synced' | 'failed' | 'skipped' | 'pending' | null;
   qbo_synced_at: string | null;
+  donor_is_anonymous: boolean;
 }
 
 export function Donations() {
@@ -149,7 +150,12 @@ export function Donations() {
                       {formatShortDate(d.donation_date)}
                     </Link>
                   </td>
-                  <td className="px-5 py-3">{d.donor_name}</td>
+                  <td className="px-5 py-3">
+                    <span className="inline-flex items-center gap-1.5 flex-wrap">
+                      {d.donor_name}
+                      {d.donor_is_anonymous && <AnonPill />}
+                    </span>
+                  </td>
                   <td className="px-5 py-3 text-xs">{d.donation_type}</td>
                   <td className="px-5 py-3 text-xs text-ink-soft">{d.payment_method ?? '—'}</td>
                   <td className="px-5 py-3 text-right font-display font-medium">

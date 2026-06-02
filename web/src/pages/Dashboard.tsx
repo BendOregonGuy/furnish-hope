@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiGet, formatMoney, formatShortDate } from '../lib/api.ts';
-import { PageHeader, StatusPill, Avatar, Loading, ErrorBox } from '../components/ui.tsx';
+import { PageHeader, StatusPill, Avatar, Loading, ErrorBox, AnonPill } from '../components/ui.tsx';
 import { useAuth } from '../lib/auth.tsx';
 
 type DashboardData = {
@@ -27,6 +27,7 @@ type DashboardData = {
     total_value: number | null;
     donation_type: string;
     donor_name: string;
+    is_anonymous: boolean;
     donor_type: string;
     item_count: number;
   }>;
@@ -37,7 +38,7 @@ type DashboardData = {
     outstanding_pledges: number | string;
   };
   byFundYtd: Array<{ fund_name: string; total: number | string }>;
-  topDonorsYtd: Array<{ donor_id: number; donor_name: string; ytd_total: number | string; gift_count: number }>;
+  topDonorsYtd: Array<{ donor_id: number; donor_name: string; is_anonymous: boolean; ytd_total: number | string; gift_count: number }>;
   activeCampaigns: Array<{
     campaign_id: number; campaign_name: string; goal_amount: number | string | null;
     end_date: string | null; campaign_type: string; raised: number | string;
@@ -261,7 +262,10 @@ export function Dashboard() {
                     <div className="w-5 text-[10px] text-ink-faint font-medium">#{i + 1}</div>
                     <Avatar name={d.donor_name} />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{d.donor_name}</div>
+                      <div className="text-sm font-medium truncate flex items-center gap-1.5">
+                        <span className="truncate">{d.donor_name}</span>
+                        {d.is_anonymous && <AnonPill />}
+                      </div>
                       <div className="text-[11px] text-ink-faint">{d.gift_count} gift{d.gift_count === 1 ? '' : 's'}</div>
                     </div>
                     <div className="font-display font-medium text-sm">{formatMoney(d.ytd_total)}</div>
@@ -284,7 +288,10 @@ export function Dashboard() {
                 {data.recentDonations.map(d => (
                   <div key={d.donation_id} className="grid grid-cols-[1.4fr_70px_80px] gap-3 py-2.5 border-b border-hairline last:border-0 items-center text-sm">
                     <div>
-                      <Link to={`/donations/${d.donation_id}`} className="font-medium hover:text-terracotta">{d.donor_name}</Link>
+                      <span className="inline-flex items-center gap-1.5 flex-wrap">
+                        <Link to={`/donations/${d.donation_id}`} className="font-medium hover:text-terracotta">{d.donor_name}</Link>
+                        {d.is_anonymous && <AnonPill />}
+                      </span>
                       <div className="text-[11px] text-ink-faint">{d.donation_type} · {formatShortDate(d.donation_date)}</div>
                     </div>
                     <div className="text-xs text-ink-soft">{d.item_count > 0 ? `${d.item_count} item${d.item_count > 1 ? 's' : ''}` : '—'}</div>

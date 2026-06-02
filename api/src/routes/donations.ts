@@ -128,6 +128,7 @@ donationsRouter.get('/', async (req, res, next) => {
         d.donor_id,
         d.qbo_sync_status,
         d.qbo_synced_at,
+        donor.is_anonymous AS donor_is_anonymous,
         contact.first_name || ' ' || contact.last_name AS donor_name,
         dt.donation_type,
         pm.payment_method,
@@ -160,6 +161,7 @@ donationsRouter.get('/:id', async (req, res, next) => {
       SELECT
         d.*,
         contact.first_name || ' ' || contact.last_name AS donor_name,
+        donor.is_anonymous AS donor_is_anonymous,
         dt.donation_type,
         pm.payment_method,
         sm.solicitation_method,

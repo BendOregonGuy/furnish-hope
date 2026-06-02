@@ -83,6 +83,7 @@ dashboardRouter.get('/', async (_req, res, next) => {
         d.total_value,
         dt.donation_type,
         ct.first_name || ' ' || ct.last_name AS donor_name,
+        donor.is_anonymous,
         dtype.donor_type,
         (SELECT COUNT(*)::int FROM tbl_donation_item di WHERE di.donation_id = d.donation_id) AS item_count
       FROM tbl_donation d
@@ -138,13 +139,14 @@ dashboardRouter.get('/', async (_req, res, next) => {
       SELECT
         donor.donor_id,
         contact.first_name || ' ' || contact.last_name AS donor_name,
+        donor.is_anonymous,
         SUM(d.total_value)::numeric(12,2) AS ytd_total,
         COUNT(d.donation_id)::int AS gift_count
       FROM tbl_donation d
       JOIN tbl_donor donor ON donor.donor_id = d.donor_id
       JOIN tbl_contact contact ON contact.contact_id = donor.contact_id
       WHERE EXTRACT(YEAR FROM d.donation_date) = EXTRACT(YEAR FROM CURRENT_DATE)
-      GROUP BY donor.donor_id, contact.first_name, contact.last_name
+      GROUP BY donor.donor_id, contact.first_name, contact.last_name, donor.is_anonymous
       ORDER BY ytd_total DESC
       LIMIT 6
     `);

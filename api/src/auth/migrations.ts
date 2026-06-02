@@ -819,6 +819,49 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+
+  // ============================================================
+  // Anonymity flag (2026-06-01)
+  // ------------------------------------------------------------
+  // donor_type='Anonymous' used to be doing double duty: a category
+  // for "truly unknown gift" AND a way to flag a known donor who
+  // wants public anonymity. Splitting them: is_anonymous is the
+  // preference flag (known donor, public anonymity), donor_type
+  // stays as the category (one placeholder record for unknown gifts).
+  //
+  // Existing donors with type=Anonymous (other than the seeded
+  // placeholder whose contact is literally named "Anonymous Donor")
+  // get is_anonymous=true so behavior is preserved for whatever
+  // public-facing artifacts honor the flag later.
+  // ============================================================
+  {
+    name: 'tbl_donor.is_anonymous',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_donor
+          ADD COLUMN IF NOT EXISTS is_anonymous BOOLEAN NOT NULL DEFAULT false
+      `);
+      // One-time backfill: flag any donor currently marked donor_type=Anonymous
+      // EXCEPT the seeded placeholder (contact literally named "Anonymous Donor"),
+      // which stays as a no-flag category=Anonymous row representing
+      // "truly unknown gift". Idempotent — re-running this won't flip the flag
+      // back on already-cleared rows because we only flag rows that are still
+      // type=Anonymous AND not the placeholder; if you later change a donor's
+      // type away from Anonymous the flag stays whatever you set it to.
+      await query(`
+        UPDATE tbl_donor d
+           SET is_anonymous = true
+          FROM lkp_donor_type dt
+         WHERE d.donor_type_id = dt.donor_type_id
+           AND dt.donor_type = 'Anonymous'
+           AND d.is_anonymous = false
+           AND d.contact_id NOT IN (
+             SELECT contact_id FROM tbl_contact
+             WHERE LOWER(first_name) = 'anonymous' AND LOWER(last_name) = 'donor'
+           )
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

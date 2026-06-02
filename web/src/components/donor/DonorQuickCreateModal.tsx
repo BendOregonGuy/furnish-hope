@@ -42,6 +42,7 @@ interface FormState {
   donor_type_id: number | null;
   howtheyfoundus_id: number | null;
   is_recurring: boolean;
+  is_anonymous: boolean;
   donor_advised_fund_name: string;
   description: string;
 }
@@ -54,7 +55,8 @@ const initial: FormState = {
   address: '', address2: '',
   city_id: null, county_id: null, state_id: null, postalcode: '',
   donor_type_id: null, howtheyfoundus_id: null,
-  is_recurring: false, donor_advised_fund_name: '', description: '',
+  is_recurring: false, is_anonymous: false,
+  donor_advised_fund_name: '', description: '',
 };
 
 export function DonorQuickCreateModal({ onCreated, onCancel }: QuickCreateContext) {
@@ -92,6 +94,7 @@ export function DonorQuickCreateModal({ onCreated, onCancel }: QuickCreateContex
         donor_type_id: v.donor_type_id,
         howtheyfoundus_id: v.howtheyfoundus_id,
         is_recurring: v.is_recurring,
+        is_anonymous: v.is_anonymous,
         donor_advised_fund_name: v.donor_advised_fund_name.trim() || null,
         description: v.description.trim() || null,
       },
@@ -207,7 +210,15 @@ export function DonorQuickCreateModal({ onCreated, onCancel }: QuickCreateContex
                 <span className="text-ink-soft">Yes, gives on a recurring schedule</span>
               </label>
             </Field>
-            <Field label="DAF / fund name">
+            <Field label="Public anonymity?">
+              <label className="inline-flex items-center gap-2 text-sm cursor-pointer h-9">
+                <input type="checkbox" checked={v.is_anonymous} onChange={e => set('is_anonymous', e.target.checked)} className="w-4 h-4 accent-terracotta" />
+                <span className="text-ink-soft">Donor wants public anonymity (real name stays visible to staff)</span>
+              </label>
+            </Field>
+          </Row>
+          <Row>
+            <Field label="DAF / fund name" full>
               <input type="text" className="field-input" value={v.donor_advised_fund_name} onChange={e => set('donor_advised_fund_name', e.target.value)} maxLength={100} placeholder="If giving via a donor-advised fund" />
             </Field>
           </Row>

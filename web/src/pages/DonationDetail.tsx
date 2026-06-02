@@ -8,7 +8,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, apiPost, formatLongDate, formatMoney } from '../lib/api.ts';
-import { Avatar, Loading, ErrorBox, StatusPill } from '../components/ui.tsx';
+import { Avatar, Loading, ErrorBox, StatusPill, AnonPill } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
 import { useAuth } from '../lib/auth.tsx';
 import { useState } from 'react';
@@ -85,8 +85,9 @@ export function DonationDetail() {
       <div className="flex gap-5 p-5 bg-cream border border-hairline rounded-[10px] mb-6">
         <Avatar name={d.donor_name ?? '?'} size="lg" />
         <div className="flex-1">
-          <div className="flex items-baseline gap-3.5 mb-1">
+          <div className="flex items-baseline gap-3.5 mb-1 flex-wrap">
             <div className="font-display text-2xl font-medium">{d.donor_name}</div>
+            {d.donor_is_anonymous && <AnonPill />}
             <span className="pill pill-terra">{d.donation_type}</span>
             {d.acknowledgement_status && <StatusPill status={d.acknowledgement_status} />}
           </div>

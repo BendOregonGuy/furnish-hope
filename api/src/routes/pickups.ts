@@ -36,6 +36,7 @@ pickupsRouter.get('/', async (req, res, next) => {
         p.time_window_end,
         ps.pickup_status,
         ct.first_name || ' ' || ct.last_name AS donor_name,
+        donor.is_anonymous,
         dtype.donor_type,
         addr.address,
         city.city,

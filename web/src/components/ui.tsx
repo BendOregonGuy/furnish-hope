@@ -67,6 +67,23 @@ export function ErrorBox({ error }: { error: unknown }) {
   );
 }
 
+/**
+ * Discreet "Anonymous" indicator next to a donor's name. The donor's real
+ * name is ALWAYS shown to staff — this pill just signals "this donor wants
+ * public anonymity" (i.e. don't print the name on receipts to other donors,
+ * annual reports, plaques, etc.). Internal views never hide the name.
+ */
+export function AnonPill({ className }: { className?: string }) {
+  return (
+    <span
+      className={`pill pill-slate text-[10px] ${className ?? ''}`}
+      title="Donor prefers anonymity in public-facing artifacts. Name stays visible to staff."
+    >
+      🔒 Anonymous
+    </span>
+  );
+}
+
 export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
     <div className="p-12 text-center">

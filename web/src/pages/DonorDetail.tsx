@@ -7,7 +7,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { apiGet, formatLongDate, formatMoney, formatShortDate } from '../lib/api.ts';
-import { Avatar, Loading, ErrorBox, StatusPill } from '../components/ui.tsx';
+import { Avatar, Loading, ErrorBox, StatusPill, AnonPill } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
 
 interface DonorDetailResponse {
@@ -88,6 +88,7 @@ export function DonorDetail() {
           <div className="flex items-baseline gap-3.5 mb-1 flex-wrap">
             <div className="font-display text-2xl font-medium">{fullName}</div>
             <span className="pill pill-terra">{d.donor_type}</span>
+            {d.is_anonymous && <AnonPill />}
             {d.is_recurring && <span className="pill pill-sage">Recurring</span>}
             {d.do_not_contact && <span className="pill pill-terra">Do not contact</span>}
             {d.employer_match_eligible && <span className="pill pill-gold">Employer match</span>}
