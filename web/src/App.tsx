@@ -41,6 +41,7 @@ import { EmailAccounts } from './pages/EmailAccounts.tsx';
 import { EmailCompose } from './pages/EmailCompose.tsx';
 import { PickupManifest } from './pages/PickupManifest.tsx';
 import { DeliveryManifest } from './pages/DeliveryManifest.tsx';
+import { CalendarView } from './pages/CalendarView.tsx';
 import { AdminIndex } from './pages/admin/AdminIndex.tsx';
 import { AdminList } from './pages/admin/AdminList.tsx';
 import { AdminForm } from './pages/admin/AdminForm.tsx';
@@ -72,6 +73,7 @@ function AppShell() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/calendar" element={<CalendarView />} />
 
           <Route path="/clients" element={<Clients />} />
           <Route path="/clients/new" element={<ClientForm />} />
