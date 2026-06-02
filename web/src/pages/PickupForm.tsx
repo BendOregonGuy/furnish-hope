@@ -12,6 +12,9 @@ import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { Field } from '../components/admin/Field.tsx';
 import { FkCreateField } from '../components/admin/FkSelectWithCreate.tsx';
 import { DonorQuickCreateModal } from '../components/donor/DonorQuickCreateModal.tsx';
+import { AddressQuickCreateModal } from '../components/quickCreate/AddressQuickCreateModal.tsx';
+import { VehicleQuickCreateModal } from '../components/quickCreate/VehicleQuickCreateModal.tsx';
+import { FacilityStaffQuickCreateModal } from '../components/quickCreate/FacilityStaffQuickCreateModal.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { Section, FieldGrid, Cell } from '../components/forms/FormSection.tsx';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges.ts';
@@ -175,8 +178,8 @@ export function PickupForm() {
   const title = !isNew && existing?.pickup ? `Pickup from ${existing.pickup.donor_name}` : 'New pickup';
 
   function renderField(col: ColumnMeta) {
-    // Donor gets a "+ New" affordance so the user can create one inline
-    // without abandoning the half-filled pickup form.
+    // FK fields get a "+ New" affordance so the user can create the
+    // prereq inline without abandoning the half-filled pickup form.
     if (col.name === 'donor_id') {
       return (
         <Cell key={col.name} col={col}>
@@ -191,6 +194,57 @@ export function PickupForm() {
             onChange={v => setField('donor_id', v)}
             newButtonLabel="+ New donor"
             renderModal={ctx => <DonorQuickCreateModal {...ctx} />}
+          />
+        </Cell>
+      );
+    }
+    if (col.name === 'pickup_address_id') {
+      return (
+        <Cell key={col.name} col={col}>
+          <FkCreateField
+            label={col.label}
+            required={col.required}
+            helpText={col.helpText}
+            error={errors[col.name] ?? null}
+            fkTable="tbl_address"
+            value={values.pickup_address_id ?? null}
+            onChange={v => setField('pickup_address_id', v)}
+            newButtonLabel="+ New address"
+            renderModal={ctx => <AddressQuickCreateModal {...ctx} />}
+          />
+        </Cell>
+      );
+    }
+    if (col.name === 'assigned_lead_facility_staff_id') {
+      return (
+        <Cell key={col.name} col={col}>
+          <FkCreateField
+            label={col.label}
+            required={col.required}
+            helpText={col.helpText}
+            error={errors[col.name] ?? null}
+            fkTable="tbl_facility_staff"
+            value={values.assigned_lead_facility_staff_id ?? null}
+            onChange={v => setField('assigned_lead_facility_staff_id', v)}
+            newButtonLabel="+ New staff"
+            renderModal={ctx => <FacilityStaffQuickCreateModal {...ctx} />}
+          />
+        </Cell>
+      );
+    }
+    if (col.name === 'assigned_vehicle_id') {
+      return (
+        <Cell key={col.name} col={col}>
+          <FkCreateField
+            label={col.label}
+            required={col.required}
+            helpText={col.helpText}
+            error={errors[col.name] ?? null}
+            fkTable="tbl_vehicle"
+            value={values.assigned_vehicle_id ?? null}
+            onChange={v => setField('assigned_vehicle_id', v)}
+            newButtonLabel="+ New vehicle"
+            renderModal={ctx => <VehicleQuickCreateModal {...ctx} />}
           />
         </Cell>
       );

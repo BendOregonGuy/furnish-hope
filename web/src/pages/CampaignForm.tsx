@@ -10,6 +10,8 @@ import type { ColumnMeta } from '../lib/admin.ts';
 import { validateForm, type FormErrors } from '../lib/adminValidate.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { Field } from '../components/admin/Field.tsx';
+import { FkCreateField } from '../components/admin/FkSelectWithCreate.tsx';
+import { FacilityStaffQuickCreateModal } from '../components/quickCreate/FacilityStaffQuickCreateModal.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { Section, FieldGrid, Cell } from '../components/forms/FormSection.tsx';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges.ts';
@@ -184,16 +186,33 @@ export function CampaignForm() {
       <form onSubmit={handleSubmit} className="space-y-5 max-w-3xl">
         <Section title="Campaign" hint="Name it, set the goal, pick the type and status.">
           <FieldGrid>
-            {FIELDS.map(col => (
-              <Cell key={col.name} col={col}>
-                <Field
-                  col={col} value={values[col.name]}
-                  initialFkLabel={initialFkLabel(existing?.campaign, col.name)}
-                  error={errors[col.name] ?? null}
-                  onChange={v => setField(col.name, v)}
-                />
-              </Cell>
-            ))}
+            {FIELDS.map(col => {
+              if (col.name === 'manager_facility_staff_id') {
+                return (
+                  <Cell key={col.name} col={col}>
+                    <FkCreateField
+                      label={col.label} required={col.required} helpText={col.helpText}
+                      error={errors[col.name] ?? null}
+                      fkTable="tbl_facility_staff"
+                      value={values.manager_facility_staff_id ?? null}
+                      onChange={v => setField('manager_facility_staff_id', v)}
+                      newButtonLabel="+ New staff"
+                      renderModal={ctx => <FacilityStaffQuickCreateModal {...ctx} />}
+                    />
+                  </Cell>
+                );
+              }
+              return (
+                <Cell key={col.name} col={col}>
+                  <Field
+                    col={col} value={values[col.name]}
+                    initialFkLabel={initialFkLabel(existing?.campaign, col.name)}
+                    error={errors[col.name] ?? null}
+                    onChange={v => setField(col.name, v)}
+                  />
+                </Cell>
+              );
+            })}
           </FieldGrid>
         </Section>
 

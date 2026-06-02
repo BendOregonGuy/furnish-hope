@@ -28,6 +28,7 @@ import { emailRouter } from './routes/email.js';
 import { quickbooksRouter } from './routes/quickbooks.js';
 import { orgInfoRouter } from './routes/orgInfo.js';
 import { calendarRouter } from './routes/calendar.js';
+import { quickCreateRouter } from './routes/quickCreate.js';
 import { createSessionMiddleware } from './auth/session.js';
 import { runAuthMigrations } from './auth/migrations.js';
 import { requireUser, requireAdmin } from './auth/middleware.js';
@@ -97,6 +98,7 @@ app.use('/api/events',     eventsRouter);
 app.use('/api/email',      emailRouter);
 app.use('/api/org-info',   orgInfoRouter);
 app.use('/api/calendar',   calendarRouter);
+app.use('/api/quick-create', quickCreateRouter);
 // QuickBooks integration — admin-only because accounting touches the books.
 app.use('/api/quickbooks', requireAdmin, quickbooksRouter);
 

@@ -11,6 +11,8 @@ import type { ColumnMeta } from '../lib/admin.ts';
 import { validateForm, type FormErrors } from '../lib/adminValidate.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { Field } from '../components/admin/Field.tsx';
+import { FkCreateField } from '../components/admin/FkSelectWithCreate.tsx';
+import { CorpFacilityQuickCreateModal } from '../components/quickCreate/CorpFacilityQuickCreateModal.tsx';
 import { FkSelect } from '../components/admin/FkSelect.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { Section, FieldGrid, Cell } from '../components/forms/FormSection.tsx';
@@ -234,6 +236,21 @@ export function VolunteerForm() {
   const fullName = `${values.first_name} ${values.last_name}`.trim();
 
   function renderField(col: ColumnMeta) {
+    if (col.name === 'corp_facility_id') {
+      return (
+        <Cell key={col.name} col={col}>
+          <FkCreateField
+            label={col.label} required={col.required} helpText={col.helpText}
+            error={errors[col.name] ?? null}
+            fkTable="tbl_corp_facility"
+            value={values.corp_facility_id ?? null}
+            onChange={v => setField('corp_facility_id', v)}
+            newButtonLabel="+ New facility"
+            renderModal={ctx => <CorpFacilityQuickCreateModal {...ctx} />}
+          />
+        </Cell>
+      );
+    }
     return (
       <Cell key={col.name} col={col}>
         <Field

@@ -11,6 +11,9 @@ import type { ColumnMeta } from '../lib/admin.ts';
 import { validateForm, type FormErrors } from '../lib/adminValidate.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { Field } from '../components/admin/Field.tsx';
+import { FkCreateField } from '../components/admin/FkSelectWithCreate.tsx';
+import { FacilityStaffQuickCreateModal } from '../components/quickCreate/FacilityStaffQuickCreateModal.tsx';
+import { VehicleQuickCreateModal } from '../components/quickCreate/VehicleQuickCreateModal.tsx';
 import { FkSelect } from '../components/admin/FkSelect.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { Section, FieldGrid, Cell } from '../components/forms/FormSection.tsx';
@@ -283,6 +286,40 @@ export function DeliveryForm() {
   const title = !isNew && existing?.delivery ? `Delivery for ${existing.delivery.client_name}` : 'New delivery';
 
   function renderField(col: ColumnMeta) {
+    if (col.name === 'facility_staff_id') {
+      return (
+        <Cell key={col.name} col={col}>
+          <FkCreateField
+            label={col.label}
+            required={col.required}
+            helpText={col.helpText}
+            error={errors[col.name] ?? null}
+            fkTable="tbl_facility_staff"
+            value={values.facility_staff_id ?? null}
+            onChange={v => setField('facility_staff_id', v)}
+            newButtonLabel="+ New staff"
+            renderModal={ctx => <FacilityStaffQuickCreateModal {...ctx} />}
+          />
+        </Cell>
+      );
+    }
+    if (col.name === 'vehicle_id') {
+      return (
+        <Cell key={col.name} col={col}>
+          <FkCreateField
+            label={col.label}
+            required={col.required}
+            helpText={col.helpText}
+            error={errors[col.name] ?? null}
+            fkTable="tbl_vehicle"
+            value={values.vehicle_id ?? null}
+            onChange={v => setField('vehicle_id', v)}
+            newButtonLabel="+ New vehicle"
+            renderModal={ctx => <VehicleQuickCreateModal {...ctx} />}
+          />
+        </Cell>
+      );
+    }
     return (
       <Cell key={col.name} col={col}>
         <Field

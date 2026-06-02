@@ -15,6 +15,7 @@ import { Field } from '../components/admin/Field.tsx';
 import { FkSelect } from '../components/admin/FkSelect.tsx';
 import { FkCreateField } from '../components/admin/FkSelectWithCreate.tsx';
 import { DonorQuickCreateModal } from '../components/donor/DonorQuickCreateModal.tsx';
+import { ContactQuickCreateModal } from '../components/quickCreate/ContactQuickCreateModal.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { Section, FieldGrid, Cell } from '../components/forms/FormSection.tsx';
 import { SubformList, type SubformRow } from '../components/forms/SubformList.tsx';
@@ -386,6 +387,23 @@ export function DonationForm() {
             onChange={v => setField('donor_id', v)}
             newButtonLabel="+ New donor"
             renderModal={ctx => <DonorQuickCreateModal {...ctx} />}
+          />
+        </Cell>
+      );
+    }
+    if (col.name === 'soft_credit_contact_id') {
+      return (
+        <Cell key={col.name} col={col}>
+          <FkCreateField
+            label={col.label}
+            required={col.required}
+            helpText={col.helpText}
+            error={errors[col.name] ?? null}
+            fkTable="tbl_contact"
+            value={values.soft_credit_contact_id ?? null}
+            onChange={v => setField('soft_credit_contact_id', v)}
+            newButtonLabel="+ New contact"
+            renderModal={ctx => <ContactQuickCreateModal {...ctx} />}
           />
         </Cell>
       );

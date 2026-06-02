@@ -10,6 +10,8 @@ import type { ColumnMeta } from '../lib/admin.ts';
 import { validateForm, type FormErrors } from '../lib/adminValidate.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { Field } from '../components/admin/Field.tsx';
+import { FkCreateField } from '../components/admin/FkSelectWithCreate.tsx';
+import { AddressQuickCreateModal } from '../components/quickCreate/AddressQuickCreateModal.tsx';
 import { FkSelect } from '../components/admin/FkSelect.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { Section, FieldGrid, Cell } from '../components/forms/FormSection.tsx';
@@ -222,6 +224,21 @@ export function EventForm() {
   const title = !isNew && existing ? existing.event.event_name : 'New event';
 
   function renderField(col: ColumnMeta) {
+    if (col.name === 'address_id') {
+      return (
+        <Cell key={col.name} col={col}>
+          <FkCreateField
+            label={col.label} required={col.required} helpText={col.helpText}
+            error={errors[col.name] ?? null}
+            fkTable="tbl_address"
+            value={values.address_id ?? null}
+            onChange={v => setField('address_id', v)}
+            newButtonLabel="+ New venue"
+            renderModal={ctx => <AddressQuickCreateModal {...ctx} />}
+          />
+        </Cell>
+      );
+    }
     return (
       <Cell key={col.name} col={col}>
         <Field

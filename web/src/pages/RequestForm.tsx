@@ -12,6 +12,9 @@ import type { ColumnMeta } from '../lib/admin.ts';
 import { validateForm, type FormErrors } from '../lib/adminValidate.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { Field } from '../components/admin/Field.tsx';
+import { FkCreateField } from '../components/admin/FkSelectWithCreate.tsx';
+import { CorpFacilityQuickCreateModal } from '../components/quickCreate/CorpFacilityQuickCreateModal.tsx';
+import { FacilityStaffQuickCreateModal } from '../components/quickCreate/FacilityStaffQuickCreateModal.tsx';
 import { FkSelect } from '../components/admin/FkSelect.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { Section, FieldGrid, Cell } from '../components/forms/FormSection.tsx';
@@ -243,17 +246,49 @@ export function RequestForm() {
       <form onSubmit={handleSubmit} className="space-y-5 max-w-4xl">
         <Section title="Request details" hint="Who, where, and when.">
           <FieldGrid>
-            {REQUEST_FIELDS.map(col => (
-              <Cell key={col.name} col={col}>
-                <Field
-                  col={col}
-                  value={values[col.name]}
-                  initialFkLabel={initialFkLabel(existing?.request, col.name)}
-                  error={errors[col.name] ?? null}
-                  onChange={v => setField(col.name, v)}
-                />
-              </Cell>
-            ))}
+            {REQUEST_FIELDS.map(col => {
+              if (col.name === 'fulfillment_corp_facility_id') {
+                return (
+                  <Cell key={col.name} col={col}>
+                    <FkCreateField
+                      label={col.label} required={col.required} helpText={col.helpText}
+                      error={errors[col.name] ?? null}
+                      fkTable="tbl_corp_facility"
+                      value={values.fulfillment_corp_facility_id ?? null}
+                      onChange={v => setField('fulfillment_corp_facility_id', v)}
+                      newButtonLabel="+ New facility"
+                      renderModal={ctx => <CorpFacilityQuickCreateModal {...ctx} />}
+                    />
+                  </Cell>
+                );
+              }
+              if (col.name === 'client_request_creator_facility_staff_id') {
+                return (
+                  <Cell key={col.name} col={col}>
+                    <FkCreateField
+                      label={col.label} required={col.required} helpText={col.helpText}
+                      error={errors[col.name] ?? null}
+                      fkTable="tbl_facility_staff"
+                      value={values.client_request_creator_facility_staff_id ?? null}
+                      onChange={v => setField('client_request_creator_facility_staff_id', v)}
+                      newButtonLabel="+ New staff"
+                      renderModal={ctx => <FacilityStaffQuickCreateModal {...ctx} />}
+                    />
+                  </Cell>
+                );
+              }
+              return (
+                <Cell key={col.name} col={col}>
+                  <Field
+                    col={col}
+                    value={values[col.name]}
+                    initialFkLabel={initialFkLabel(existing?.request, col.name)}
+                    error={errors[col.name] ?? null}
+                    onChange={v => setField(col.name, v)}
+                  />
+                </Cell>
+              );
+            })}
           </FieldGrid>
         </Section>
 
