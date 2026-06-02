@@ -313,3 +313,97 @@ quickCreateRouter.post('/facility-staff', async (req, res, next) => {
     res.status(201).json(result);
   } catch (err) { next(err); }
 });
+
+/* ----------------------------------------------------------------- */
+/*  POST /api/quick-create/pledge                                     */
+/* ----------------------------------------------------------------- */
+
+interface PledgePayload {
+  donor_id: number;
+  fund_id?: number | null;
+  total_pledged_amount: number;
+  pledge_date: string;
+  pledge_status_id: number;
+  expected_fulfillment_date?: string | null;
+  notes?: string | null;
+}
+
+quickCreateRouter.post('/pledge', async (req, res, next) => {
+  try {
+    const b = req.body as PledgePayload;
+    const errs: string[] = [];
+    if (!b.donor_id) errs.push('Donor is required');
+    if (!b.total_pledged_amount || Number(b.total_pledged_amount) <= 0) errs.push('Pledge amount must be positive');
+    if (!b.pledge_date) errs.push('Pledge date is required');
+    if (!b.pledge_status_id) errs.push('Status is required');
+    if (errs.length) return res.status(400).json({ error: errs.join('; ') });
+
+    const row = await queryOne<{ pledge_id: number }>(`
+      INSERT INTO tbl_pledge
+        (donor_id, fund_id, total_pledged_amount, pledge_date, pledge_status_id,
+         expected_fulfillment_date, notes, created_by_user_account_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING pledge_id
+    `, [
+      b.donor_id, b.fund_id ?? null,
+      b.total_pledged_amount, b.pledge_date, b.pledge_status_id,
+      b.expected_fulfillment_date || null, b.notes?.trim() || null,
+      req.user!.user_account_id,
+    ]);
+    await auditCreate(req, 'tbl_pledge', row!.pledge_id, b);
+
+    // Build a friendly label mirroring how pledges show up in admin's FK
+    // displays: "Donor — YYYY-MM-DD".
+    const label = await queryOne<{ label: string }>(`
+      SELECT (
+        SELECT c.first_name || ' ' || c.last_name
+          FROM tbl_contact c
+          JOIN tbl_donor d ON d.contact_id = c.contact_id
+         WHERE d.donor_id = $1
+      ) || ' • ' || to_char($2::date,'YYYY-MM-DD') AS label
+    `, [b.donor_id, b.pledge_date]);
+
+    res.status(201).json({ pledge_id: row!.pledge_id, label: label?.label ?? `Pledge #${row!.pledge_id}` });
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  POST /api/quick-create/campaign                                   */
+/* ----------------------------------------------------------------- */
+
+interface CampaignPayload {
+  campaign_name: string;
+  campaign_type_id: number;
+  campaign_status_id: number;
+  fund_id?: number | null;
+  goal_amount?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  notes?: string | null;
+}
+
+quickCreateRouter.post('/campaign', async (req, res, next) => {
+  try {
+    const b = req.body as CampaignPayload;
+    const errs: string[] = [];
+    if (!b.campaign_name?.trim()) errs.push('Campaign name is required');
+    if (!b.campaign_type_id) errs.push('Type is required');
+    if (!b.campaign_status_id) errs.push('Status is required');
+    if (errs.length) return res.status(400).json({ error: errs.join('; ') });
+
+    const row = await queryOne<{ campaign_id: number; campaign_name: string }>(`
+      INSERT INTO tbl_campaign
+        (campaign_name, campaign_type_id, campaign_status_id, fund_id,
+         goal_amount, start_date, end_date, notes, created_by_user_account_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING campaign_id, campaign_name
+    `, [
+      b.campaign_name.trim(), b.campaign_type_id, b.campaign_status_id,
+      b.fund_id ?? null, b.goal_amount ?? null,
+      b.start_date || null, b.end_date || null,
+      b.notes?.trim() || null, req.user!.user_account_id,
+    ]);
+    await auditCreate(req, 'tbl_campaign', row!.campaign_id, b);
+    res.status(201).json({ campaign_id: row!.campaign_id, label: row!.campaign_name });
+  } catch (err) { next(err); }
+});

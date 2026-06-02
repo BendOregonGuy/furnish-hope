@@ -12,6 +12,7 @@ import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { Field } from '../components/admin/Field.tsx';
 import { FkCreateField } from '../components/admin/FkSelectWithCreate.tsx';
 import { AddressQuickCreateModal } from '../components/quickCreate/AddressQuickCreateModal.tsx';
+import { CampaignQuickCreateModal } from '../components/quickCreate/CampaignQuickCreateModal.tsx';
 import { FkSelect } from '../components/admin/FkSelect.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { Section, FieldGrid, Cell } from '../components/forms/FormSection.tsx';
@@ -235,6 +236,21 @@ export function EventForm() {
             onChange={v => setField('address_id', v)}
             newButtonLabel="+ New venue"
             renderModal={ctx => <AddressQuickCreateModal {...ctx} />}
+          />
+        </Cell>
+      );
+    }
+    if (col.name === 'campaign_id') {
+      return (
+        <Cell key={col.name} col={col}>
+          <FkCreateField
+            label={col.label} required={col.required} helpText={col.helpText}
+            error={errors[col.name] ?? null}
+            fkTable="tbl_campaign"
+            value={values.campaign_id ?? null}
+            onChange={v => setField('campaign_id', v)}
+            newButtonLabel="+ New campaign"
+            renderModal={ctx => <CampaignQuickCreateModal {...ctx} />}
           />
         </Cell>
       );

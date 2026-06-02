@@ -16,6 +16,8 @@ import { FkSelect } from '../components/admin/FkSelect.tsx';
 import { FkCreateField } from '../components/admin/FkSelectWithCreate.tsx';
 import { DonorQuickCreateModal } from '../components/donor/DonorQuickCreateModal.tsx';
 import { ContactQuickCreateModal } from '../components/quickCreate/ContactQuickCreateModal.tsx';
+import { PledgeQuickCreateModal } from '../components/quickCreate/PledgeQuickCreateModal.tsx';
+import { CampaignQuickCreateModal } from '../components/quickCreate/CampaignQuickCreateModal.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { Section, FieldGrid, Cell } from '../components/forms/FormSection.tsx';
 import { SubformList, type SubformRow } from '../components/forms/SubformList.tsx';
@@ -404,6 +406,42 @@ export function DonationForm() {
             onChange={v => setField('soft_credit_contact_id', v)}
             newButtonLabel="+ New contact"
             renderModal={ctx => <ContactQuickCreateModal {...ctx} />}
+          />
+        </Cell>
+      );
+    }
+    if (col.name === 'pledge_id') {
+      return (
+        <Cell key={col.name} col={col}>
+          <FkCreateField
+            label={col.label}
+            required={col.required}
+            helpText={col.helpText}
+            error={errors[col.name] ?? null}
+            fkTable="tbl_pledge"
+            value={values.pledge_id ?? null}
+            onChange={v => setField('pledge_id', v)}
+            newButtonLabel="+ New pledge"
+            // If the donor's already chosen on the donation, pre-select it
+            // in the pledge modal so the user doesn't pick the same donor twice.
+            renderModal={ctx => <PledgeQuickCreateModal {...ctx} defaultDonorId={values.donor_id ?? null} />}
+          />
+        </Cell>
+      );
+    }
+    if (col.name === 'campaign_id') {
+      return (
+        <Cell key={col.name} col={col}>
+          <FkCreateField
+            label={col.label}
+            required={col.required}
+            helpText={col.helpText}
+            error={errors[col.name] ?? null}
+            fkTable="tbl_campaign"
+            value={values.campaign_id ?? null}
+            onChange={v => setField('campaign_id', v)}
+            newButtonLabel="+ New campaign"
+            renderModal={ctx => <CampaignQuickCreateModal {...ctx} />}
           />
         </Cell>
       );
