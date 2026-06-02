@@ -10,9 +10,48 @@
  */
 
 import { Router } from 'express';
-import { query, queryOne } from '../db/pool.js';
+import { query, queryOne, withTransaction } from '../db/pool.js';
+import { auditCreate } from '../auth/audit.js';
 
 export const donorsRouter = Router();
+
+/**
+ * Payload for the atomic donor create. Mirrors the ClientForm shape:
+ * one transaction creates address → contact → donor and links them.
+ * Used by the "+ New Donor" modal on Pickup/Donation/Pledge forms so the
+ * user doesn't have to navigate to /admin to create a donor mid-workflow.
+ */
+interface DonorCreatePayload {
+  contact: {
+    first_name: string;
+    middle_name?: string | null;
+    last_name: string;
+    gender_id?: number | null;
+    ethnicity_id?: number | null;
+    birth_date?: string | null;
+    mobile_phone?: string | null;
+    home_phone?: string | null;
+    other_phone?: string | null;
+    email?: string | null;
+  };
+  address: {
+    address_name: string;
+    address_type_id: number;
+    address: string;
+    address2?: string | null;
+    city_id: number;
+    county_id: number;
+    state_id: number;
+    postalcode: string;
+  };
+  donor: {
+    donor_type_id: number;
+    howtheyfoundus_id: number;
+    is_recurring?: boolean;
+    donor_advised_fund_name?: string | null;
+    description?: string | null;
+  };
+}
 
 /* ----------------------------------------------------------------- */
 /*  List                                                              */
@@ -194,3 +233,100 @@ donorsRouter.get('/:id', async (req, res, next) => {
     res.json({ donor, totals, byFund, pledges, recentGifts });
   } catch (err) { next(err); }
 });
+
+/* ----------------------------------------------------------------- */
+/*  POST /api/donors — atomic create                                  */
+/*                                                                    */
+/*  Creates address → contact → donor in one transaction. Used by    */
+/*  the in-form quick-create modal so the user can add a donor       */
+/*  without leaving the Pickup/Donation/Pledge form they're on.      */
+/* ----------------------------------------------------------------- */
+
+donorsRouter.post('/', async (req, res, next) => {
+  try {
+    const body = req.body as DonorCreatePayload;
+    const errs = validateDonorCreate(body);
+    if (errs.length) return res.status(400).json({ error: errs.join('; ') });
+
+    const result = await withTransaction(async (tx) => {
+      // 1. Address (required for donors — every donor must have one)
+      const a = await tx.queryOne<{ address_id: number }>(`
+        INSERT INTO tbl_address (address_name, address_type_id, address, address2, city_id, county_id, state_id, postalcode)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING address_id
+      `, [
+        body.address.address_name, body.address.address_type_id,
+        body.address.address, body.address.address2 ?? null,
+        body.address.city_id, body.address.county_id, body.address.state_id, body.address.postalcode,
+      ]);
+
+      // 2. Contact (contact_type_id = 2 = "Donor" per seed)
+      const c = await tx.queryOne<{ contact_id: number }>(`
+        INSERT INTO tbl_contact
+          (contact_type_id, first_name, middle_name, last_name, gender_id, ethnicity_id,
+           birth_date, address_id, mobile_phone, home_phone, other_phone, email)
+        VALUES (2, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING contact_id
+      `, [
+        body.contact.first_name, body.contact.middle_name ?? null, body.contact.last_name,
+        body.contact.gender_id ?? null, body.contact.ethnicity_id ?? null,
+        body.contact.birth_date ?? null,
+        a!.address_id,
+        body.contact.mobile_phone ?? null, body.contact.home_phone ?? null,
+        body.contact.other_phone ?? null, body.contact.email ?? null,
+      ]);
+
+      // 3. Donor
+      const d = await tx.queryOne<Record<string, any>>(`
+        INSERT INTO tbl_donor
+          (donor_type_id, contact_id, address_id, howtheyfoundus_id, is_recurring,
+           donor_advised_fund_name, description)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+      `, [
+        body.donor.donor_type_id, c!.contact_id, a!.address_id,
+        body.donor.howtheyfoundus_id, body.donor.is_recurring ?? false,
+        body.donor.donor_advised_fund_name ?? null, body.donor.description ?? null,
+      ]);
+
+      await auditCreate(req, 'tbl_donor', d!.donor_id, d!, tx);
+
+      // Return the donor + a friendly label so the caller (modal) can
+      // immediately tell the parent FK dropdown what to display.
+      const label = [body.contact.first_name, body.contact.last_name].filter(Boolean).join(' ').trim()
+        || `Donor #${d!.donor_id}`;
+      return { donor_id: d!.donor_id as number, label };
+    });
+
+    res.status(201).json(result);
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  Validation                                                        */
+/* ----------------------------------------------------------------- */
+
+function validateDonorCreate(body: DonorCreatePayload): string[] {
+  const errs: string[] = [];
+  if (!body || typeof body !== 'object') { errs.push('Missing request body'); return errs; }
+  if (!body.contact || typeof body.contact !== 'object') errs.push('contact section is required');
+  if (!body.address || typeof body.address !== 'object') errs.push('address section is required');
+  if (!body.donor || typeof body.donor !== 'object') errs.push('donor section is required');
+  if (errs.length) return errs;
+
+  if (!body.contact.first_name?.trim()) errs.push('First name is required');
+  if (!body.contact.last_name?.trim()) errs.push('Last name is required');
+
+  if (!body.address.address_name?.trim()) errs.push('Address label is required');
+  if (!body.address.address?.trim()) errs.push('Street address is required');
+  if (!body.address.postalcode?.trim()) errs.push('ZIP / postal code is required');
+  if (!body.address.address_type_id) errs.push('Address type is required');
+  if (!body.address.city_id) errs.push('City is required');
+  if (!body.address.county_id) errs.push('County is required');
+  if (!body.address.state_id) errs.push('State is required');
+
+  if (!body.donor.donor_type_id) errs.push('Donor type is required');
+  if (!body.donor.howtheyfoundus_id) errs.push('"How they found us" is required');
+
+  return errs;
+}

@@ -13,6 +13,8 @@ import { validateForm, type FormErrors } from '../lib/adminValidate.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { Field } from '../components/admin/Field.tsx';
 import { FkSelect } from '../components/admin/FkSelect.tsx';
+import { FkCreateField } from '../components/admin/FkSelectWithCreate.tsx';
+import { DonorQuickCreateModal } from '../components/donor/DonorQuickCreateModal.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { Section, FieldGrid, Cell } from '../components/forms/FormSection.tsx';
 import { SubformList, type SubformRow } from '../components/forms/SubformList.tsx';
@@ -368,6 +370,26 @@ export function DonationForm() {
   const title = !isNew && existing?.donation ? `${existing.donation.donor_name} — ${formatShort(existing.donation.donation_date)}` : 'New donation';
 
   function renderField(col: ColumnMeta) {
+    // Donor gets a "+ New" affordance so the user can create one inline
+    // without abandoning the half-filled donation form.
+    if (col.name === 'donor_id') {
+      return (
+        <Cell key={col.name} col={col}>
+          <FkCreateField
+            label={col.label}
+            required={col.required}
+            helpText={col.helpText}
+            error={errors[col.name] ?? null}
+            fkTable="tbl_donor"
+            value={values.donor_id ?? null}
+            initialLabel={existing?.donation?.donor_name}
+            onChange={v => setField('donor_id', v)}
+            newButtonLabel="+ New donor"
+            renderModal={ctx => <DonorQuickCreateModal {...ctx} />}
+          />
+        </Cell>
+      );
+    }
     return (
       <Cell key={col.name} col={col}>
         <Field
