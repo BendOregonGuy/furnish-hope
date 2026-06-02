@@ -192,6 +192,8 @@ export function DonationDetail() {
             )}
           </div>
 
+          <ReceiptCard donationId={Number(id)} donation={d} onSent={() => queryClient.invalidateQueries({ queryKey: ['donation', id] })} />
+
           <div className="card">
             <div className="card-head" style={{marginBottom:'10px', paddingBottom:'8px'}}>
               <h3 className="font-display font-medium text-sm m-0">Acknowledgement</h3>
@@ -343,6 +345,73 @@ function QuickBooksCard({ donationId, donation }: { donationId: number; donation
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------- */
+/*  Receipt card — preview PDF + email it to the donor                */
+/* ----------------------------------------------------------------- */
+
+function ReceiptCard({ donationId, donation, onSent }: {
+  donationId: number;
+  donation: any;
+  onSent: () => void;
+}) {
+  const [lastResult, setLastResult] = useState<{ status: string; message: string } | null>(null);
+
+  const sendMut = useMutation({
+    mutationFn: () => apiPost<{ status: string; message: string }>(`/api/receipts/donation/${donationId}/send`, {}),
+    onSuccess: (r) => {
+      setLastResult(r);
+      if (r.status === 'sent') onSent();
+    },
+    onError: (e: any) => setLastResult({ status: 'failed', message: e.message ?? 'Send failed' }),
+  });
+
+  const alreadySent = !!donation.acknowledgement_sent_date;
+
+  return (
+    <div className="card">
+      <div className="card-head" style={{marginBottom:'10px', paddingBottom:'8px'}}>
+        <h3 className="font-display font-medium text-sm m-0">Receipt</h3>
+        {alreadySent && <span className="pill pill-sage text-[10px]">✓ Sent</span>}
+      </div>
+
+      {lastResult && (
+        <div className={`p-2 rounded text-[11px] mb-2 ${
+          lastResult.status === 'sent' ? 'bg-sage-soft text-[#3F4A33]' :
+          lastResult.status === 'skipped' ? 'bg-cream text-ink-soft' :
+          'bg-terracotta-soft text-terracotta-deep'
+        }`}>
+          {lastResult.message}
+        </div>
+      )}
+
+      <div className="flex gap-2 flex-wrap">
+        <a
+          href={`/api/receipts/donation/${donationId}/pdf`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-ghost text-xs"
+        >
+          Preview PDF
+        </a>
+        <button
+          onClick={() => {
+            if (alreadySent && !window.confirm('A receipt has already been sent for this donation. Send another?')) return;
+            sendMut.mutate();
+          }}
+          disabled={sendMut.isPending}
+          className="btn-primary text-xs disabled:opacity-60"
+        >
+          {sendMut.isPending ? 'Sending…' : (alreadySent ? 'Resend' : 'Email receipt')}
+        </button>
+      </div>
+
+      <div className="text-[10px] text-ink-faint mt-2">
+        Sends from your connected email account (Email → Accounts) with the PDF attached.
+      </div>
     </div>
   );
 }

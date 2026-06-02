@@ -42,6 +42,10 @@ import { EmailCompose } from './pages/EmailCompose.tsx';
 import { PickupManifest } from './pages/PickupManifest.tsx';
 import { DeliveryManifest } from './pages/DeliveryManifest.tsx';
 import { CalendarView } from './pages/CalendarView.tsx';
+import { Shifts } from './pages/Shifts.tsx';
+import { ShiftForm } from './pages/ShiftForm.tsx';
+import { ShiftDetail } from './pages/ShiftDetail.tsx';
+import { Acknowledgements } from './pages/Acknowledgements.tsx';
 import { AdminIndex } from './pages/admin/AdminIndex.tsx';
 import { AdminList } from './pages/admin/AdminList.tsx';
 import { AdminForm } from './pages/admin/AdminForm.tsx';
@@ -74,6 +78,11 @@ function AppShell() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/calendar" element={<CalendarView />} />
+
+          <Route path="/shifts" element={<Shifts />} />
+          <Route path="/shifts/new" element={<ShiftForm />} />
+          <Route path="/shifts/:id/edit" element={<ShiftForm />} />
+          <Route path="/shifts/:id" element={<ShiftDetail />} />
 
           <Route path="/clients" element={<Clients />} />
           <Route path="/clients/new" element={<ClientForm />} />
@@ -109,6 +118,7 @@ function AppShell() {
 
           <Route path="/donations" element={<Donations />} />
           <Route path="/donations/new" element={<DonationForm />} />
+          <Route path="/donations/acknowledgements" element={<Acknowledgements />} />
           <Route path="/donations/:id/edit" element={<DonationForm />} />
           <Route path="/donations/:id" element={<DonationDetail />} />
 

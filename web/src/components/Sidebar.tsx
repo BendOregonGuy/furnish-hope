@@ -32,6 +32,7 @@ const sections: NavSection[] = [
     label: 'Network',
     items: [
       { to: '/volunteers',name: 'Volunteers & Staff',  icon: 'heart' },
+      { to: '/shifts',    name: 'Shifts',              icon: 'shift' },
     ],
   },
   {
@@ -41,6 +42,7 @@ const sections: NavSection[] = [
       { to: '/events',    name: 'Events',              icon: 'calendar' },
       { to: '/donors',    name: 'Donors',              icon: 'sparkle' },
       { to: '/donations', name: 'Donations',           icon: 'gift' },
+      { to: '/donations/acknowledgements', name: 'Acknowledgements', icon: 'mail' },
       { to: '/pledges',   name: 'Pledges',             icon: 'handshake' },
     ],
   },
@@ -86,6 +88,7 @@ function Icon({ name }: { name: string }) {
     case 'pencil':     return <svg {...common}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
     case 'sync':       return <svg {...common}><path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 21v-5h5"/></svg>;
     case 'schedule':   return <svg {...common}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg>;
+    case 'shift':      return <svg {...common}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
     default: return null;
   }
 }

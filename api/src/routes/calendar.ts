@@ -31,10 +31,12 @@ const DEFAULT_DELIVERY_START = '10:00:00';
 const DEFAULT_DELIVERY_END   = '12:00:00';
 const DEFAULT_EVENT_START    = '18:00:00';
 const DEFAULT_EVENT_END      = '20:00:00';
+const DEFAULT_SHIFT_START    = '08:00:00';
+const DEFAULT_SHIFT_END      = '12:00:00';
 
 interface CalendarItem {
   id: string;
-  type: 'pickup' | 'delivery' | 'event' | 'campaign';
+  type: 'pickup' | 'delivery' | 'event' | 'campaign' | 'shift';
   title: string;
   start: string;
   end: string | null;
@@ -127,6 +129,31 @@ calendarRouter.get('/', async (req, res, next) => {
       ORDER BY e.event_date, e.start_time
     `, [from, to]);
 
+    /* ---------- volunteer shifts ---------- */
+    const shifts = await query<{
+      id: number; title: string; date: string;
+      start_time: string | null; end_time: string | null;
+      status: string;
+      capacity_needed: number; filled_count: number;
+    }>(`
+      SELECT
+        s.shift_id AS id,
+        COALESCE(s.shift_name, st.shift_type) AS title,
+        s.shift_date::text AS date,
+        s.start_time::text AS start_time,
+        s.end_time::text   AS end_time,
+        ss.shift_status AS status,
+        s.capacity_needed,
+        (SELECT COUNT(*)::int FROM tbl_volunteer_shift_signup
+          WHERE shift_id = s.shift_id
+            AND signup_status IN ('signed_up','attended')) AS filled_count
+      FROM tbl_volunteer_shift s
+      JOIN lkp_shift_type st   ON st.shift_type_id   = s.shift_type_id
+      JOIN lkp_shift_status ss ON ss.shift_status_id = s.shift_status_id
+      WHERE s.shift_date BETWEEN $1::date AND $2::date
+      ORDER BY s.shift_date, s.start_time
+    `, [from, to]);
+
     /* ---------- campaigns (multi-day banners) ---------- */
     // Campaigns can span months; surface any campaign whose range
     // intersects the requested window.
@@ -191,6 +218,20 @@ calendarRouter.get('/', async (req, res, next) => {
         url: `/events/${e.id}`,
         color: '#C9A24E', // gold
         meta: { event_type: e.event_type },
+      });
+    }
+
+    for (const s of shifts) {
+      items.push({
+        id: `shift:${s.id}`,
+        type: 'shift',
+        title: `${s.title} (${s.filled_count}/${s.capacity_needed})`,
+        start: combine(s.date, s.start_time, DEFAULT_SHIFT_START),
+        end:   combine(s.date, s.end_time,   DEFAULT_SHIFT_END),
+        allDay: false,
+        url: `/shifts/${s.id}`,
+        color: '#8E6C95', // soft purple — visually distinct from terracotta/sage/gold/slate
+        meta: { status: s.status, capacity_needed: s.capacity_needed, filled_count: s.filled_count },
       });
     }
 

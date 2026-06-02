@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@types/pdfkit": "^0.17.6",
     "bcrypt": "^6.0.0",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.5",
@@ -24,6 +25,7 @@
     "imapflow": "^1.3.5",
     "intuit-oauth": "^4.2.3",
     "nodemailer": "^8.0.10",
+    "pdfkit": "^0.18.0",
     "pg": "^8.13.0"
   },
   "devDependencies": {

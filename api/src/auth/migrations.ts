@@ -862,6 +862,110 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+
+  // ============================================================
+  // Volunteer shifts (2026-06-02)
+  // ------------------------------------------------------------
+  // A shift is a scheduled block of work that volunteers (or paid
+  // staff) sign up for: pickup crew rotations, warehouse stocking,
+  // event support, delivery crew, etc. Each shift has a capacity
+  // (how many people are needed) and per-person signups capture
+  // attendance + hours.
+  //
+  // Separate from the pickup/delivery crew assignments — those are
+  // tied to specific operational events; shifts are recurring or
+  // ad-hoc time blocks that staff fill via signup.
+  // ============================================================
+  {
+    name: 'lkp_shift_type',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_shift_type (
+          shift_type_id SERIAL PRIMARY KEY,
+          shift_type    VARCHAR(50) NOT NULL UNIQUE,
+          description   VARCHAR(200)
+        )
+      `);
+      await query(`
+        INSERT INTO lkp_shift_type (shift_type, description) VALUES
+          ('Pickup crew',     'Driving + loading at donor homes'),
+          ('Delivery crew',   'Driving + delivering furniture to clients'),
+          ('Warehouse',       'Receiving, sorting, staging inventory'),
+          ('Event support',   'Fundraising or community event staffing'),
+          ('Administrative',  'Office, data entry, donor calls'),
+          ('Outreach',        'Tabling, recruitment, community visits')
+        ON CONFLICT (shift_type) DO NOTHING
+      `);
+    },
+  },
+  {
+    name: 'lkp_shift_status',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_shift_status (
+          shift_status_id SERIAL PRIMARY KEY,
+          shift_status    VARCHAR(50) NOT NULL UNIQUE,
+          description     VARCHAR(200)
+        )
+      `);
+      await query(`
+        INSERT INTO lkp_shift_status (shift_status, description) VALUES
+          ('Open',      'Accepting signups'),
+          ('Filled',    'Capacity reached'),
+          ('Cancelled', 'Shift will not happen'),
+          ('Completed', 'Already occurred; finalize attendance')
+        ON CONFLICT (shift_status) DO NOTHING
+      `);
+    },
+  },
+  {
+    name: 'tbl_volunteer_shift',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_volunteer_shift (
+          shift_id           SERIAL PRIMARY KEY,
+          shift_type_id      INTEGER NOT NULL REFERENCES lkp_shift_type(shift_type_id),
+          shift_status_id    INTEGER NOT NULL REFERENCES lkp_shift_status(shift_status_id),
+          corp_facility_id   INTEGER REFERENCES tbl_corp_facility(corp_facility_id),
+          shift_name         VARCHAR(120),
+          shift_date         DATE NOT NULL,
+          start_time         TIME,
+          end_time           TIME,
+          capacity_needed    INTEGER NOT NULL DEFAULT 1,
+          notes              TEXT,
+          created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id)
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_volunteer_shift_date ON tbl_volunteer_shift(shift_date)`);
+    },
+  },
+  {
+    name: 'tbl_volunteer_shift_signup',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_volunteer_shift_signup (
+          signup_id          SERIAL PRIMARY KEY,
+          shift_id           INTEGER NOT NULL REFERENCES tbl_volunteer_shift(shift_id) ON DELETE CASCADE,
+          facility_staff_id  INTEGER NOT NULL REFERENCES tbl_facility_staff(facility_staff_id),
+          signup_status      VARCHAR(20) NOT NULL DEFAULT 'signed_up',  -- 'signed_up' | 'cancelled' | 'attended' | 'no_show'
+          hours_logged       NUMERIC(5,2),
+          notes              VARCHAR(200),
+          signed_up_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          signed_up_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id)
+        )
+      `);
+      // A given person can only have one (non-cancelled) signup per shift;
+      // re-signing-up after a cancel is fine.
+      await query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_volunteer_shift_signup_active
+          ON tbl_volunteer_shift_signup (shift_id, facility_staff_id)
+          WHERE signup_status <> 'cancelled'
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_volunteer_shift_signup_shift ON tbl_volunteer_shift_signup(shift_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_volunteer_shift_signup_staff ON tbl_volunteer_shift_signup(facility_staff_id)`);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */
