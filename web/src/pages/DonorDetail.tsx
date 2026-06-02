@@ -4,11 +4,14 @@
  * history.
  */
 
-import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useState } from 'react';
 import { apiGet, formatLongDate, formatMoney, formatShortDate } from '../lib/api.ts';
 import { Avatar, Loading, ErrorBox, StatusPill, AnonPill } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
+import { DonorQuickCreateModal } from '../components/donor/DonorQuickCreateModal.tsx';
+import { QuickCreateOverlay } from '../components/admin/FkSelectWithCreate.tsx';
 
 interface DonorDetailResponse {
   donor: any;
@@ -46,6 +49,10 @@ interface DonorDetailResponse {
 
 export function DonorDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [addOpen, setAddOpen] = useState(false);
+
   const { data, isLoading, error } = useQuery<DonorDetailResponse>({
     queryKey: ['donor', id],
     queryFn: () => apiGet(`/api/donors/${id}`),
@@ -67,9 +74,13 @@ export function DonorDetail() {
         prevId={null} nextId={null}
         actions={
           <>
-            <Link to="/admin/tbl_donor/new" className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta">
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta"
+            >
               + New donor
-            </Link>
+            </button>
             <Link to={`/admin/tbl_donor/${id}/edit`} className="btn-primary text-xs py-1.5">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -80,6 +91,22 @@ export function DonorDetail() {
           </>
         }
       />
+
+      {/* + New donor opens the same inline-composition modal used from
+          Pickup/Donation/Pledge forms. After save, navigate to the new
+          donor's detail page. */}
+      {addOpen && (
+        <QuickCreateOverlay onClose={() => setAddOpen(false)}>
+          <DonorQuickCreateModal
+            onCancel={() => setAddOpen(false)}
+            onCreated={(newId) => {
+              setAddOpen(false);
+              queryClient.invalidateQueries({ queryKey: ['donors'] });
+              navigate(`/donors/${newId}`);
+            }}
+          />
+        </QuickCreateOverlay>
+      )}
 
       {/* Donor header */}
       <div className="flex gap-5 p-5 bg-cream border border-hairline rounded-[10px] mb-6">

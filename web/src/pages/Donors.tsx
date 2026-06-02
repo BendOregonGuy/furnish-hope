@@ -1,15 +1,19 @@
 /**
  * Donors list — donor-centric view with lifetime + YTD giving totals.
- * Edit/Create still flows through /admin/tbl_donor (the generic admin
- * tool handles the donor form well enough that we don't duplicate it).
+ * "+ New donor" opens the same quick-create modal used from other forms
+ * (DonorQuickCreateModal — inlines contact + address, no nested FK
+ * dropdowns the user has to chase down). Edits still flow through
+ * /admin/tbl_donor for now.
  */
 
-import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { apiGet, formatMoney, formatShortDate } from '../lib/api.ts';
 import { PageHeader, Avatar, Loading, ErrorBox, EmptyState, AnonPill } from '../components/ui.tsx';
 import { FkSelect } from '../components/admin/FkSelect.tsx';
+import { DonorQuickCreateModal } from '../components/donor/DonorQuickCreateModal.tsx';
+import { QuickCreateOverlay } from '../components/admin/FkSelectWithCreate.tsx';
 
 interface DonorRow {
   donor_id: number;
@@ -31,6 +35,9 @@ interface DonorRow {
 export function Donors() {
   const [search, setSearch] = useState('');
   const [stageId, setStageId] = useState<number | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data, isLoading, error } = useQuery<DonorRow[]>({
     queryKey: ['donors', search, stageId],
@@ -50,11 +57,28 @@ export function Donors() {
         emphasis="& funders"
         subtitle="Everyone who has given (or pledged) to Furnish Hope. Sorted by lifetime giving."
         actions={
-          <Link to="/admin/tbl_donor/new" className="btn-primary">
+          <button type="button" onClick={() => setAddOpen(true)} className="btn-primary">
             <span className="text-base leading-none">+</span> New donor
-          </Link>
+          </button>
         }
       />
+
+      {/* + New donor opens DonorQuickCreateModal — same inline-composition
+          modal we use from Pickup/Donation/Pledge forms. After save we
+          navigate straight to the new donor's detail page so the user can
+          continue adding info (gift history, donor stage, etc.). */}
+      {addOpen && (
+        <QuickCreateOverlay onClose={() => setAddOpen(false)}>
+          <DonorQuickCreateModal
+            onCancel={() => setAddOpen(false)}
+            onCreated={(id) => {
+              setAddOpen(false);
+              queryClient.invalidateQueries({ queryKey: ['donors'] });
+              navigate(`/donors/${id}`);
+            }}
+          />
+        </QuickCreateOverlay>
+      )}
 
       <div className="card mb-3">
         <div className="grid grid-cols-1 md:grid-cols-[1fr_240px] gap-3">

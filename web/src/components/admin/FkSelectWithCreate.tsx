@@ -101,7 +101,15 @@ export function FkSelectWithCreate({
  * click-outside-to-close. The body content (header + form + footer) is
  * the children. Width caps at ~640px so it stays focused even on wide
  * monitors.
+ *
+ * Exported as `QuickCreateOverlay` for pages that want to launch the
+ * same quick-create modals outside of an FkSelectWithCreate (e.g.
+ * the Donors list's "+ New donor" button).
  */
+export function QuickCreateOverlay({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  return <QuickCreateModal onClose={onClose}>{children}</QuickCreateModal>;
+}
+
 function QuickCreateModal({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   // Escape to close.
   useEscapeKey(onClose);
