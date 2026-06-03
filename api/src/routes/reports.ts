@@ -78,7 +78,7 @@ reportsRouter.get('/', async (req, res, next) => {
           WHERE delivery_date >= DATE_TRUNC('${T}', NOW())
             AND delivery_status_id IN (SELECT delivery_status_id FROM lkp_delivery_status WHERE delivery_status IN ('Delivered','Completed')))::int AS deliveries_completed,
         COALESCE((SELECT SUM(hours_logged) FROM tbl_volunteer_hours
-                   WHERE work_date >= DATE_TRUNC('${T}', NOW())), 0)::numeric(10,2) AS volunteer_hours,
+                   WHERE activity_date >= DATE_TRUNC('${T}', NOW())), 0)::numeric(10,2) AS volunteer_hours,
         (SELECT COUNT(*) FROM tbl_donation_item di
             JOIN tbl_donation d ON d.donation_id = di.donation_id
           WHERE d.donation_date >= DATE_TRUNC('${T}', NOW()))::int AS items_in,
@@ -209,10 +209,10 @@ reportsRouter.get('/', async (req, res, next) => {
     `);
 
     const volunteerHours = await query(`
-      SELECT DATE_TRUNC('${T}', work_date) AS bucket,
+      SELECT DATE_TRUNC('${T}', activity_date) AS bucket,
              COALESCE(SUM(hours_logged), 0)::numeric(10,2) AS hours
       FROM tbl_volunteer_hours
-      WHERE work_date >= NOW() - INTERVAL '${I}'
+      WHERE activity_date >= NOW() - INTERVAL '${I}'
       GROUP BY bucket
       ORDER BY bucket
     `);
