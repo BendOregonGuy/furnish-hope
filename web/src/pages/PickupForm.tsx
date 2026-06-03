@@ -92,6 +92,26 @@ export function PickupForm() {
     setValues(v); setInitial(v);
   }, [existing, isNew]);
 
+  // Auto-fill pickup_address_id with the donor's primary address when a
+  // donor is picked — but only if the address is still empty, so we
+  // never clobber an intentional override.
+  useEffect(() => {
+    if (!values.donor_id) return;
+    if (values.pickup_address_id) return;
+    let cancelled = false;
+    apiGet<{ donor: { address_id: number | null } }>(`/api/donors/${values.donor_id}`)
+      .then(r => {
+        if (cancelled) return;
+        if (r.donor?.address_id) {
+          setValues(prev => prev.pickup_address_id
+            ? prev                                                      // user filled it while we waited
+            : { ...prev, pickup_address_id: r.donor.address_id });
+        }
+      })
+      .catch(() => { /* ignore — leave the field for the user to fill */ });
+    return () => { cancelled = true; };
+  }, [values.donor_id]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const { isDirty, safeNavigate } = useUnsavedChanges({ values, initialValues: initial });
 
   const createMut = useMutation({
