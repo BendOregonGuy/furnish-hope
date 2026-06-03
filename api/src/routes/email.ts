@@ -22,6 +22,7 @@ import { auditCreate, auditDelete, auditUpdate } from '../auth/audit.js';
 import { encryptSecret } from '../email/crypto.js';
 import { PROVIDERS, getProvider } from '../email/providers.js';
 import { buildSmtpTransporter, testImap, testSmtp, type EmailAccountRow } from '../email/transports.js';
+import { recordSentMessage } from '../email/sync.js';
 
 export const emailRouter = Router();
 
@@ -359,6 +360,30 @@ emailRouter.post('/send', async (req, res, next) => {
           contentType: a.content_type,
         })),
       });
+
+      // Cache locally so the user sees the sent message immediately,
+      // without waiting for the next IMAP sync of the Sent folder.
+      // De-dupes against the eventual IMAP copy via Message-Id.
+      try {
+        await recordSentMessage({
+          userId,
+          emailAccountId: acct.email_account_id,
+          fromAddress: acct.email_address,
+          fromName: null,
+          to: body.to,
+          cc: body.cc ?? null,
+          bcc: body.bcc ?? null,
+          subject: body.subject,
+          bodyText: body.body_text ?? null,
+          bodyHtml: body.body_html ?? null,
+          messageIdHeader: info.messageId ?? null,
+          inReplyTo: (body as any).in_reply_to ?? null,
+          hasAttachments: (body.attachments ?? []).length > 0,
+        });
+      } catch (err: any) {
+        console.error('[email:send] recordSentMessage failed (sent OK, just cache miss):', err.message);
+      }
+
       res.json({ messageId: info.messageId, accepted: info.accepted, rejected: info.rejected });
     } finally {
       transporter.close();

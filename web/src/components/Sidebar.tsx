@@ -49,8 +49,9 @@ const sections: NavSection[] = [
   {
     label: 'Email',
     items: [
+      { to: '/email/mailbox',  name: 'Mailbox',        icon: 'mail' },
       { to: '/email/compose',  name: 'Compose',        icon: 'pencil' },
-      { to: '/email/accounts', name: 'Accounts',       icon: 'mail' },
+      { to: '/email/accounts', name: 'Accounts',       icon: 'gear' },
     ],
   },
   {

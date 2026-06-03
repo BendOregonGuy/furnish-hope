@@ -12,6 +12,7 @@ import { Avatar, Loading, ErrorBox, StatusPill, AnonPill } from '../components/u
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
 import { DonorQuickCreateModal } from '../components/donor/DonorQuickCreateModal.tsx';
 import { QuickCreateOverlay } from '../components/admin/FkSelectWithCreate.tsx';
+import { EmailWidget } from '../components/email/EmailWidget.tsx';
 
 interface DonorDetailResponse {
   donor: any;
@@ -152,6 +153,9 @@ export function DonorDetail() {
 
       <div className="grid grid-cols-[1fr_320px] gap-5">
         <div className="space-y-4">
+          {/* Email widget — your messages with this donor */}
+          <EmailWidget email={d.email} displayName={fullName} />
+
           {/* Gift history */}
           <div className="card">
             <div className="card-head">

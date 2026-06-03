@@ -966,6 +966,85 @@ const MIGRATIONS: Migration[] = [
       await query(`CREATE INDEX IF NOT EXISTS idx_tbl_volunteer_shift_signup_staff ON tbl_volunteer_shift_signup(facility_staff_id)`);
     },
   },
+
+  // ============================================================
+  // Email message cache (2026-06-02)
+  // ------------------------------------------------------------
+  // Local store of sent/received email messages per user. IMAP is
+  // too slow to hit on every page view, so we cache headers + body
+  // here and refresh on a "Sync" trigger. The cache is per-user
+  // (same scoping as tbl_email_account) so one staff member never
+  // sees another's private correspondence.
+  //
+  // Bodies are stored both as text and HTML when both are present.
+  // Participant filter (showing "messages with this donor") works
+  // by case-insensitive match on from_address / to_addresses.
+  // Threading uses Message-Id / In-Reply-To headers; v1 stores the
+  // values but doesn't group — that's a follow-up.
+  // ============================================================
+  {
+    name: 'tbl_email_message',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_email_message (
+          message_id        SERIAL PRIMARY KEY,
+          user_account_id   INTEGER NOT NULL REFERENCES tbl_user_account(user_account_id) ON DELETE CASCADE,
+          email_account_id  INTEGER NOT NULL REFERENCES tbl_email_account(email_account_id) ON DELETE CASCADE,
+          folder            VARCHAR(40) NOT NULL,    -- 'INBOX' | 'Sent' (provider-specific names allowed)
+          direction         VARCHAR(4)  NOT NULL,    -- 'in' | 'out'
+          imap_uid          BIGINT,                  -- IMAP UID within the folder; null for locally-recorded sends pre-sync
+          message_id_header VARCHAR(998),            -- RFC822 Message-Id (e.g. <abc@gmail.com>)
+          in_reply_to       VARCHAR(998),            -- RFC822 In-Reply-To (one message-id)
+          thread_refs       TEXT,                    -- space-separated References list (for future threading)
+          from_address      VARCHAR(255) NOT NULL,
+          from_name         VARCHAR(200),
+          to_addresses      TEXT NOT NULL DEFAULT '',  -- comma-separated lowercase
+          cc_addresses      TEXT NOT NULL DEFAULT '',
+          bcc_addresses     TEXT NOT NULL DEFAULT '',
+          subject           VARCHAR(500),
+          body_text         TEXT,
+          body_html         TEXT,
+          body_preview      VARCHAR(300),
+          has_attachments   BOOLEAN NOT NULL DEFAULT false,
+          sent_at           TIMESTAMPTZ NOT NULL,    -- Date header; for outbound this is when we sent
+          received_at       TIMESTAMPTZ,             -- when IMAP says it landed (inbound only)
+          cached_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      // Dedupe by message-id-header per user. A single message can land
+      // in INBOX and Sent (own-sends with sent-to-self), so don't include
+      // folder in the unique key.
+      await query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_email_message_dedup
+          ON tbl_email_message (user_account_id, message_id_header)
+          WHERE message_id_header IS NOT NULL
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_email_message_user_sent ON tbl_email_message(user_account_id, sent_at DESC)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_email_message_account_uid ON tbl_email_message(email_account_id, folder, imap_uid)`);
+      // Participant lookup — used by the per-entity widget. Stored
+      // lowercase so a single ILIKE works without a function index.
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_email_message_from_lc ON tbl_email_message(user_account_id, LOWER(from_address))`);
+    },
+  },
+  {
+    name: 'tbl_email_sync_state',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_email_sync_state (
+          sync_state_id      SERIAL PRIMARY KEY,
+          email_account_id   INTEGER NOT NULL REFERENCES tbl_email_account(email_account_id) ON DELETE CASCADE,
+          folder             VARCHAR(40) NOT NULL,
+          last_uid           BIGINT NOT NULL DEFAULT 0,
+          last_synced_at     TIMESTAMPTZ,
+          last_error         TEXT
+        )
+      `);
+      await query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_email_sync_state_account_folder
+          ON tbl_email_sync_state (email_account_id, folder)
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */
