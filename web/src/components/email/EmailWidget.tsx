@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../../lib/api.ts';
 import { MessageList, type MessageListItem } from './MessageList.tsx';
+import { useAttachments, AttachmentPicker } from './attachments.tsx';
 
 export function EmailWidget({
   email,
@@ -123,6 +124,7 @@ function InlineCompose({
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [topError, setTopError] = useState<string | null>(null);
+  const attachments = useAttachments();
 
   const sendMut = useMutation({
     mutationFn: () => apiPost('/api/email/send', {
@@ -130,9 +132,11 @@ function InlineCompose({
       to,
       subject,
       body_text: body,
+      attachments: attachments.files,
     }),
     onSuccess: () => {
       setSubject(''); setBody(''); setTopError(null);
+      attachments.clear();
       qc.invalidateQueries({ queryKey: ['mailbox'] });
       onClose();
     },
@@ -183,6 +187,13 @@ function InlineCompose({
         onChange={e => setBody(e.target.value)}
         placeholder="Message…"
       />
+      <div className="mt-2">
+        <AttachmentPicker
+          files={attachments.files}
+          onAdd={attachments.add}
+          onRemove={attachments.remove}
+        />
+      </div>
       {topError && <div className="text-xs text-terracotta-deep mt-2">{topError}</div>}
       <div className="flex justify-end gap-2 mt-2">
         <button onClick={onClose} className="btn-ghost text-xs">Cancel</button>

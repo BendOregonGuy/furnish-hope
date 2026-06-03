@@ -153,6 +153,7 @@ interface ReplyPayload {
   body_html?: string;
   reply_all?: boolean;   // include original Cc list
   subject?: string;      // override; default = "Re: <original subject>"
+  attachments?: Array<{ filename: string; content_base64: string; content_type?: string }>;
 }
 
 mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
@@ -192,6 +193,12 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
       || (orig.subject?.toLowerCase().startsWith('re:') ? orig.subject : `Re: ${orig.subject ?? ''}`);
     const cc = body.reply_all ? (orig.cc_addresses || undefined) : undefined;
 
+    const attachments = (body.attachments ?? []).map(a => ({
+      filename: a.filename,
+      content: Buffer.from(a.content_base64, 'base64'),
+      contentType: a.content_type,
+    }));
+
     const transporter = buildSmtpTransporter(acct);
     try {
       const info = await transporter.sendMail({
@@ -203,6 +210,7 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
         html: body.body_html || undefined,
         inReplyTo: orig.message_id_header ?? undefined,
         references: orig.message_id_header ?? undefined,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
 
       try {
@@ -219,7 +227,7 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
           bodyHtml: body.body_html ?? null,
           messageIdHeader: info.messageId ?? null,
           inReplyTo: orig.message_id_header ?? null,
-          hasAttachments: false,
+          hasAttachments: attachments.length > 0,
         });
       } catch (err: any) {
         console.error('[mailbox:reply] recordSentMessage failed:', err.message);

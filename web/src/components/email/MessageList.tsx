@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../../lib/api.ts';
 import { Loading, EmptyState } from '../ui.tsx';
+import { useAttachments, AttachmentPicker } from './attachments.tsx';
 
 export interface MessageListItem {
   message_id: number;
@@ -123,16 +124,19 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
   const [replyAll, setReplyAll] = useState(false);
   const [replyBody, setReplyBody] = useState('');
   const [replyError, setReplyError] = useState<string | null>(null);
+  const replyAttachments = useAttachments();
 
   const replyMut = useMutation({
     mutationFn: () => apiPost(`/api/mailbox/messages/${messageId}/reply`, {
       body_text: replyBody,
       reply_all: replyAll,
+      attachments: replyAttachments.files,
     }),
     onSuccess: () => {
       setReplyOpen(false);
       setReplyBody('');
       setReplyError(null);
+      replyAttachments.clear();
       qc.invalidateQueries({ queryKey: ['mailbox'] });
     },
     onError: (err: any) => setReplyError(err.message ?? 'Reply failed'),
@@ -189,9 +193,16 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
                 placeholder="Type your reply…"
                 autoFocus
               />
+              <div className="mt-2">
+                <AttachmentPicker
+                  files={replyAttachments.files}
+                  onAdd={replyAttachments.add}
+                  onRemove={replyAttachments.remove}
+                />
+              </div>
               {replyError && <div className="text-xs text-terracotta-deep mt-2">{replyError}</div>}
               <div className="flex justify-end gap-2 mt-2">
-                <button onClick={() => { setReplyOpen(false); setReplyError(null); }} className="btn-ghost text-xs">Cancel</button>
+                <button onClick={() => { setReplyOpen(false); setReplyError(null); replyAttachments.clear(); }} className="btn-ghost text-xs">Cancel</button>
                 <button
                   onClick={() => {
                     if (!replyBody.trim()) { setReplyError('Reply body is required.'); return; }
