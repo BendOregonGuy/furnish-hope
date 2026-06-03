@@ -159,6 +159,10 @@ function AppShell() {
           <Route path="/admin/:table" element={<RequireAdmin><AdminList /></RequireAdmin>} />
           <Route path="/admin/:table/new" element={<RequireAdmin><AdminForm /></RequireAdmin>} />
           <Route path="/admin/:table/:id" element={<RequireAdmin><AdminForm /></RequireAdmin>} />
+          {/* Alias with /edit suffix — every operational form uses
+              /:id/edit (clients, pickups, etc.), so a Link to
+              /admin/tbl_X/:id/edit is a natural mistake. Accept both. */}
+          <Route path="/admin/:table/:id/edit" element={<RequireAdmin><AdminForm /></RequireAdmin>} />
         </Routes>
       </main>
     </div>
