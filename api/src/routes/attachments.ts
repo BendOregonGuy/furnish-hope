@@ -123,6 +123,8 @@ attachmentsRouter.get('/:entity_type/:entity_id', async (req, res, next) => {
     if (!isValidEntityType(entityType)) return res.status(400).json({ error: 'Unknown entity_type' });
     if (!Number.isInteger(entityId) || entityId <= 0) return res.status(400).json({ error: 'Invalid entity_id' });
 
+    // display_name on tbl_user_account is computed (via facility_staff →
+    // contact) rather than stored, so we mirror the middleware's join here.
     const rows = await query(`
       SELECT
         a.attachment_id,
@@ -135,9 +137,11 @@ attachmentsRouter.get('/:entity_type/:entity_id', async (req, res, next) => {
         a.uploaded_at,
         a.last_modified_at,
         u.username AS uploaded_by_username,
-        COALESCE(u.display_name, u.username) AS uploaded_by_name
+        COALESCE(c.first_name || ' ' || c.last_name, u.username) AS uploaded_by_name
       FROM tbl_entity_attachment a
-      LEFT JOIN tbl_user_account u ON u.user_account_id = a.uploaded_by_user_account_id
+      LEFT JOIN tbl_user_account u   ON u.user_account_id = a.uploaded_by_user_account_id
+      LEFT JOIN tbl_facility_staff fs ON fs.facility_staff_id = u.facility_staff_id
+      LEFT JOIN tbl_contact c        ON c.contact_id = fs.contact_id
       WHERE a.entity_type = $1 AND a.entity_id = $2
       ORDER BY a.uploaded_at DESC
     `, [entityType, entityId]);
