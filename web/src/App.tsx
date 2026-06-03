@@ -5,6 +5,7 @@ import { AuthProvider } from './lib/auth.tsx';
 import { Login } from './pages/Login.tsx';
 import { Settings } from './pages/Settings.tsx';
 import { Dashboard } from './pages/Dashboard.tsx';
+import { Reports } from './pages/Reports.tsx';
 import { Clients } from './pages/Clients.tsx';
 import { ClientDetail } from './pages/ClientDetail.tsx';
 import { ClientForm } from './pages/ClientForm.tsx';
@@ -78,6 +79,7 @@ function AppShell() {
         <Breadcrumbs />
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/calendar" element={<CalendarView />} />
 
