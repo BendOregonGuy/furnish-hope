@@ -13,6 +13,14 @@ const sections: NavSection[] = [
     ],
   },
   {
+    label: 'Email',
+    items: [
+      { to: '/email/mailbox',  name: 'Mailbox',        icon: 'mail' },
+      { to: '/email/compose',  name: 'Compose',        icon: 'pencil' },
+      { to: '/email/accounts', name: 'Accounts',       icon: 'gear' },
+    ],
+  },
+  {
     label: 'Clients',
     items: [
       { to: '/clients',   name: 'Clients',             icon: 'users' },
@@ -44,14 +52,6 @@ const sections: NavSection[] = [
       { to: '/donations', name: 'Donations',           icon: 'gift' },
       { to: '/donations/acknowledgements', name: 'Acknowledgements', icon: 'mail' },
       { to: '/pledges',   name: 'Pledges',             icon: 'handshake' },
-    ],
-  },
-  {
-    label: 'Email',
-    items: [
-      { to: '/email/mailbox',  name: 'Mailbox',        icon: 'mail' },
-      { to: '/email/compose',  name: 'Compose',        icon: 'pencil' },
-      { to: '/email/accounts', name: 'Accounts',       icon: 'gear' },
     ],
   },
   {
