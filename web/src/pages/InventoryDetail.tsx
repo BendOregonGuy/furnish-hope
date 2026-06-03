@@ -8,6 +8,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, formatMoney, formatLongDate } from '../lib/api.ts';
 import { Loading, ErrorBox, StatusPill } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 
 type Detail = {
   item: any;
@@ -146,6 +147,10 @@ export function InventoryDetail() {
             {deleteMut.isPending ? 'Deleting…' : 'Delete this item'}
           </button>
         </div>
+      </div>
+
+      <div className="mt-5">
+        <AttachmentsWidget entityType="inventory" entityId={Number(id)} title="Item photos / documentation" />
       </div>
     </>
   );

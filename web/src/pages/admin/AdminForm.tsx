@@ -21,6 +21,7 @@ import { validateForm, type FormErrors } from '../../lib/adminValidate.ts';
 import { PageHeader, Loading, ErrorBox } from '../../components/ui.tsx';
 import { Field } from '../../components/admin/Field.tsx';
 import { EmailWidget } from '../../components/email/EmailWidget.tsx';
+import { AttachmentsWidget } from '../../components/attachments/AttachmentsWidget.tsx';
 
 /** Wraps EmailWidget for the contact admin form, building a friendly
  *  display name from first/last. */
@@ -28,6 +29,16 @@ function ContactEmailWidget({ email, firstName, lastName }: { email: string; fir
   const name = `${firstName} ${lastName}`.trim() || email;
   return <EmailWidget email={email} displayName={name} />;
 }
+
+/** Map admin table names to attachment entity_types. Tables not in
+ *  this map don't get an attachments widget — usually lookup tables
+ *  or join tables for which document attachments wouldn't make sense. */
+const TABLE_TO_ATTACHMENT_ENTITY: Record<string, string> = {
+  tbl_contact:       'contact',
+  tbl_vehicle:       'vehicle',
+  tbl_corp_facility: 'corp_facility',
+  tbl_agency:        'agency',
+};
 
 export function AdminForm() {
   const { table, id } = useParams<{ table: string; id: string }>();
@@ -306,6 +317,18 @@ export function AdminForm() {
             email={String(values.email)}
             firstName={String(values.first_name ?? '')}
             lastName={String(values.last_name ?? '')}
+          />
+        </div>
+      )}
+
+      {/* Attached documents — for entity types that don't have a
+          dedicated detail page (contacts, vehicles, facilities, agencies),
+          the admin form is where they get their attachments widget. */}
+      {!isNew && TABLE_TO_ATTACHMENT_ENTITY[meta.table] && id && (
+        <div className="mb-5 max-w-3xl">
+          <AttachmentsWidget
+            entityType={TABLE_TO_ATTACHMENT_ENTITY[meta.table]}
+            entityId={Number(id)}
           />
         </div>
       )}

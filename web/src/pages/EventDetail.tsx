@@ -7,6 +7,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, apiPost, formatLongDate, formatMoney } from '../lib/api.ts';
 import { Loading, ErrorBox, Avatar } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 
 interface Detail {
   event: any;
@@ -192,6 +193,10 @@ export function EventDetail() {
         className="mt-5 text-xs text-terracotta hover:text-terracotta-deep disabled:opacity-50">
         {deleteMut.isPending ? 'Deleting…' : 'Delete this event'}
       </button>
+
+      <div className="mt-5">
+        <AttachmentsWidget entityType="event" entityId={Number(id)} title="Event documents (run-of-show, vendor contracts, photos)" />
+      </div>
     </>
   );
 }

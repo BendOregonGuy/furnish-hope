@@ -13,6 +13,7 @@ import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
 import { DonorQuickCreateModal } from '../components/donor/DonorQuickCreateModal.tsx';
 import { QuickCreateOverlay } from '../components/admin/FkSelectWithCreate.tsx';
 import { EmailWidget } from '../components/email/EmailWidget.tsx';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 
 interface DonorDetailResponse {
   donor: any;
@@ -298,6 +299,11 @@ export function DonorDetail() {
             </Link>
           </div>
         </div>
+      </div>
+
+      {/* Attached documents — any file format up to 10 MB each */}
+      <div className="mt-5">
+        <AttachmentsWidget entityType="donor" entityId={d.donor_id} />
       </div>
     </>
   );

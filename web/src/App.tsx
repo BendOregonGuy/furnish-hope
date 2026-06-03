@@ -53,6 +53,7 @@ import { AdminForm } from './pages/admin/AdminForm.tsx';
 import { AdminActivity } from './pages/admin/AdminActivity.tsx';
 import { AdminSettings } from './pages/admin/AdminSettings.tsx';
 import { AdminQuickBooks } from './pages/admin/AdminQuickBooks.tsx';
+import { AdminAttachmentStorage } from './pages/admin/AdminAttachmentStorage.tsx';
 
 export function App() {
   return (
@@ -151,6 +152,7 @@ function AppShell() {
           <Route path="/admin/activity" element={<RequireAdmin><AdminActivity /></RequireAdmin>} />
           <Route path="/admin/settings" element={<RequireAdmin><AdminSettings /></RequireAdmin>} />
           <Route path="/admin/quickbooks" element={<RequireAdmin><AdminQuickBooks /></RequireAdmin>} />
+          <Route path="/admin/attachment-storage" element={<RequireAdmin><AdminAttachmentStorage /></RequireAdmin>} />
           <Route path="/admin/settings/quickbooks" element={<RequireAdmin><AdminQuickBooks /></RequireAdmin>} />
           <Route path="/admin/:table" element={<RequireAdmin><AdminList /></RequireAdmin>} />
           <Route path="/admin/:table/new" element={<RequireAdmin><AdminForm /></RequireAdmin>} />

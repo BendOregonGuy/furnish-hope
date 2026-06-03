@@ -10,6 +10,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, apiPost, formatLongDate, formatMoney } from '../lib/api.ts';
 import { Avatar, Loading, ErrorBox, StatusPill, AnonPill } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 import { useAuth } from '../lib/auth.tsx';
 import { useState } from 'react';
 
@@ -231,6 +232,10 @@ export function DonationDetail() {
             {deleteMut.isPending ? 'Deleting…' : 'Delete this donation'}
           </button>
         </div>
+      </div>
+
+      <div className="mt-5">
+        <AttachmentsWidget entityType="donation" entityId={Number(id)} title="Donation documents (scanned check, stock transfer confirmation, in-kind appraisal)" />
       </div>
     </>
   );

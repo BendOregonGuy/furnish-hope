@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { apiDelete, apiGet, apiPost, formatShortDate, formatLongDate } from '../lib/api.ts';
 import { Avatar, Loading, ErrorBox } from '../components/ui.tsx';
 import { EmailWidget } from '../components/email/EmailWidget.tsx';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
 
 type Detail = {
@@ -261,6 +262,10 @@ export function VolunteerDetail() {
             {deleteMut.isPending ? 'Deleting…' : 'Delete this volunteer'}
           </button>
         </div>
+      </div>
+
+      <div className="mt-5">
+        <AttachmentsWidget entityType="volunteer" entityId={Number(id)} title="Documents (waivers, background check, training)" />
       </div>
     </>
   );

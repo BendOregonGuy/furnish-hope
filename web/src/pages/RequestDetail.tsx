@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, formatMoney, formatLongDate } from '../lib/api.ts';
 import { Avatar, Loading, ErrorBox } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 
 type Detail = {
   request: any;
@@ -158,6 +159,10 @@ export function RequestDetail() {
             {deleteMut.isPending ? 'Deleting…' : 'Delete this request'}
           </button>
         </div>
+      </div>
+
+      <div className="mt-5">
+        <AttachmentsWidget entityType="request" entityId={Number(id)} title="Request documents (intake notes, household needs assessment, photos)" />
       </div>
     </>
   );

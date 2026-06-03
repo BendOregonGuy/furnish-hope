@@ -8,6 +8,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, formatLongDate, formatMoney, formatShortDate } from '../lib/api.ts';
 import { Loading, ErrorBox, StatusPill, Avatar } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 
 interface Detail {
   campaign: any;
@@ -272,6 +273,10 @@ export function CampaignDetail() {
             {deleteMut.isPending ? 'Deleting…' : 'Delete this campaign'}
           </button>
         </div>
+      </div>
+
+      <div className="mt-5">
+        <AttachmentsWidget entityType="campaign" entityId={Number(id)} title="Campaign documents (collateral, press releases, donor lists)" />
       </div>
     </>
   );

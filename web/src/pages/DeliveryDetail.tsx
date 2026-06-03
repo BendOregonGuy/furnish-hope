@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { apiDelete, apiGet, apiPost, formatMoney, formatLongDate } from '../lib/api.ts';
 import { Avatar, Loading, ErrorBox, StatusPill } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 
 type Detail = {
   delivery: any;
@@ -266,6 +267,10 @@ export function DeliveryDetail() {
           </div>
         </div>
       )}
+
+      <div className="mt-5">
+        <AttachmentsWidget entityType="delivery" entityId={Number(id)} title="Documents (signed manifest, delivery photos)" />
+      </div>
     </>
   );
 }

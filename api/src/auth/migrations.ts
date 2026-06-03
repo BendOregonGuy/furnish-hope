@@ -1045,6 +1045,60 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+
+  // ============================================================
+  // Per-entity attachments (2026-06-02)
+  // ------------------------------------------------------------
+  // Generic "documents attached to a thing" system. Each row points
+  // at any entity by (entity_type, entity_id) — donor, client,
+  // pickup, delivery, campaign, etc. — and references a blob via a
+  // pluggable storage provider.
+  //
+  // The metadata row is tiny (just the index info + provider ref).
+  // The actual bytes live in a separate table (tbl_attachment_blob,
+  // Phase 1 / pg_blob provider) OR — in future — in object storage
+  // (DO Spaces, S3, Drive). To migrate, copy each blob to the new
+  // store and rewrite the metadata row's storage_provider +
+  // storage_ref; no data-shape changes needed.
+  // ============================================================
+  {
+    name: 'tbl_entity_attachment',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_entity_attachment (
+          attachment_id     SERIAL PRIMARY KEY,
+          entity_type       VARCHAR(40)  NOT NULL,   -- 'donor'|'client'|'volunteer'|'contact'|...
+          entity_id         INTEGER      NOT NULL,
+          filename          VARCHAR(255) NOT NULL,
+          mime_type         VARCHAR(150) NOT NULL,
+          size_bytes        BIGINT       NOT NULL,
+          description       VARCHAR(500),
+          storage_provider  VARCHAR(40)  NOT NULL,   -- 'pg_blob' | 'do_spaces' | 's3' | 'gdrive' | …
+          storage_ref       TEXT         NOT NULL,   -- provider-specific (blob_id, object key, …)
+          external_url      TEXT,                    -- "Open in Drive" link, etc.
+          uploaded_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id),
+          uploaded_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          last_modified_at  TIMESTAMPTZ
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_entity_attachment_entity ON tbl_entity_attachment (entity_type, entity_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_entity_attachment_provider ON tbl_entity_attachment (storage_provider)`);
+    },
+  },
+  {
+    name: 'tbl_attachment_blob',
+    async run() {
+      // Phase 1 storage. Separate from the metadata table so the
+      // metadata index stays slim and so a future migration can drain
+      // this table progressively without locking the metadata.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_attachment_blob (
+          blob_id SERIAL PRIMARY KEY,
+          content BYTEA NOT NULL
+        )
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

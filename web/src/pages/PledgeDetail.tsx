@@ -8,6 +8,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, formatLongDate, formatMoney } from '../lib/api.ts';
 import { Avatar, Loading, ErrorBox, StatusPill } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 
 interface Detail {
   pledge: any;
@@ -170,6 +171,10 @@ export function PledgeDetail() {
             {deleteMut.isPending ? 'Deleting…' : 'Delete this pledge'}
           </button>
         </div>
+      </div>
+
+      <div className="mt-5">
+        <AttachmentsWidget entityType="pledge" entityId={Number(id)} title="Pledge documents (signed agreement, correspondence)" />
       </div>
     </>
   );

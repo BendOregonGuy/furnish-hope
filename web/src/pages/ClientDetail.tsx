@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, formatShortDate, formatLongDate } from '../lib/api.ts';
 import { Avatar, Loading, ErrorBox, StatusPill } from '../components/ui.tsx';
 import { EmailWidget } from '../components/email/EmailWidget.tsx';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 
 type ClientDetailData = {
   client: any;
@@ -195,6 +196,10 @@ export function ClientDetail() {
             {deleteMut.isPending ? 'Deleting…' : 'Delete this client'}
           </button>
         </div>
+      </div>
+
+      <div className="mt-5">
+        <AttachmentsWidget entityType="client" entityId={c.client_id} />
       </div>
     </>
   );

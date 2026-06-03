@@ -7,6 +7,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, formatLongDate } from '../lib/api.ts';
 import { Avatar, Loading, ErrorBox, StatusPill } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 
 type Detail = {
   pickup: any;
@@ -121,6 +122,10 @@ export function PickupDetail() {
             {deleteMut.isPending ? 'Deleting…' : 'Delete this pickup'}
           </button>
         </div>
+      </div>
+
+      <div className="mt-5">
+        <AttachmentsWidget entityType="pickup" entityId={Number(id)} title="Documents (signed manifest, photos of items, access notes)" />
       </div>
     </>
   );

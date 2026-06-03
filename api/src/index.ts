@@ -32,6 +32,7 @@ import { quickCreateRouter } from './routes/quickCreate.js';
 import { shiftsRouter } from './routes/shifts.js';
 import { receiptsRouter } from './routes/receipts.js';
 import { mailboxRouter } from './routes/mailbox.js';
+import { attachmentsRouter } from './routes/attachments.js';
 import { createSessionMiddleware } from './auth/session.js';
 import { runAuthMigrations } from './auth/migrations.js';
 import { requireUser, requireAdmin } from './auth/middleware.js';
@@ -105,6 +106,7 @@ app.use('/api/quick-create', quickCreateRouter);
 app.use('/api/shifts',     shiftsRouter);
 app.use('/api/receipts',   receiptsRouter);
 app.use('/api/mailbox',    mailboxRouter);
+app.use('/api/attachments', attachmentsRouter);
 // QuickBooks integration — admin-only because accounting touches the books.
 app.use('/api/quickbooks', requireAdmin, quickbooksRouter);
 
