@@ -22,6 +22,33 @@ import { PageHeader, Loading, ErrorBox } from '../../components/ui.tsx';
 import { Field } from '../../components/admin/Field.tsx';
 import { EmailWidget } from '../../components/email/EmailWidget.tsx';
 import { AttachmentsWidget } from '../../components/attachments/AttachmentsWidget.tsx';
+import { FkCreateField, type QuickCreateContext } from '../../components/admin/FkSelectWithCreate.tsx';
+import { DonorQuickCreateModal } from '../../components/donor/DonorQuickCreateModal.tsx';
+import { ContactQuickCreateModal } from '../../components/quickCreate/ContactQuickCreateModal.tsx';
+import { AddressQuickCreateModal } from '../../components/quickCreate/AddressQuickCreateModal.tsx';
+import { VehicleQuickCreateModal } from '../../components/quickCreate/VehicleQuickCreateModal.tsx';
+import { CorpFacilityQuickCreateModal } from '../../components/quickCreate/CorpFacilityQuickCreateModal.tsx';
+import { FacilityStaffQuickCreateModal } from '../../components/quickCreate/FacilityStaffQuickCreateModal.tsx';
+import { PledgeQuickCreateModal } from '../../components/quickCreate/PledgeQuickCreateModal.tsx';
+import { CampaignQuickCreateModal } from '../../components/quickCreate/CampaignQuickCreateModal.tsx';
+
+/** Map FK target tables to the quick-create modal that creates a new
+ *  row of that type. When the generic admin form is rendering a field
+ *  pointing at one of these tables, it swaps in a "+ New" button so
+ *  the user doesn't have to navigate away to create the prereq. */
+const FK_QUICK_CREATE: Record<string, {
+  label: string;
+  render: (ctx: QuickCreateContext) => React.ReactNode;
+}> = {
+  tbl_donor:         { label: '+ New donor',    render: ctx => <DonorQuickCreateModal {...ctx} /> },
+  tbl_contact:       { label: '+ New contact',  render: ctx => <ContactQuickCreateModal {...ctx} /> },
+  tbl_address:       { label: '+ New address',  render: ctx => <AddressQuickCreateModal {...ctx} /> },
+  tbl_vehicle:       { label: '+ New vehicle',  render: ctx => <VehicleQuickCreateModal {...ctx} /> },
+  tbl_corp_facility: { label: '+ New facility', render: ctx => <CorpFacilityQuickCreateModal {...ctx} /> },
+  tbl_facility_staff:{ label: '+ New staff',    render: ctx => <FacilityStaffQuickCreateModal {...ctx} /> },
+  tbl_pledge:        { label: '+ New pledge',   render: ctx => <PledgeQuickCreateModal {...ctx} /> },
+  tbl_campaign:      { label: '+ New campaign', render: ctx => <CampaignQuickCreateModal {...ctx} /> },
+};
 
 /** Wraps EmailWidget for the contact admin form, building a friendly
  *  display name from first/last. */
@@ -335,17 +362,39 @@ export function AdminForm() {
 
       <form onSubmit={handleSubmit} className="card max-w-3xl">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          {formCols.map(col => (
-            <div key={col.name} className={col.type === 'textarea' ? 'sm:col-span-2' : ''}>
-              <Field
-                col={col}
-                value={values[col.name]}
-                initialFkLabel={existing?.fkLabels[col.name]?.[String(existing.row[col.name])]}
-                error={errors[col.name] ?? null}
-                onChange={v => handleFieldChange(col.name, v)}
-              />
-            </div>
-          ))}
+          {formCols.map(col => {
+            // FK columns that point at a table with a quick-create modal
+            // get a "+ New" affordance so the user can add a missing
+            // prereq inline instead of navigating away.
+            const qc = col.isFk && col.fkTable ? FK_QUICK_CREATE[col.fkTable] : undefined;
+            const initialFkLabel = existing?.fkLabels[col.name]?.[String(existing.row[col.name])];
+            return (
+              <div key={col.name} className={col.type === 'textarea' ? 'sm:col-span-2' : ''}>
+                {qc ? (
+                  <FkCreateField
+                    label={col.label}
+                    required={col.required}
+                    helpText={col.helpText}
+                    error={errors[col.name] ?? null}
+                    fkTable={col.fkTable!}
+                    value={values[col.name] ?? null}
+                    initialLabel={initialFkLabel}
+                    onChange={v => handleFieldChange(col.name, v)}
+                    newButtonLabel={qc.label}
+                    renderModal={qc.render}
+                  />
+                ) : (
+                  <Field
+                    col={col}
+                    value={values[col.name]}
+                    initialFkLabel={initialFkLabel}
+                    error={errors[col.name] ?? null}
+                    onChange={v => handleFieldChange(col.name, v)}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <div className="mt-7 pt-5 border-t border-hairline flex items-center justify-between gap-3 flex-wrap">
