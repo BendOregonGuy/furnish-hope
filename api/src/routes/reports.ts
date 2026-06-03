@@ -26,19 +26,22 @@ type Period = 'monthly' | 'quarterly' | 'yearly';
 interface BucketConfig {
   trunc: 'month' | 'quarter' | 'year';
   /** Trailing window for time-series. */
-  interval: string;       // 'INTERVAL '12 months''
+  interval: string;       // e.g. "12 months"
   /** KPI window — current period only. */
-  kpiInterval: string;    // 'INTERVAL '1 month'' etc.
+  kpiInterval: string;    // e.g. "1 month"
+  /** Step size for generate_series — PostgreSQL doesn't accept
+   *  "1 quarter" as an interval, so quarterly uses "3 months". */
+  stepInterval: string;
 }
 
 function getConfig(period: Period): BucketConfig {
   switch (period) {
     case 'monthly':
-      return { trunc: 'month',   interval: "12 months", kpiInterval: "1 month" };
+      return { trunc: 'month',   interval: "12 months", kpiInterval: "1 month",  stepInterval: "1 month" };
     case 'quarterly':
-      return { trunc: 'quarter', interval: "24 months", kpiInterval: "3 months" };
+      return { trunc: 'quarter', interval: "24 months", kpiInterval: "3 months", stepInterval: "3 months" };
     case 'yearly':
-      return { trunc: 'year',    interval: "5 years",   kpiInterval: "1 year" };
+      return { trunc: 'year',    interval: "5 years",   kpiInterval: "1 year",   stepInterval: "1 year" };
   }
 }
 
@@ -56,6 +59,7 @@ reportsRouter.get('/', async (req, res, next) => {
     const T = cfg.trunc;
     const I = cfg.interval;
     const K = cfg.kpiInterval;
+    const S = cfg.stepInterval;
 
     /* ---------- KPIs (current period only) ---------- */
     const kpis = await queryOne<any>(`
@@ -154,7 +158,7 @@ reportsRouter.get('/', async (req, res, next) => {
         FROM generate_series(
           DATE_TRUNC('${T}', NOW() - INTERVAL '${I}'),
           DATE_TRUNC('${T}', NOW()),
-          INTERVAL '1 ${T}'
+          INTERVAL '${S}'
         ) AS dd
       )
       SELECT b.bucket,
@@ -183,7 +187,7 @@ reportsRouter.get('/', async (req, res, next) => {
         FROM generate_series(
           DATE_TRUNC('${T}', NOW() - INTERVAL '${I}'),
           DATE_TRUNC('${T}', NOW()),
-          INTERVAL '1 ${T}'
+          INTERVAL '${S}'
         ) AS dd
       )
       SELECT b.bucket,
