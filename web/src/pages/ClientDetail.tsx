@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, formatShortDate, formatLongDate } from '../lib/api.ts';
 import { Avatar, Loading, ErrorBox, StatusPill } from '../components/ui.tsx';
+import { EmailWidget } from '../components/email/EmailWidget.tsx';
 
 type ClientDetailData = {
   client: any;
@@ -100,7 +101,11 @@ export function ClientDetail() {
       </div>
 
       <div className="grid grid-cols-[1fr_320px] gap-5">
-        <div className="card">
+        <div className="space-y-4">
+          {/* Email widget — your messages with this client */}
+          <EmailWidget email={c.email ?? null} displayName={fullName} />
+
+          <div className="card">
           <div className="card-head">
             <h3 className="font-display font-medium text-[17px] m-0">Provisioning requests</h3>
             <span className="text-xs text-ink-faint">{data.requests.length} total</span>
@@ -137,6 +142,7 @@ export function ClientDetail() {
               </tbody>
             </table>
           )}
+          </div>
         </div>
 
         <div className="space-y-4">

@@ -20,6 +20,14 @@ import {
 import { validateForm, type FormErrors } from '../../lib/adminValidate.ts';
 import { PageHeader, Loading, ErrorBox } from '../../components/ui.tsx';
 import { Field } from '../../components/admin/Field.tsx';
+import { EmailWidget } from '../../components/email/EmailWidget.tsx';
+
+/** Wraps EmailWidget for the contact admin form, building a friendly
+ *  display name from first/last. */
+function ContactEmailWidget({ email, firstName, lastName }: { email: string; firstName: string; lastName: string }) {
+  const name = `${firstName} ${lastName}`.trim() || email;
+  return <EmailWidget email={email} displayName={name} />;
+}
 
 export function AdminForm() {
   const { table, id } = useParams<{ table: string; id: string }>();
@@ -285,6 +293,20 @@ export function AdminForm() {
       {topError && (
         <div className="mb-5 p-3 bg-terracotta-soft text-terracotta-deep rounded-md text-sm">
           {topError}
+        </div>
+      )}
+
+      {/* Entity-specific extras. When viewing a single contact, show the
+          EmailWidget so staff can see correspondence with this person.
+          Useful for vendor / agency contacts that don't have their own
+          dedicated detail page. */}
+      {!isNew && meta.table === 'tbl_contact' && values.email && (
+        <div className="mb-5 max-w-3xl">
+          <ContactEmailWidget
+            email={String(values.email)}
+            firstName={String(values.first_name ?? '')}
+            lastName={String(values.last_name ?? '')}
+          />
         </div>
       )}
 

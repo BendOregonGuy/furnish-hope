@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useState } from 'react';
 import { apiDelete, apiGet, apiPost, formatShortDate, formatLongDate } from '../lib/api.ts';
 import { Avatar, Loading, ErrorBox } from '../components/ui.tsx';
+import { EmailWidget } from '../components/email/EmailWidget.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
 
 type Detail = {
@@ -114,7 +115,11 @@ export function VolunteerDetail() {
       </div>
 
       <div className="grid grid-cols-[1fr_320px] gap-5">
-        <div className="card">
+        <div className="space-y-4">
+          {/* Email widget — your messages with this staff/volunteer */}
+          <EmailWidget email={v.email ?? null} displayName={fullName} />
+
+          <div className="card">
           <div className="card-head">
             <h3 className="font-display font-medium text-[17px] m-0">Hours log</h3>
             <button className="btn-primary text-xs py-1.5 px-3" onClick={() => setShowForm(s => !s)}>
@@ -206,6 +211,7 @@ export function VolunteerDetail() {
               </tbody>
             </table>
           )}
+          </div>
         </div>
 
         <div className="space-y-4">
