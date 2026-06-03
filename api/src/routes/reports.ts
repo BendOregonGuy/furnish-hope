@@ -169,7 +169,7 @@ reportsRouter.get('/', async (req, res, next) => {
     const cycleTime = await query(`
       SELECT
         DATE_TRUNC('${T}', d.delivery_date) AS bucket,
-        ROUND(AVG(EXTRACT(EPOCH FROM (d.delivery_date - r.request_at::date)) / 86400.0)::numeric, 1) AS avg_days
+        ROUND(AVG(d.delivery_date - r.request_at::date)::numeric, 1) AS avg_days
       FROM tbl_client_deliveries d
       JOIN tbl_client_provisioning_request r ON r.client_provisioning_request_id = d.client_provisioning_request_id
       WHERE d.delivery_date >= NOW() - INTERVAL '${I}'
@@ -292,7 +292,7 @@ reportsRouter.get('/', async (req, res, next) => {
 
     const ackTurnaround = await query(`
       SELECT DATE_TRUNC('${T}', donation_date) AS bucket,
-             ROUND(AVG(EXTRACT(EPOCH FROM (acknowledgement_sent_date - donation_date)) / 86400.0)::numeric, 1) AS avg_days
+             ROUND(AVG(acknowledgement_sent_date - donation_date)::numeric, 1) AS avg_days
       FROM tbl_donation
       WHERE donation_date >= NOW() - INTERVAL '${I}'
         AND acknowledgement_sent_date IS NOT NULL
