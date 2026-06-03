@@ -16,22 +16,17 @@
  *   GET    /api/attachments/providers
  */
 
-import { Router, json } from 'express';
+import { Router } from 'express';
 import { query, queryOne } from '../db/pool.js';
 import { auditCreate, auditUpdate, auditDelete } from '../auth/audit.js';
 import { getProvider, getDefaultProvider, listProviders } from '../storage/index.js';
 
 export const attachmentsRouter = Router();
 
-/* ----------------------------------------------------------------- */
-/*  Body-parser limit                                                 */
-/*                                                                    */
-/*  The app's default JSON body limit is 1MB. File uploads land here  */
-/*  as base64-encoded JSON, so a 10MB file is ~13.4MB of JSON. Set a  */
-/*  higher cap on this router only — the global default stays small.  */
-/* ----------------------------------------------------------------- */
-
-attachmentsRouter.use(json({ limit: '20mb' }));
+// The body-parser body-size cap is enforced at the app level in
+// index.ts (a 20MB parser mounted on /api/attachments BEFORE the
+// global 1MB one). Router-level parsing here would be a no-op
+// because the body's already been consumed by then.
 
 const MAX_BYTES = 10 * 1024 * 1024;   // 10 MB
 const VALID_ENTITY_TYPES = new Set([

@@ -65,6 +65,12 @@ if (!IS_PROD) {
   }));
 }
 
+// File-attachment uploads ship as base64-encoded JSON, so a 10 MB file
+// becomes ~13.4 MB of body. Mount a higher-limit parser scoped to
+// /api/attachments BEFORE the global 1 MB parser — Express's body-parser
+// is idempotent, and whichever runs first wins. Without this, big
+// uploads die with "request entity too large" before the router runs.
+app.use('/api/attachments', express.json({ limit: '20mb' }));
 app.use(express.json({ limit: '1mb' }));
 app.use(createSessionMiddleware());
 
