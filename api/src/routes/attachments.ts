@@ -113,6 +113,47 @@ attachmentsRouter.post('/:entity_type/:entity_id', async (req, res, next) => {
 });
 
 /* ----------------------------------------------------------------- */
+/*  GET /:id/download — stream the file bytes                         */
+/*                                                                    */
+/*  IMPORTANT: must be declared BEFORE GET /:entity_type/:entity_id.  */
+/*  Express picks the first matching route, and `/123/download`       */
+/*  also matches the two-param list pattern. The literal "download"   */
+/*  segment in the path makes this one more specific, but Express     */
+/*  doesn't reorder for specificity — declaration order wins.         */
+/* ----------------------------------------------------------------- */
+
+attachmentsRouter.get('/:id/download', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+
+    const row = await queryOne<{
+      filename: string; mime_type: string; storage_provider: string; storage_ref: string; external_url: string | null;
+    }>(`
+      SELECT filename, mime_type, storage_provider, storage_ref, external_url
+      FROM tbl_entity_attachment WHERE attachment_id = $1
+    `, [id]);
+    if (!row) return res.status(404).json({ error: 'Attachment not found' });
+
+    // If the provider hosts the file externally (Drive, etc.) and we have
+    // a direct URL, redirect instead of streaming through us.
+    if (row.external_url) {
+      return res.redirect(row.external_url);
+    }
+
+    const provider = getProvider(row.storage_provider);
+    const bytes = await provider.get(row.storage_ref);
+
+    res.setHeader('Content-Type', row.mime_type);
+    res.setHeader('Content-Length', String(bytes.length));
+    // inline so PDFs/images render in the browser; downloads still
+    // work via the filename hint.
+    res.setHeader('Content-Disposition', `inline; filename="${row.filename.replace(/"/g, '')}"`);
+    res.send(bytes);
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
 /*  GET /:entity_type/:entity_id — list                               */
 /* ----------------------------------------------------------------- */
 
@@ -147,41 +188,6 @@ attachmentsRouter.get('/:entity_type/:entity_id', async (req, res, next) => {
     `, [entityType, entityId]);
 
     res.json(rows);
-  } catch (err) { next(err); }
-});
-
-/* ----------------------------------------------------------------- */
-/*  GET /:id/download — stream the file bytes                         */
-/* ----------------------------------------------------------------- */
-
-attachmentsRouter.get('/:id/download', async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
-
-    const row = await queryOne<{
-      filename: string; mime_type: string; storage_provider: string; storage_ref: string; external_url: string | null;
-    }>(`
-      SELECT filename, mime_type, storage_provider, storage_ref, external_url
-      FROM tbl_entity_attachment WHERE attachment_id = $1
-    `, [id]);
-    if (!row) return res.status(404).json({ error: 'Attachment not found' });
-
-    // If the provider hosts the file externally (Drive, etc.) and we have
-    // a direct URL, redirect instead of streaming through us.
-    if (row.external_url) {
-      return res.redirect(row.external_url);
-    }
-
-    const provider = getProvider(row.storage_provider);
-    const bytes = await provider.get(row.storage_ref);
-
-    res.setHeader('Content-Type', row.mime_type);
-    res.setHeader('Content-Length', String(bytes.length));
-    // inline so PDFs/images render in the browser; downloads still
-    // work via the filename hint.
-    res.setHeader('Content-Disposition', `inline; filename="${row.filename.replace(/"/g, '')}"`);
-    res.send(bytes);
   } catch (err) { next(err); }
 });
 
