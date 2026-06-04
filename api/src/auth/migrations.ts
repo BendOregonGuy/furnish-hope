@@ -1099,6 +1099,118 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+
+  // ============================================================
+  // Shift templates + holidays (2026-06-02)
+  // ------------------------------------------------------------
+  // Recurring-shift scaffolding. Admin defines templates ("Weekday
+  // AM Warehouse: Mon-Fri 8-12, capacity 3"); a Generate button
+  // creates actual shift rows for a date range, skipping holidays
+  // for templates that opt in. Generated shifts are normal rows —
+  // editable, cancellable, signup-able as usual.
+  //
+  // day_of_week_mask uses bit positions where bit 0 = Sunday,
+  // bit 1 = Monday, …, bit 6 = Saturday. Mon-Fri = 0b0111110 = 62.
+  // Saturday only = 0b1000000 = 64. Weekend = 0b1000001 = 65.
+  // ============================================================
+  {
+    name: 'tbl_shift_template',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_shift_template (
+          shift_template_id SERIAL PRIMARY KEY,
+          template_name     VARCHAR(120) NOT NULL,
+          shift_type_id     INTEGER NOT NULL REFERENCES lkp_shift_type(shift_type_id),
+          corp_facility_id  INTEGER REFERENCES tbl_corp_facility(corp_facility_id),
+          shift_name        VARCHAR(120),
+          start_time        TIME,
+          end_time          TIME,
+          capacity_needed   INTEGER NOT NULL DEFAULT 1,
+          notes             TEXT,
+          day_of_week_mask  SMALLINT NOT NULL DEFAULT 0,
+          skip_holidays     BOOLEAN  NOT NULL DEFAULT true,
+          is_active         BOOLEAN  NOT NULL DEFAULT true,
+          created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id)
+        )
+      `);
+    },
+  },
+  {
+    name: 'tbl_volunteer_shift.shift_template_id',
+    async run() {
+      // Track which template (if any) a generated shift came from. Lets the
+      // UI label generated shifts ("from Weekday AM Warehouse") and
+      // prevents duplicate generation for the same (template, date).
+      await query(`
+        ALTER TABLE tbl_volunteer_shift
+          ADD COLUMN IF NOT EXISTS shift_template_id INTEGER REFERENCES tbl_shift_template(shift_template_id) ON DELETE SET NULL
+      `);
+      await query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_volunteer_shift_template_date
+          ON tbl_volunteer_shift (shift_template_id, shift_date)
+          WHERE shift_template_id IS NOT NULL
+      `);
+    },
+  },
+  {
+    name: 'tbl_holiday',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_holiday (
+          holiday_id   SERIAL PRIMARY KEY,
+          holiday_date DATE NOT NULL UNIQUE,
+          holiday_name VARCHAR(120) NOT NULL,
+          is_active    BOOLEAN NOT NULL DEFAULT true,
+          notes        VARCHAR(200)
+        )
+      `);
+    },
+  },
+  {
+    name: 'seed federal holidays',
+    async run() {
+      // Federal holidays for the current calendar year and the next two.
+      // Picked at run time so a fresh install gets coverage regardless
+      // of when it starts up. Idempotent via UNIQUE (holiday_date).
+      const fixed: Array<[string, string]> = [
+        ['01-01', "New Year's Day"],
+        ['07-04', 'Independence Day'],
+        ['11-11', 'Veterans Day'],
+        ['12-25', 'Christmas Day'],
+        ['06-19', 'Juneteenth'],
+      ];
+      const thisYear = new Date().getUTCFullYear();
+      for (const yearOffset of [0, 1, 2]) {
+        const y = thisYear + yearOffset;
+        for (const [md, name] of fixed) {
+          await query(`
+            INSERT INTO tbl_holiday (holiday_date, holiday_name)
+            VALUES ($1::date, $2)
+            ON CONFLICT (holiday_date) DO NOTHING
+          `, [`${y}-${md}`, name]);
+        }
+        // Floating holidays — compute exact dates per year.
+        await query(`
+          INSERT INTO tbl_holiday (holiday_date, holiday_name) VALUES
+            ($1::date, 'Martin Luther King Jr. Day'),
+            ($2::date, 'Presidents Day'),
+            ($3::date, 'Memorial Day'),
+            ($4::date, 'Labor Day'),
+            ($5::date, 'Columbus Day / Indigenous Peoples Day'),
+            ($6::date, 'Thanksgiving Day')
+          ON CONFLICT (holiday_date) DO NOTHING
+        `, [
+          thirdMonday(y, 0),   // Jan, 3rd Monday
+          thirdMonday(y, 1),   // Feb, 3rd Monday
+          lastMonday(y, 4),    // May, last Monday
+          firstMonday(y, 8),   // Sep, 1st Monday
+          secondMonday(y, 9),  // Oct, 2nd Monday
+          fourthThursday(y, 10), // Nov, 4th Thursday
+        ]);
+      }
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */
@@ -1168,3 +1280,31 @@ function generateTempPassword(): string {
   const digits = crypto.randomInt(100, 999);
   return `${pick()}-${pick()}-${pick()}-${digits}`;
 }
+
+/* ----------------------------------------------------------------- */
+/*  Floating-holiday date helpers                                     */
+/*                                                                    */
+/*  Take year + 0-indexed month, return YYYY-MM-DD strings for the    */
+/*  named US federal holiday dates.                                   */
+/* ----------------------------------------------------------------- */
+
+function pad(n: number): string { return String(n).padStart(2, '0'); }
+
+function nthDayOfWeek(year: number, monthIdx: number, dayOfWeek: number, n: number): string {
+  // dayOfWeek: 0 = Sun, 1 = Mon, … 6 = Sat. n: 1..5 (use 5 for "last").
+  const first = new Date(Date.UTC(year, monthIdx, 1));
+  const firstDow = first.getUTCDay();
+  let day = 1 + ((dayOfWeek - firstDow + 7) % 7) + (n - 1) * 7;
+  // For n=5 ("last"), step back a week until we're in the month.
+  if (n === 5) {
+    const daysInMonth = new Date(Date.UTC(year, monthIdx + 1, 0)).getUTCDate();
+    while (day > daysInMonth) day -= 7;
+  }
+  return `${year}-${pad(monthIdx + 1)}-${pad(day)}`;
+}
+
+function firstMonday  (y: number, m: number): string { return nthDayOfWeek(y, m, 1, 1); }
+function secondMonday (y: number, m: number): string { return nthDayOfWeek(y, m, 1, 2); }
+function thirdMonday  (y: number, m: number): string { return nthDayOfWeek(y, m, 1, 3); }
+function lastMonday   (y: number, m: number): string { return nthDayOfWeek(y, m, 1, 5); }
+function fourthThursday(y: number, m: number): string { return nthDayOfWeek(y, m, 4, 4); }

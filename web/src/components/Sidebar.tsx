@@ -60,6 +60,8 @@ const sections: NavSection[] = [
     items: [
       { to: '/admin/settings',   name: 'Settings',       icon: 'gear',     adminOnly: true },
       { to: '/admin/quickbooks', name: 'QuickBooks',     icon: 'sync',     adminOnly: true },
+      { to: '/admin/shift-templates', name: 'Shift templates', icon: 'shift', adminOnly: true },
+      { to: '/admin/holidays',   name: 'Holidays',       icon: 'calendar', adminOnly: true },
       { to: '/admin/attachment-storage', name: 'Attachment storage', icon: 'database', adminOnly: true },
       { to: '/admin/activity',   name: 'Activity log',   icon: 'activity', adminOnly: true },
       { to: '/admin',            name: 'Database Admin', icon: 'database', adminOnly: true },

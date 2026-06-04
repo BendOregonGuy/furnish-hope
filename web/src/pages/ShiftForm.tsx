@@ -198,6 +198,17 @@ export function ShiftForm() {
       {topError && <div className="mb-5 p-3 bg-terracotta-soft text-terracotta-deep rounded-md text-sm">{topError}</div>}
 
       <form onSubmit={handleSubmit} className="space-y-5 max-w-3xl">
+        {isNew && <ApplyTemplateRow onApply={tpl => setValues(prev => ({
+          ...prev,
+          shift_type_id:    tpl.shift_type_id    ?? prev.shift_type_id,
+          corp_facility_id: tpl.corp_facility_id ?? prev.corp_facility_id,
+          shift_name:       prev.shift_name || tpl.shift_name || tpl.template_name || '',
+          start_time:       tpl.start_time ?? prev.start_time,
+          end_time:         tpl.end_time   ?? prev.end_time,
+          capacity_needed:  tpl.capacity_needed ?? prev.capacity_needed,
+          notes:            prev.notes || tpl.notes || '',
+        }))} />}
+
         <Section title="Shift" hint="When, where, and how many people you need.">
           <FieldGrid>{FIELDS.map(renderField)}</FieldGrid>
         </Section>
@@ -220,5 +231,71 @@ export function ShiftForm() {
         </div>
       </form>
     </>
+  );
+}
+
+/* ----------------------------------------------------------------- */
+/*  Apply-template row — only shown on /shifts/new                    */
+/* ----------------------------------------------------------------- */
+
+interface TemplateOption {
+  shift_template_id: number;
+  template_name: string;
+  shift_type_id: number;
+  corp_facility_id: number | null;
+  shift_name: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  capacity_needed: number;
+  notes: string | null;
+}
+
+function ApplyTemplateRow({ onApply }: { onApply: (tpl: TemplateOption) => void }) {
+  const [templates, setTemplates] = useState<TemplateOption[] | null>(null);
+  const [picked, setPicked] = useState<number | ''>('');
+
+  // Lazy load — only fetch if the user is on the new-shift page.
+  useEffect(() => {
+    apiGet<TemplateOption[]>('/api/shift-templates')
+      .then(rs => setTemplates(rs.filter((t: any) => t.is_active)))
+      .catch(() => setTemplates([]));
+  }, []);
+
+  if (!templates || templates.length === 0) return null;
+
+  return (
+    <div className="card bg-cream/40 border-dashed">
+      <div className="flex items-end gap-3 flex-wrap">
+        <div className="flex-1 min-w-[240px]">
+          <label className="field-label">Apply template (optional)</label>
+          <select
+            value={picked}
+            onChange={e => setPicked(e.target.value ? Number(e.target.value) : '')}
+            className="field-input"
+          >
+            <option value="">— Pick a template to pre-fill —</option>
+            {templates.map(t => (
+              <option key={t.shift_template_id} value={t.shift_template_id}>
+                {t.template_name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const tpl = templates.find(t => t.shift_template_id === picked);
+            if (tpl) onApply(tpl);
+          }}
+          disabled={!picked}
+          className="btn-primary disabled:opacity-50"
+        >
+          Apply
+        </button>
+      </div>
+      <div className="text-[11px] text-ink-faint mt-2">
+        Pre-fills type, facility, time, capacity, and notes — you can still change anything before saving.
+      </div>
+    </div>
   );
 }
