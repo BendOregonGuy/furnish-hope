@@ -1,6 +1,7 @@
 import { Link, NavLink } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth.tsx';
-import { initials } from '../lib/api.ts';
+import { apiGet, initials } from '../lib/api.ts';
 
 interface NavItem { to: string; name: string; icon: string; adminOnly?: boolean; }
 interface NavSection { label: string; items: NavItem[]; }
@@ -102,6 +103,17 @@ function Icon({ name }: { name: string }) {
 export function Sidebar() {
   const { user, logout } = useAuth();
 
+  // Unread mailbox count → badge on the Mailbox sidebar entry.
+  // Polls every 60s while the page is open so new mail shows up
+  // without the user having to refresh.
+  const { data: unread } = useQuery<{ count: number }>({
+    queryKey: ['mailbox', 'unread-count'],
+    queryFn: () => apiGet('/api/mailbox/unread-count'),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+  const unreadCount = unread?.count ?? 0;
+
   return (
     <aside className="w-[232px] bg-gradient-to-b from-[#1F1B16] to-[#2A241D] text-[#E8DFCD] py-5 flex flex-col">
       <div className="flex items-center gap-2.5 px-5 pb-5 border-b border-white/10">
@@ -135,7 +147,15 @@ export function Sidebar() {
                 <span className="w-4 h-4 inline-flex items-center justify-center opacity-85">
                   <Icon name={item.icon} />
                 </span>
-                {item.name}
+                <span className="flex-1">{item.name}</span>
+                {item.to === '/email/mailbox' && unreadCount > 0 && (
+                  <span
+                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-terracotta text-paper text-[10px] font-medium leading-none"
+                    title={`${unreadCount} unread`}
+                  >
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </NavLink>
             ))}
           </div>

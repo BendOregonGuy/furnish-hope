@@ -7,7 +7,7 @@
  *   reply form.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../../lib/api.ts';
 import { Loading, EmptyState } from '../ui.tsx';
@@ -25,6 +25,7 @@ export interface MessageListItem {
   has_attachments: boolean;
   sent_at: string;
   received_at: string | null;
+  read_at: string | null;
   account_email: string;
 }
 
@@ -73,27 +74,49 @@ function MessageRow({
     ? `To: ${msg.to_addresses.split(',')[0]}${msg.to_addresses.split(',').length > 1 ? ` +${msg.to_addresses.split(',').length - 1}` : ''}`
     : (msg.from_name ? `${msg.from_name} <${msg.from_address}>` : msg.from_address);
 
+  // Unread = inbound + never opened. Outbound messages are always "read"
+  // since the user authored them; we don't badge them as unread.
+  const isUnread = msg.direction === 'in' && !msg.read_at;
+
   return (
-    <div>
+    <div className={isUnread ? 'bg-terracotta/[0.04]' : ''}>
       <button
         type="button"
         onClick={onToggle}
-        className="w-full text-left px-3 py-3 hover:bg-terracotta/[0.025] flex items-baseline gap-3 cursor-pointer"
+        className="w-full text-left px-3 py-3 hover:bg-terracotta/[0.06] flex items-baseline gap-3 cursor-pointer"
       >
-        <span className={`inline-block w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0 ${msg.direction === 'out' ? 'bg-sage' : 'bg-terracotta'}`} />
+        {/* Status dot: solid colored when unread, hollow ring when read/sent. */}
+        <span
+          className={`inline-block w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
+            isUnread
+              ? 'bg-terracotta'
+              : msg.direction === 'out'
+                ? 'bg-sage/40'
+                : 'bg-ink-faint/30'
+          }`}
+          title={isUnread ? 'Unread' : 'Read'}
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 mb-0.5">
             <span className="text-[11px] text-ink-faint uppercase tracking-widest font-medium flex-shrink-0">
               {msg.direction === 'out' ? 'Sent' : 'Inbox'}
             </span>
-            <span className="font-medium truncate">{senderLabel}</span>
+            <span className={`truncate ${isUnread ? 'font-semibold text-ink' : 'font-medium'}`}>
+              {senderLabel}
+            </span>
             {msg.has_attachments && <span className="text-[10px] text-ink-faint">📎</span>}
             <span className="ml-auto text-[11px] text-ink-faint whitespace-nowrap">
               {new Date(msg.sent_at).toLocaleString()}
             </span>
           </div>
-          <div className="font-display text-base font-medium truncate text-ink">{msg.subject || '(no subject)'}</div>
-          {msg.body_preview && <div className="text-xs text-ink-soft truncate">{msg.body_preview}</div>}
+          <div className={`font-display text-base truncate ${isUnread ? 'font-semibold text-ink' : 'font-medium text-ink'}`}>
+            {msg.subject || '(no subject)'}
+          </div>
+          {msg.body_preview && (
+            <div className={`text-xs truncate ${isUnread ? 'text-ink' : 'text-ink-soft'}`}>
+              {msg.body_preview}
+            </div>
+          )}
         </div>
       </button>
       {expanded && <MessageDetail messageId={msg.message_id} onClose={onToggle} />}
@@ -118,6 +141,26 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
   const { data: msg, isLoading, error } = useQuery<FullMessage>({
     queryKey: ['mailbox', 'message', messageId],
     queryFn: () => apiGet(`/api/mailbox/messages/${messageId}`),
+  });
+
+  // Detail fetch auto-marks inbound messages as read on the server.
+  // Invalidate list queries so the row updates from unread → read
+  // styling without the user having to refresh. Also bumps the sidebar
+  // unread-count badge.
+  useEffect(() => {
+    if (msg && msg.direction === 'in') {
+      qc.invalidateQueries({ queryKey: ['mailbox', 'list'] });
+      qc.invalidateQueries({ queryKey: ['mailbox', 'participant'] });
+      qc.invalidateQueries({ queryKey: ['mailbox', 'unread-count'] });
+    }
+  }, [msg?.message_id, msg?.read_at, qc]);
+
+  const markUnreadMut = useMutation({
+    mutationFn: () => apiPost(`/api/mailbox/messages/${messageId}/mark-unread`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['mailbox'] });
+      onClose();
+    },
   });
 
   const [replyOpen, setReplyOpen] = useState(false);
@@ -174,6 +217,15 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
             <button onClick={() => { setReplyOpen(true); setReplyAll(false); }} className="btn-primary text-xs">Reply</button>
             {msg.cc_addresses && (
               <button onClick={() => { setReplyOpen(true); setReplyAll(true); }} className="btn-ghost text-xs">Reply all</button>
+            )}
+            {msg.direction === 'in' && (
+              <button
+                onClick={() => markUnreadMut.mutate()}
+                disabled={markUnreadMut.isPending}
+                className="text-xs text-ink-faint hover:text-terracotta"
+              >
+                Mark as unread
+              </button>
             )}
             <button onClick={onClose} className="text-xs text-ink-faint hover:text-terracotta ml-auto">Collapse</button>
           </div>

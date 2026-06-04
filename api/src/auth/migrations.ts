@@ -1211,6 +1211,31 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+
+  // ============================================================
+  // Email read/unread state (2026-06-02)
+  // ------------------------------------------------------------
+  // read_at = NULL → unread (for inbound only). Outbound messages
+  // ("Sent" folder) don't have a read concept — the sender authored
+  // them — so we always treat direction='out' as "read." Auto-stamp
+  // happens server-side when GET /api/mailbox/messages/:id loads.
+  // ============================================================
+  {
+    name: 'tbl_email_message.read_at',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_email_message
+          ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ
+      `);
+      // Index for the unread-count query — partial so it only covers
+      // the few unread rows, keeping it tiny.
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_email_message_unread
+          ON tbl_email_message (user_account_id)
+          WHERE read_at IS NULL AND direction = 'in'
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

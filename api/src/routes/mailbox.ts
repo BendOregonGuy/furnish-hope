@@ -109,6 +109,7 @@ mailboxRouter.get('/messages', async (req, res, next) => {
         m.has_attachments,
         m.sent_at,
         m.received_at,
+        m.read_at,
         a.email_address AS account_email
       FROM tbl_email_message m
       JOIN tbl_email_account a ON a.email_account_id = m.email_account_id
@@ -118,6 +119,23 @@ mailboxRouter.get('/messages', async (req, res, next) => {
     `, params);
 
     res.json(rows);
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  GET /unread-count — for the sidebar badge                         */
+/* ----------------------------------------------------------------- */
+
+mailboxRouter.get('/unread-count', async (req, res, next) => {
+  try {
+    const row = await queryOne<{ count: string }>(`
+      SELECT COUNT(*)::text AS count
+      FROM tbl_email_message
+      WHERE user_account_id = $1
+        AND direction = 'in'
+        AND read_at IS NULL
+    `, [req.user!.user_account_id]);
+    res.json({ count: Number(row?.count ?? 0) });
   } catch (err) { next(err); }
 });
 
@@ -140,7 +158,57 @@ mailboxRouter.get('/messages/:id', async (req, res, next) => {
     `, [id, req.user!.user_account_id]);
     if (!m) return res.status(404).json({ error: 'Message not found' });
 
+    // Auto-mark inbound messages as read on first detail-fetch. Only
+    // inbound (direction='in') — outbound messages are "read" by
+    // definition (the user wrote them). COALESCE preserves the original
+    // read_at if it's already set, so the stamp is stable.
+    if (m.direction === 'in' && !m.read_at) {
+      await query(`
+        UPDATE tbl_email_message
+           SET read_at = COALESCE(read_at, NOW())
+         WHERE message_id = $1 AND user_account_id = $2
+      `, [id, req.user!.user_account_id]);
+      m.read_at = new Date().toISOString();
+    }
+
     res.json(m);
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  POST /messages/:id/mark-unread — undo auto-read                   */
+/* ----------------------------------------------------------------- */
+
+mailboxRouter.post('/messages/:id/mark-unread', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+    await query(
+      `UPDATE tbl_email_message SET read_at = NULL WHERE message_id = $1 AND user_account_id = $2`,
+      [id, req.user!.user_account_id],
+    );
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  POST /mark-all-read                                                */
+/* ----------------------------------------------------------------- */
+
+mailboxRouter.post('/mark-all-read', async (req, res, next) => {
+  try {
+    const result = await query<{ count: string }>(`
+      WITH updated AS (
+        UPDATE tbl_email_message
+           SET read_at = NOW()
+         WHERE user_account_id = $1
+           AND direction = 'in'
+           AND read_at IS NULL
+         RETURNING 1
+      )
+      SELECT COUNT(*)::text AS count FROM updated
+    `, [req.user!.user_account_id]);
+    res.json({ marked: Number(result[0]?.count ?? 0) });
   } catch (err) { next(err); }
 });
 

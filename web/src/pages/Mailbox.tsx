@@ -62,6 +62,17 @@ export function Mailbox() {
     onError: (e: any) => window.alert(e.message ?? 'Sync failed'),
   });
 
+  const { data: unread } = useQuery<{ count: number }>({
+    queryKey: ['mailbox', 'unread-count'],
+    queryFn: () => apiGet('/api/mailbox/unread-count'),
+  });
+
+  const markAllReadMut = useMutation({
+    mutationFn: () => apiPost<{ marked: number }>('/api/mailbox/mark-all-read', {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mailbox'] }),
+    onError: (e: any) => window.alert(e.message ?? 'Failed to mark all read'),
+  });
+
   const totalNew = syncResult?.reduce((s, r) => s + r.inbox_new + r.sent_new, 0) ?? 0;
   const anyError = syncResult?.some(r => !!r.error) ?? false;
 
@@ -81,6 +92,19 @@ export function Mailbox() {
         subtitle="Your sent and received messages across every connected email account. Reply inline; compose from Email → Compose."
         actions={
           <>
+            {unread && unread.count > 0 && (
+              <button
+                onClick={() => {
+                  if (window.confirm(`Mark all ${unread.count} unread message${unread.count === 1 ? '' : 's'} as read?`)) {
+                    markAllReadMut.mutate();
+                  }
+                }}
+                disabled={markAllReadMut.isPending}
+                className="btn-ghost text-xs disabled:opacity-60"
+              >
+                Mark all read ({unread.count})
+              </button>
+            )}
             <Link to="/email/compose" className="btn-ghost">Compose</Link>
             <button
               onClick={() => syncMut.mutate()}
