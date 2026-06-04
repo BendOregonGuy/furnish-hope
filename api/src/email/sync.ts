@@ -25,6 +25,8 @@ export interface SyncSummary {
   inbox_new: number;
   sent_new: number;
   error: string | null;
+  inbox_error?: string | null;
+  sent_error?: string | null;
 }
 
 /**
@@ -62,21 +64,32 @@ async function syncOneAccount(
   const client = buildImapClient(acct);
   await client.connect();
   try {
-    // INBOX first.
+    // INBOX first. We bubble errors up via the per-folder error field
+    // so the user can see WHY a folder didn't sync (vs the previous
+    // behavior where INBOX failures showed as "0 new" with no clue why).
     let inboxNew = 0;
+    let inboxError: string | null = null;
     try { inboxNew = await syncFolder(client, acct, userId, 'INBOX', 'in', opts?.limit ?? 100); }
-    catch (err: any) { console.error('[email:sync] INBOX failed:', err.message); }
+    catch (err: any) {
+      inboxError = (err?.message ?? String(err)).slice(0, 300);
+      console.error('[email:sync] INBOX failed:', inboxError);
+    }
 
     // Sent folder — try each candidate name until one works.
     let sentNew = 0;
+    let sentError: string | null = null;
+    let sentMatched = false;
     for (const name of SENT_FOLDER_CANDIDATES) {
       try {
         sentNew = await syncFolder(client, acct, userId, name, 'out', opts?.limit ?? 100);
+        sentMatched = true;
         break;
-      } catch {
-        // Folder doesn't exist on this provider; try the next.
+      } catch (err: any) {
+        // Try the next candidate. Hold the last error in case nothing matches.
+        sentError = (err?.message ?? String(err)).slice(0, 300);
       }
     }
+    if (sentMatched) sentError = null;     // success on a later candidate — clear
 
     return {
       account_id: acct.email_account_id,
@@ -84,6 +97,8 @@ async function syncOneAccount(
       inbox_new: inboxNew,
       sent_new: sentNew,
       error: null,
+      inbox_error: inboxError,
+      sent_error: sentMatched ? null : sentError,
     };
   } finally {
     try { await client.logout(); } catch { /* ignore */ }
@@ -107,11 +122,15 @@ async function syncFolder(
     `, [acct.email_account_id, folderName]);
     const sinceUid = (stateRow?.last_uid ?? 0) + 1;
 
-    // Search for messages after the cursor — capped at `limit` so a fresh
-    // huge mailbox doesn't melt the server. Older messages can be pulled by
-    // resetting the cursor (advanced — not exposed in v1 UI).
-    const uids: number[] = await client.search({ uid: `${sinceUid}:*` }, { uid: true });
-    const newUids = uids.filter(u => u >= sinceUid).slice(-limit);
+    // Search for ALL UIDs in the folder, then filter client-side. The
+    // alternative — passing `{uid: 'X:*'}` as a search criterion — is
+    // unreliable across IMAP providers (Gmail in particular often
+    // returns empty results for that pattern). Client-side filtering
+    // costs us a slightly larger search response but is the reference
+    // pattern from the imapflow project itself.
+    const allUids: number[] = await client.search({}, { uid: true }) || [];
+    const newUids = allUids.filter(u => u >= sinceUid).slice(-limit);
+    console.log(`[email:sync] ${folderName}: ${allUids.length} total UIDs, ${newUids.length} new (cursor=${sinceUid - 1})`);
 
     if (newUids.length === 0) {
       // Touch last_synced_at so the UI shows "synced just now".

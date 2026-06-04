@@ -23,6 +23,8 @@ interface SyncSummary {
   inbox_new: number;
   sent_new: number;
   error: string | null;
+  inbox_error?: string | null;
+  sent_error?: string | null;
 }
 
 interface SyncState {
@@ -74,7 +76,7 @@ export function Mailbox() {
   });
 
   const totalNew = syncResult?.reduce((s, r) => s + r.inbox_new + r.sent_new, 0) ?? 0;
-  const anyError = syncResult?.some(r => !!r.error) ?? false;
+  const anyError = syncResult?.some(r => !!r.error || !!r.inbox_error || !!r.sent_error) ?? false;
 
   // Friendly "last synced" — pick the most recent across all accounts/folders.
   const lastSyncedAt = syncStates && syncStates.length > 0
@@ -122,16 +124,19 @@ export function Mailbox() {
         <div className={`mb-4 p-3 rounded-md text-sm ${anyError ? 'bg-terracotta-soft text-terracotta-deep' : 'bg-sage-soft text-[#3F4A33]'}`}>
           {anyError ? '⚠ ' : '✓ '}
           Synced — {totalNew} new message{totalNew === 1 ? '' : 's'} across {syncResult.length} account{syncResult.length === 1 ? '' : 's'}.
-          {anyError && (
-            <details className="mt-2 text-xs">
-              <summary className="cursor-pointer">Show details</summary>
-              <ul className="mt-1 ml-5 list-disc">
-                {syncResult.filter(r => r.error).map(r => (
-                  <li key={r.account_id}><strong>{r.account_email}:</strong> {r.error}</li>
-                ))}
-              </ul>
-            </details>
-          )}
+          <details className="mt-2 text-xs" open={anyError}>
+            <summary className="cursor-pointer">Show per-account details</summary>
+            <ul className="mt-1 ml-5 list-disc space-y-1">
+              {syncResult.map(r => (
+                <li key={r.account_id}>
+                  <strong>{r.account_email}:</strong> inbox +{r.inbox_new}, sent +{r.sent_new}
+                  {r.error       && <div className="text-terracotta-deep">⚠ {r.error}</div>}
+                  {r.inbox_error && <div className="text-terracotta-deep">⚠ INBOX: {r.inbox_error}</div>}
+                  {r.sent_error  && <div className="text-terracotta-deep">⚠ Sent folder: {r.sent_error}</div>}
+                </li>
+              ))}
+            </ul>
+          </details>
         </div>
       )}
 
