@@ -120,27 +120,41 @@ async function syncFolder(
       SELECT last_uid FROM tbl_email_sync_state
       WHERE email_account_id = $1 AND folder = $2
     `, [acct.email_account_id, folderName]);
-    const sinceUid = (stateRow?.last_uid ?? 0) + 1;
+    const lastUid = stateRow?.last_uid ?? 0;
 
-    // Search for ALL UIDs in the folder, then filter client-side. The
-    // alternative — passing `{uid: 'X:*'}` as a search criterion — is
-    // unreliable across IMAP providers (Gmail in particular often
-    // returns empty results for that pattern). Client-side filtering
-    // costs us a slightly larger search response but is the reference
-    // pattern from the imapflow project itself.
-    const allUids: number[] = await client.search({}, { uid: true }) || [];
-    const newUids = allUids.filter(u => u >= sinceUid).slice(-limit);
-    console.log(`[email:sync] ${folderName}: ${allUids.length} total UIDs, ${newUids.length} new (cursor=${sinceUid - 1})`);
+    // After getMailboxLock the mailbox is open and client.mailbox holds
+    // its current state. uidNext is what the server will assign to the
+    // NEXT message; uidNext - 1 is the highest UID currently in the
+    // folder. We skip client.search() entirely (which we found
+    // unreliable across providers) and fetch the UID range directly.
+    const mailbox = client.mailbox;
+    const exists  = mailbox?.exists ?? 0;
+    const uidNext = Number(mailbox?.uidNext ?? 0);
+    const highestUid = uidNext > 0 ? uidNext - 1 : 0;
 
-    if (newUids.length === 0) {
-      // Touch last_synced_at so the UI shows "synced just now".
-      await upsertSyncState(acct.email_account_id, folderName, stateRow?.last_uid ?? 0, null);
+    console.log(`[email:sync] ${folderName}: exists=${exists}, uidNext=${uidNext}, lastSyncedUid=${lastUid}`);
+
+    if (exists === 0 || highestUid <= lastUid) {
+      // Nothing new. Touch last_synced_at so the UI shows "just now."
+      await upsertSyncState(acct.email_account_id, folderName, lastUid, null);
       return 0;
     }
 
+    // Compute the UID range to fetch. Cap to the most recent `limit`
+    // so a first sync of a huge mailbox doesn't melt the server.
+    const fromUid = Math.max(lastUid + 1, highestUid - limit + 1);
+    const toUid   = highestUid;
+    const range   = `${fromUid}:${toUid}`;
+
     let imported = 0;
-    let maxUid = stateRow?.last_uid ?? 0;
-    for await (const msg of client.fetch(newUids, { uid: true, source: true, envelope: true, internalDate: true, flags: true })) {
+    let maxUid   = lastUid;
+    // Third arg {uid: true} tells fetch the sequence set is UIDs, not
+    // sequence numbers — critical for incremental sync correctness.
+    for await (const msg of client.fetch(
+      range,
+      { uid: true, source: true, envelope: true, internalDate: true, flags: true },
+      { uid: true },
+    )) {
       try {
         const parsed = await simpleParser(msg.source as Buffer);
         await persistMessage({
@@ -159,6 +173,7 @@ async function syncFolder(
       }
     }
 
+    console.log(`[email:sync] ${folderName}: imported ${imported} messages (UID range ${range})`);
     await upsertSyncState(acct.email_account_id, folderName, maxUid, null);
     return imported;
   } finally {
