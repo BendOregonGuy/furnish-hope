@@ -221,13 +221,13 @@ function TemplateForm({ existing, onClose, onSaved }: {
 
         <div className="px-5 py-4 max-h-[calc(100vh-220px)] overflow-y-auto space-y-3">
           <div>
-            <label className="field-label">Template name *</label>
+            <RequiredLabel>Template name</RequiredLabel>
             <input type="text" className="field-input" value={v.template_name} onChange={e => setV({ ...v, template_name: e.target.value })} placeholder="e.g. Weekday AM Warehouse" maxLength={120} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Shift type *</label>
+              <RequiredLabel>Shift type</RequiredLabel>
               <FkSelect fkTable="lkp_shift_type" value={v.shift_type_id} onChange={id => setV({ ...v, shift_type_id: id })} required />
             </div>
             <div>
@@ -246,13 +246,13 @@ function TemplateForm({ existing, onClose, onSaved }: {
               <input type="time" className="field-input" value={v.end_time} onChange={e => setV({ ...v, end_time: e.target.value })} />
             </div>
             <div>
-              <label className="field-label">Capacity *</label>
+              <RequiredLabel>Capacity</RequiredLabel>
               <input type="number" min={1} className="field-input" value={v.capacity_needed} onChange={e => setV({ ...v, capacity_needed: Number(e.target.value) || 1 })} />
             </div>
           </div>
 
           <div>
-            <label className="field-label">Days of week *</label>
+            <RequiredLabel>Days of week this template applies to</RequiredLabel>
             <div className="flex gap-1 mt-1">
               {DAY_LABELS.map((d, i) => {
                 const on = ((v.day_of_week_mask >> i) & 1) === 1;
@@ -277,6 +277,12 @@ function TemplateForm({ existing, onClose, onSaved }: {
               <button type="button" onClick={() => setV({ ...v, day_of_week_mask: 0b0111110 })} className="text-ink-faint hover:text-terracotta">Mon–Fri</button>
               <button type="button" onClick={() => setV({ ...v, day_of_week_mask: 0b1000001 })} className="text-ink-faint hover:text-terracotta">Sat + Sun</button>
               <button type="button" onClick={() => setV({ ...v, day_of_week_mask: 0b1111111 })} className="text-ink-faint hover:text-terracotta">Every day</button>
+            </div>
+            <div className="text-[11px] text-ink-faint mt-1.5 leading-snug">
+              Pick which days of the week this template should create shifts on.
+              When you click <strong>Generate shifts</strong>, the system creates one
+              shift per matching weekday in your chosen date range. At least one day
+              must be selected, otherwise the template would never generate anything.
             </div>
           </div>
 
@@ -386,6 +392,18 @@ function GenerateModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
 
 function Th({ children, className }: { children: React.ReactNode; className?: string }) {
   return <th className={`text-left px-4 py-2.5 text-[10px] uppercase tracking-widest text-ink-faint font-medium ${className ?? ''}`}>{children}</th>;
+}
+
+/** Field label with a clearly-styled required indicator. Matches the
+ *  pattern used by the generic <Field> component (terracotta asterisk,
+ *  inline-flex layout) so required fields look the same everywhere. */
+function RequiredLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <label className="field-label flex items-center gap-1">
+      {children}
+      <span className="text-terracotta" title="Required">*</span>
+    </label>
+  );
 }
 
 function formatTime(t: string): string {

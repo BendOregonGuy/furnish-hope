@@ -552,6 +552,24 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
       uploaded_at: { label: 'Uploaded at', hideInForm: true }, // system-set on upload
     },
   },
+  // Shift templates have a dedicated admin page at /admin/shift-templates
+  // with friendly day-of-week toggles. Keep the table listed in the
+  // generic admin tool for diagnostics, but hide the raw mask column
+  // from the auto-form so it doesn't ask non-technical users to enter
+  // a bitmask integer.
+  tbl_shift_template: {
+    group: 'Operations',
+    label: 'Shift Templates (raw)',
+    singular: 'Shift Template',
+    displaySql: 't.template_name',
+    columns: {
+      day_of_week_mask: {
+        label: 'Day-of-week bitmask',
+        hideInForm: true,    // managed via the friendly toggles on /admin/shift-templates
+      },
+      created_at: { label: 'Created at', hideInForm: true },
+    },
+  },
 };
 
 /**
