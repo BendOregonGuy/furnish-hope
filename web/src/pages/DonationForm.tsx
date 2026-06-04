@@ -218,6 +218,33 @@ export function DonationForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCheckMethod]);
 
+  // Auto-fill pledge_id when the picked donor has exactly one open
+  // pledge. Saves a manual lookup on most gifts toward a commitment.
+  // Only fires if pledge_id is empty — we never overwrite an
+  // intentional override. If the donor has 0 or 2+ open pledges,
+  // pledge_id stays blank for manual choice.
+  useEffect(() => {
+    if (!values.donor_id) return;
+    if (values.pledge_id) return;
+    let cancelled = false;
+    apiGet<{ pledges: Array<{ pledge_id: number; pledge_status: string; amount_outstanding: number | string }> }>(
+      `/api/donors/${values.donor_id}`,
+    )
+      .then(r => {
+        if (cancelled) return;
+        const open = (r.pledges ?? []).filter(p =>
+          p.pledge_status !== 'Fulfilled' && p.pledge_status !== 'Cancelled' && Number(p.amount_outstanding ?? 0) > 0,
+        );
+        if (open.length === 1) {
+          setValues(prev => prev.pledge_id
+            ? prev                                                       // user filled it while we waited
+            : { ...prev, pledge_id: open[0].pledge_id });
+        }
+      })
+      .catch(() => { /* ignore — leave the field blank for the user */ });
+    return () => { cancelled = true; };
+  }, [values.donor_id]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   /* Dirty tracking */
   const { isDirty, safeNavigate } = useUnsavedChanges({
     values: { ...values, _d: designations, _s: securities, _c: check },
