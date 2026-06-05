@@ -316,6 +316,15 @@ function MessageBody({ msg }: { msg: FullMessage }) {
     return sanitizeAndRewrite(msg.body_html, msg.message_id, msg.attachments ?? []);
   }, [msg.body_html, msg.message_id, msg.attachments]);
 
+  // Plain-text fallback also gets linkified — bare URLs and email
+  // addresses in the body become clickable <a target=_blank>. Done
+  // by escaping the text first (so the body itself can never inject
+  // HTML), then swapping in anchor tags only for matched URLs.
+  const linkedPlainText = useMemo(() => {
+    if (!msg.body_text) return null;
+    return linkifyPlainText(msg.body_text);
+  }, [msg.body_text]);
+
   if (html) {
     return (
       <div
@@ -325,11 +334,72 @@ function MessageBody({ msg }: { msg: FullMessage }) {
     );
   }
 
+  if (linkedPlainText) {
+    return (
+      <div
+        className="bg-paper rounded p-3 mb-3 text-sm whitespace-pre-wrap font-sans max-h-96 overflow-y-auto email-body"
+        dangerouslySetInnerHTML={{ __html: linkedPlainText }}
+      />
+    );
+  }
+
   return (
     <div className="bg-paper rounded p-3 mb-3 text-sm whitespace-pre-wrap font-sans max-h-96 overflow-y-auto">
-      {msg.body_text || <span className="text-ink-faint italic">(empty body)</span>}
+      <span className="text-ink-faint italic">(empty body)</span>
     </div>
   );
+}
+
+/** Turn bare URLs and email addresses in plain text into clickable
+ *  anchors that open in a new tab. Safe to feed the result to
+ *  dangerouslySetInnerHTML because we HTML-escape the input first —
+ *  the only tags we add are our own <a> elements with sanitized
+ *  href values (http/https/mailto only).
+ *
+ *  Matches:
+ *    - http://… and https://… URLs
+ *    - www.…   URLs (prefixed with https:// in the href)
+ *    - bare email addresses (prefixed with mailto:)
+ *
+ *  Trailing sentence punctuation (.,;:!?)]) is stripped from the link
+ *  text and kept as the surrounding text so "See https://example.com."
+ *  links the URL but keeps the period outside the anchor.
+ */
+function linkifyPlainText(text: string): string {
+  // Escape HTML special chars FIRST — anything left from this point on
+  // is plain text plus the anchors we add ourselves.
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  const URL_RE = /\b(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})\b/gi;
+  const TRAILING_PUNCT = /[.,;:!?)\]]+$/;
+
+  return escaped.replace(URL_RE, (match) => {
+    // Strip trailing punctuation so "look at https://x.com." → link
+    // text is "https://x.com" with the period rendered after the link.
+    const trimmedMatch = match.replace(TRAILING_PUNCT, '');
+    const trail = match.slice(trimmedMatch.length);
+
+    let href: string;
+    if (/^https?:/i.test(trimmedMatch)) {
+      href = trimmedMatch;
+    } else if (/^www\./i.test(trimmedMatch)) {
+      href = 'https://' + trimmedMatch;
+    } else {
+      // Email address.
+      href = 'mailto:' + trimmedMatch;
+    }
+
+    // Belt-and-suspenders: only emit http/https/mailto hrefs. Anything
+    // else falls through unchanged.
+    if (!/^(https?:|mailto:)/i.test(href)) return match;
+
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${trimmedMatch}</a>${trail}`;
+  });
 }
 
 /** Run DOMPurify with a conservative allowlist, then rewrite the

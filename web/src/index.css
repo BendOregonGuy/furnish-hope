@@ -63,4 +63,15 @@
   .admin-field-error button.field-input {
     @apply border-terracotta bg-terracotta-soft/40;
   }
+
+  /* Anchor styling inside an email body — makes URLs in incoming
+     messages visually clickable. Otherwise our base reset leaves them
+     looking like regular text. Applied via .email-body so it doesn't
+     leak into other links. */
+  .email-body a {
+    @apply text-terracotta underline underline-offset-2;
+  }
+  .email-body a:hover {
+    @apply text-terracotta-deep;
+  }
 }
