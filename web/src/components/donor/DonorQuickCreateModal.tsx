@@ -105,6 +105,11 @@ export function DonorQuickCreateModal({ onCreated, onCancel }: QuickCreateContex
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // stopPropagation so this submit doesn't bubble out to whatever
+    // outer admin / pickup / donation form opened the modal. If it
+    // bubbles, that outer form's onSubmit fires too and tries to save
+    // its own (incomplete) record, navigating away and wiping data.
+    e.stopPropagation();
     setTopError(null);
     // Light client-side validation — the server validates authoritatively
     // but catching obvious gaps here gives faster feedback.

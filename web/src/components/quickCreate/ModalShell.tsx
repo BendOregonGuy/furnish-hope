@@ -18,8 +18,21 @@ export function ModalShell({
   topError?: string | null;
   children: ReactNode;
 }) {
+  // Wrap the caller's onSubmit so that BEFORE we run their save logic we
+  // also stop the submit event from bubbling out of this modal. If we
+  // don't, the event continues up the React tree to whatever outer admin
+  // / pickup / delivery form opened us — that outer form's onSubmit then
+  // tries to save its own record, which (when the user hasn't filled it
+  // out yet) navigates them away and wipes their progress. preventDefault
+  // alone only stops the native form action; stopPropagation is what
+  // stops ancestor onSubmit handlers from firing.
+  function handleSubmitWithStop(e: React.FormEvent) {
+    e.stopPropagation();
+    onSubmit(e);
+  }
+
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={handleSubmitWithStop}>
       <div className="px-5 py-4 border-b border-hairline flex items-baseline justify-between">
         <div>
           <h2 className="font-display text-xl font-medium m-0">{title}</h2>
