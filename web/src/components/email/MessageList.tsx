@@ -7,11 +7,21 @@
  *   reply form.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import DOMPurify from 'dompurify';
 import { apiGet, apiPost } from '../../lib/api.ts';
 import { Loading, EmptyState } from '../ui.tsx';
 import { useAttachments, AttachmentPicker } from './attachments.tsx';
+
+export interface EmailAttachmentMeta {
+  email_attachment_id: number;
+  filename: string;
+  content_type: string | null;
+  size_bytes: number;
+  is_inline: boolean;
+  content_id: string | null;
+}
 
 export interface MessageListItem {
   message_id: number;
@@ -134,6 +144,7 @@ interface FullMessage extends MessageListItem {
   cc_addresses: string;
   account_email: string;
   message_id_header: string | null;
+  attachments?: EmailAttachmentMeta[];
 }
 
 function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () => void }) {
@@ -206,12 +217,19 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
             <div>{new Date(msg.sent_at).toLocaleString()}</div>
           </div>
 
-          {/* Body. Prefer text/plain; if only HTML is present, strip tags
-              defensively before rendering — we never want to render
-              untrusted HTML directly into our DOM. */}
-          <div className="bg-paper rounded p-3 mb-3 text-sm whitespace-pre-wrap font-sans max-h-96 overflow-y-auto">
-            {msg.body_text || stripHtml(msg.body_html ?? '') || <span className="text-ink-faint italic">(empty body)</span>}
-          </div>
+          {/* Body. If the message has an HTML part, render it sanitized
+              via DOMPurify — that lets inline images, links, and basic
+              formatting come through while stripping scripts and event
+              handlers. If only plain text is present, render that with
+              whitespace preserved. Inline images (cid: refs) get
+              rewritten to point at our /attachments/:id endpoint. */}
+          <MessageBody msg={msg} />
+
+          {/* Non-inline attachments — files the sender attached but did
+              not embed in the body (PDFs, docs, photos sent as files,
+              etc). Inline images are excluded because they're already
+              shown in the body. */}
+          <AttachmentChips msg={msg} />
 
           <div className="flex gap-2 flex-wrap items-center">
             {/* type="button" everywhere — MessageList is embedded in admin
@@ -279,20 +297,150 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
   );
 }
 
-/** Defensive HTML strip — never render arbitrary HTML from email, so
- *  collapse to text. Keeps line breaks readable. */
-function stripHtml(html: string): string {
-  return html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, '\n\n');
+/* ----------------------------------------------------------------- */
+/*  Body renderer + attachments                                       */
+/* ----------------------------------------------------------------- */
+
+/** Render the email body. Prefers HTML (sanitized + cid: rewritten);
+ *  falls back to plain text with whitespace preserved.
+ *
+ *  Security note: DOMPurify with a tight tag/attr allowlist scrubs all
+ *  script execution vectors (<script>, on* attrs, javascript: URLs,
+ *  <object>, <iframe>, etc). We additionally rewrite `src` attributes
+ *  on <img> to either our own attachment endpoint (for cid: refs) or
+ *  drop them entirely (so remote tracking pixels don't load on open).
+ *  Links are left intact but get target=_blank + rel=noopener. */
+function MessageBody({ msg }: { msg: FullMessage }) {
+  const html = useMemo(() => {
+    if (!msg.body_html) return null;
+    return sanitizeAndRewrite(msg.body_html, msg.message_id, msg.attachments ?? []);
+  }, [msg.body_html, msg.message_id, msg.attachments]);
+
+  if (html) {
+    return (
+      <div
+        className="bg-paper rounded p-3 mb-3 text-sm font-sans max-h-[32rem] overflow-y-auto email-body"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  }
+
+  return (
+    <div className="bg-paper rounded p-3 mb-3 text-sm whitespace-pre-wrap font-sans max-h-96 overflow-y-auto">
+      {msg.body_text || <span className="text-ink-faint italic">(empty body)</span>}
+    </div>
+  );
+}
+
+/** Run DOMPurify with a conservative allowlist, then rewrite the
+ *  resulting DOM so:
+ *    - <img src="cid:abc"> → src="/api/mailbox/messages/:id/attachments/:aid"
+ *    - <img src="http(s)://..."> → src dropped (no remote loads)
+ *    - <a href> gets target=_blank + rel=noopener
+ *  Returns final HTML string ready to feed to dangerouslySetInnerHTML. */
+function sanitizeAndRewrite(html: string, messageId: number, attachments: EmailAttachmentMeta[]): string {
+  // First pass — strip scripts, event handlers, and dangerous tags.
+  const clean = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      'a', 'b', 'br', 'blockquote', 'code', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'hr', 'i', 'img', 'li', 'ol', 'p', 'pre', 'q', 's', 'small', 'span', 'strong', 'sub',
+      'sup', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'u', 'ul', 'font', 'center',
+    ],
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'width', 'height', 'style', 'colspan', 'rowspan', 'align', 'valign', 'border', 'cellpadding', 'cellspacing', 'color', 'face', 'size'],
+    // Don't allow data: URLs in img src (could be huge / malicious).
+    ALLOW_DATA_ATTR: false,
+    FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
+    FORBID_ATTR: ['onerror', 'onload', 'onclick'],
+  });
+
+  // Build a cid → attachment_id map for fast inline-image rewriting.
+  const cidMap = new Map<string, number>();
+  for (const att of attachments) {
+    if (att.content_id) cidMap.set(att.content_id.toLowerCase(), att.email_attachment_id);
+  }
+
+  // Second pass — DOM-level rewrites. We parse the sanitized HTML in a
+  // detached document so the rewrites can't trigger any side effects
+  // (image loads, etc) before they hit our actual DOM.
+  const doc = new DOMParser().parseFromString(`<div>${clean}</div>`, 'text/html');
+  const root = doc.body.firstChild as HTMLElement | null;
+  if (!root) return clean;
+
+  // Rewrite <img> src.
+  for (const img of Array.from(root.querySelectorAll('img'))) {
+    const src = img.getAttribute('src') ?? '';
+    if (src.startsWith('cid:')) {
+      const cid = src.slice(4).toLowerCase().replace(/^<|>$/g, '');
+      const aid = cidMap.get(cid);
+      if (aid) {
+        img.setAttribute('src', `/api/mailbox/messages/${messageId}/attachments/${aid}`);
+        img.setAttribute('loading', 'lazy');
+        // Keep images bounded so a huge inline photo doesn't blow out
+        // the panel width.
+        img.setAttribute('style', `${img.getAttribute('style') ?? ''}; max-width:100%; height:auto;`);
+      } else {
+        // cid not found in attachments → drop the src so we don't get
+        // a broken-image icon. Keep the alt text if any.
+        img.removeAttribute('src');
+      }
+    } else if (/^https?:/i.test(src)) {
+      // External image — drop to avoid loading remote trackers when the
+      // user opens the message. (Future: add a "Show remote images"
+      // toggle if any sender depends on this.)
+      img.removeAttribute('src');
+      img.setAttribute('title', 'External image not loaded');
+    }
+  }
+
+  // Make all links open in a new tab with safe rel.
+  for (const a of Array.from(root.querySelectorAll('a'))) {
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+  }
+
+  return root.innerHTML;
+}
+
+/** Render the non-inline attachments as compact download chips. Inline
+ *  images are filtered out — they're already shown in the body. */
+function AttachmentChips({ msg }: { msg: FullMessage }) {
+  const items = (msg.attachments ?? []).filter(a => !a.is_inline);
+  if (items.length === 0) return null;
+  return (
+    <div className="mb-3 flex flex-wrap gap-2">
+      {items.map(att => (
+        <a
+          key={att.email_attachment_id}
+          href={`/api/mailbox/messages/${msg.message_id}/attachments/${att.email_attachment_id}?download=1`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 text-xs border border-hairline-strong rounded-md px-2.5 py-1.5 hover:border-terracotta hover:text-terracotta bg-paper"
+          title={`${att.filename} — ${formatBytes(att.size_bytes)}`}
+        >
+          <span>{iconFor(att.content_type)}</span>
+          <span className="truncate max-w-[14rem]">{att.filename}</span>
+          <span className="text-ink-faint">({formatBytes(att.size_bytes)})</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function iconFor(mime: string | null): string {
+  if (!mime) return '📎';
+  if (mime.startsWith('image/')) return '🖼️';
+  if (mime.startsWith('audio/')) return '🎵';
+  if (mime.startsWith('video/')) return '🎞️';
+  if (mime === 'application/pdf') return '📄';
+  if (mime.includes('word')) return '📝';
+  if (mime.includes('sheet') || mime.includes('excel')) return '📊';
+  if (mime.includes('presentation') || mime.includes('powerpoint')) return '📊';
+  if (mime.includes('zip') || mime.includes('compressed')) return '🗜️';
+  return '📎';
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }

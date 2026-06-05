@@ -171,7 +171,69 @@ mailboxRouter.get('/messages/:id', async (req, res, next) => {
       m.read_at = new Date().toISOString();
     }
 
+    // Attachment metadata for this message (filename, size, inline flag,
+    // content_id). Used by the frontend to:
+    //  - rewrite cid: refs in body_html to point at /attachments/:id
+    //  - show non-inline files as download chips at the bottom
+    const atts = await query<{
+      email_attachment_id: number;
+      filename: string;
+      content_type: string | null;
+      size_bytes: number;
+      is_inline: boolean;
+      content_id: string | null;
+    }>(`
+      SELECT email_attachment_id, filename, content_type, size_bytes, is_inline, content_id
+      FROM tbl_email_attachment
+      WHERE message_id = $1
+      ORDER BY email_attachment_id
+    `, [id]);
+    m.attachments = atts;
+
     res.json(m);
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  GET /messages/:id/attachments/:attachment_id — stream the bytes   */
+/*  Inline images in the body and the download chips both hit this.   */
+/*  Per-user scoped via the JOIN — you can only fetch attachments for */
+/*  messages on your own user_account_id.                              */
+/* ----------------------------------------------------------------- */
+
+mailboxRouter.get('/messages/:id/attachments/:aid', async (req, res, next) => {
+  try {
+    const messageId = Number(req.params.id);
+    const attId = Number(req.params.aid);
+    if (!Number.isInteger(messageId) || messageId <= 0 || !Number.isInteger(attId) || attId <= 0) {
+      return res.status(400).json({ error: 'Invalid id' });
+    }
+    const row = await queryOne<{
+      filename: string;
+      content_type: string | null;
+      content: Buffer;
+    }>(`
+      SELECT a.filename, a.content_type, a.content
+      FROM tbl_email_attachment a
+      JOIN tbl_email_message m ON m.message_id = a.message_id
+      WHERE a.email_attachment_id = $1
+        AND a.message_id = $2
+        AND m.user_account_id = $3
+    `, [attId, messageId, req.user!.user_account_id]);
+    if (!row) return res.status(404).json({ error: 'Attachment not found' });
+
+    res.setHeader('Content-Type', row.content_type ?? 'application/octet-stream');
+    // Long cache — attachment content is immutable per (message, attachment).
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    // Default to inline disposition so <img src=...> works in the body. The
+    // download chip in the UI sets ?download=1 to force a save dialog.
+    const disposition = req.query.download === '1' ? 'attachment' : 'inline';
+    // Filename in UTF-8 per RFC 5987 so unicode names don't break headers.
+    res.setHeader(
+      'Content-Disposition',
+      `${disposition}; filename*=UTF-8''${encodeURIComponent(row.filename)}`,
+    );
+    res.send(row.content);
   } catch (err) { next(err); }
 });
 

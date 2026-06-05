@@ -208,7 +208,7 @@ async function persistMessage(a: PersistArgs): Promise<void> {
   const sentAt: Date = p.date ?? a.receivedAt ?? new Date();
   const hasAttachments = Array.isArray(p.attachments) && p.attachments.length > 0;
 
-  await query(`
+  const result = await query<{ message_id: number }>(`
     INSERT INTO tbl_email_message
       (user_account_id, email_account_id, folder, direction, imap_uid,
        message_id_header, in_reply_to, thread_refs,
@@ -220,6 +220,7 @@ async function persistMessage(a: PersistArgs): Promise<void> {
     ON CONFLICT (user_account_id, message_id_header) WHERE message_id_header IS NOT NULL
       DO UPDATE SET imap_uid = COALESCE(EXCLUDED.imap_uid, tbl_email_message.imap_uid),
                     folder   = EXCLUDED.folder
+    RETURNING message_id
   `, [
     a.userId, a.emailAccountId, a.folder, a.direction, a.imapUid,
     messageIdHeader, inReplyTo, references,
@@ -229,6 +230,49 @@ async function persistMessage(a: PersistArgs): Promise<void> {
     bodyText, bodyHtml, preview, hasAttachments,
     sentAt, a.receivedAt,
   ]);
+
+  // Save attachment binary content if this is a fresh insert. If the
+  // INSERT was a no-op due to ON CONFLICT (we've seen this message-id
+  // before), RETURNING still gives us the existing message_id — but we
+  // skip re-saving attachments to avoid duplicates by checking for an
+  // existing row first.
+  const messageId = result[0]?.message_id;
+  if (messageId && Array.isArray(p.attachments) && p.attachments.length > 0) {
+    const already = await queryOne<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM tbl_email_attachment WHERE message_id = $1`,
+      [messageId],
+    );
+    if (Number(already?.count ?? 0) === 0) {
+      await persistAttachments(messageId, p.attachments);
+    }
+  }
+}
+
+/** Insert every attachment row for a message. Caps individual files at
+ *  15MB so a runaway HTML email with a huge embed doesn't bloat the DB.
+ *  mailparser gives us a Buffer per attachment along with content-type,
+ *  filename, cid (for inline images), and a contentDisposition. */
+async function persistAttachments(messageId: number, attachments: any[]): Promise<void> {
+  const MAX_SIZE = 15 * 1024 * 1024; // 15MB per attachment
+  for (const att of attachments) {
+    const content: Buffer | undefined = att.content;
+    if (!Buffer.isBuffer(content)) continue;
+    if (content.length === 0 || content.length > MAX_SIZE) continue;
+
+    const filename = (att.filename || att.cid || 'attachment').toString().slice(0, 500);
+    const contentType: string | null = (att.contentType ?? null)?.toString().slice(0, 200) ?? null;
+    // mailparser marks inline attachments with contentDisposition === 'inline'
+    // AND/OR by having a content-id (cid). We treat either as inline.
+    const cid: string | null = att.cid ? String(att.cid).replace(/^<|>$/g, '').slice(0, 500) : null;
+    const isInline = att.contentDisposition === 'inline' || !!cid;
+
+    await query(
+      `INSERT INTO tbl_email_attachment
+        (message_id, filename, content_type, size_bytes, is_inline, content_id, content)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [messageId, filename, contentType, content.length, isInline, cid, content],
+    );
+  }
 }
 
 async function upsertSyncState(accountId: number, folder: string, lastUid: number, lastError: string | null): Promise<void> {

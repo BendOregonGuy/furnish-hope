@@ -1236,6 +1236,39 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+
+  // ============================================================
+  // tbl_email_attachment — binary content of every attachment on
+  // every synced email. Lets us display inline images in the body
+  // (replacing cid: references with our own URL) and lets users
+  // download regular attachments. Cascades from the message row so
+  // deleting a message cleans up its attachments automatically.
+  //
+  // Stored inline as BYTEA for now (cheap on small mailboxes). If
+  // mailboxes grow large we can move to S3/Spaces using the same
+  // pattern as tbl_attachment_blob without changing this schema.
+  // ============================================================
+  {
+    name: 'tbl_email_attachment',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_email_attachment (
+          email_attachment_id SERIAL PRIMARY KEY,
+          message_id          INTEGER NOT NULL REFERENCES tbl_email_message(message_id) ON DELETE CASCADE,
+          filename            VARCHAR(500) NOT NULL,
+          content_type        VARCHAR(200),
+          size_bytes          INTEGER NOT NULL,
+          is_inline           BOOLEAN NOT NULL DEFAULT false,
+          content_id          VARCHAR(500),   -- the <cid> for inline refs; null for regular attachments
+          content             BYTEA NOT NULL,
+          created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_email_attachment_message ON tbl_email_attachment(message_id)`);
+      // Fast cid lookup when rewriting inline image src= refs in the body.
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_email_attachment_cid ON tbl_email_attachment(message_id, content_id) WHERE content_id IS NOT NULL`);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */
