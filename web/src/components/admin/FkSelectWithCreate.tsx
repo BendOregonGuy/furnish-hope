@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { FkSelect } from './FkSelect.tsx';
 
 export interface QuickCreateContext {
@@ -114,10 +115,32 @@ function QuickCreateModal({ onClose, children }: { onClose: () => void; children
   // Escape to close.
   useEscapeKey(onClose);
 
-  return (
+  // CRITICAL: stop submit + click + keydown events from bubbling out of the
+  // modal. The modal body renders its own <form> (every quick-create modal
+  // does), and that form is nested inside whatever outer <form> opened us
+  // (an admin edit form, a pickup form, etc.). HTML lets nested forms exist
+  // in the DOM, and submit events BUBBLE — so clicking "Save & select" in
+  // the modal would otherwise trigger the outer form's onSubmit too, which
+  // navigates the user away and wipes their in-progress data.
+  //
+  // preventDefault() in the modal's own handleSubmit isn't enough — it stops
+  // the native action but does NOT stop propagation to ancestor onSubmit
+  // handlers (DOM or React tree). stopPropagation here at the modal
+  // boundary fixes it for every quick-create modal in one place.
+  //
+  // We also portal to document.body so the modal's native DOM isn't
+  // physically nested inside the outer form. React synthetic events still
+  // bubble through the React component tree (so the stopPropagation above
+  // is what actually closes the bug), but the portal keeps the DOM clean
+  // for CSS, focus management, and any non-React listeners.
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 bg-ink/40 backdrop-blur-[2px] flex items-start justify-center pt-16 pb-10 overflow-y-auto"
       onClick={onClose}
+      onSubmit={stop}
+      onKeyDown={stop}
     >
       <div
         onClick={e => e.stopPropagation()}
@@ -125,7 +148,8 @@ function QuickCreateModal({ onClose, children }: { onClose: () => void; children
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

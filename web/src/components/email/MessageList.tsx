@@ -214,12 +214,16 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
           </div>
 
           <div className="flex gap-2 flex-wrap items-center">
-            <button onClick={() => { setReplyOpen(true); setReplyAll(false); }} className="btn-primary text-xs">Reply</button>
+            {/* type="button" everywhere — MessageList is embedded in admin
+                detail pages whose outer <form> would otherwise treat these
+                as type=submit and save (or wipe) the parent record. */}
+            <button type="button" onClick={() => { setReplyOpen(true); setReplyAll(false); }} className="btn-primary text-xs">Reply</button>
             {msg.cc_addresses && (
-              <button onClick={() => { setReplyOpen(true); setReplyAll(true); }} className="btn-ghost text-xs">Reply all</button>
+              <button type="button" onClick={() => { setReplyOpen(true); setReplyAll(true); }} className="btn-ghost text-xs">Reply all</button>
             )}
             {msg.direction === 'in' && (
               <button
+                type="button"
                 onClick={() => markUnreadMut.mutate()}
                 disabled={markUnreadMut.isPending}
                 className="text-xs text-ink-faint hover:text-terracotta"
@@ -227,7 +231,7 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
                 Mark as unread
               </button>
             )}
-            <button onClick={onClose} className="text-xs text-ink-faint hover:text-terracotta ml-auto">Collapse</button>
+            <button type="button" onClick={onClose} className="text-xs text-ink-faint hover:text-terracotta ml-auto">Collapse</button>
           </div>
 
           {replyOpen && (
@@ -254,8 +258,9 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
               </div>
               {replyError && <div className="text-xs text-terracotta-deep mt-2">{replyError}</div>}
               <div className="flex justify-end gap-2 mt-2">
-                <button onClick={() => { setReplyOpen(false); setReplyError(null); replyAttachments.clear(); }} className="btn-ghost text-xs">Cancel</button>
+                <button type="button" onClick={() => { setReplyOpen(false); setReplyError(null); replyAttachments.clear(); }} className="btn-ghost text-xs">Cancel</button>
                 <button
+                  type="button"
                   onClick={() => {
                     if (!replyBody.trim()) { setReplyError('Reply body is required.'); return; }
                     replyMut.mutate();
