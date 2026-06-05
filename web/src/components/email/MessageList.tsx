@@ -441,11 +441,15 @@ function sanitizeAndRewrite(html: string, messageId: number, attachments: EmailA
   // Three cases:
   //   cid:xxx     → an inline image bundled with this email. Rewrite to
   //                 our attachment endpoint so the saved bytes render.
+  //                 If the cid can't be resolved (backfill failed or
+  //                 hasn't run), REMOVE the img element entirely so the
+  //                 user doesn't see a small broken-image icon + alt
+  //                 text where the image used to be.
   //   http(s)://  → an external image (hosted by the sender or a CDN).
   //                 Loaded as-is. Tradeoff: senders that use tracking
   //                 pixels learn you opened the email. Matches Gmail's
   //                 default behaviour and what staff expect.
-  //   anything    → unknown / data: / file: — drop to avoid surprises.
+  //   anything    → unknown / data: / file: — drop element entirely.
   for (const img of Array.from(root.querySelectorAll('img'))) {
     const src = img.getAttribute('src') ?? '';
     if (src.startsWith('cid:')) {
@@ -454,27 +458,34 @@ function sanitizeAndRewrite(html: string, messageId: number, attachments: EmailA
       if (aid) {
         img.setAttribute('src', `/api/mailbox/messages/${messageId}/attachments/${aid}`);
       } else {
-        // cid not found in attachments → drop the src so we don't get
-        // a broken-image icon. Keep the alt text if any.
-        img.removeAttribute('src');
+        // cid not resolvable → kill the img element so we don't render
+        // the broken-image placeholder. (The image is also listed in
+        // the attachments chip section below the body if it came in
+        // as a regular attachment, so the user can still download it.)
+        img.remove();
+        continue;
       }
     } else if (/^https?:\/\//i.test(src)) {
       // External image — leave the src alone, but harden the request:
       //   referrerpolicy=no-referrer hides which message URL is loading
-      //   the image (the message id), so senders can correlate opens
-      //   to a Furnish Hope user but not to the specific message thread.
+      //   the image, so senders can correlate opens to a Furnish Hope
+      //   user but not to the specific message thread.
       img.setAttribute('referrerpolicy', 'no-referrer');
     } else if (src) {
-      // data:, file:, javascript:, mailto:, or anything else weird.
-      img.removeAttribute('src');
+      // data:, file:, javascript:, mailto:, or anything else weird —
+      // drop the element entirely (matches the cid-not-found case).
+      img.remove();
+      continue;
+    } else {
+      // No src at all in the source HTML — drop it.
+      img.remove();
+      continue;
     }
 
     // For every rendered image: lazy-load (don't fetch until in view)
     // and bound the size so a huge banner doesn't blow out the panel.
-    if (img.getAttribute('src')) {
-      img.setAttribute('loading', 'lazy');
-      img.setAttribute('style', `${img.getAttribute('style') ?? ''}; max-width:100%; height:auto;`);
-    }
+    img.setAttribute('loading', 'lazy');
+    img.setAttribute('style', `${img.getAttribute('style') ?? ''}; max-width:100%; height:auto;`);
   }
 
   // Make all links open in a new tab with safe rel.

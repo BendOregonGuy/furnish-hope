@@ -189,15 +189,18 @@ mailboxRouter.get('/messages/:id', async (req, res, next) => {
         [id],
       );
       if (Number(existing?.count ?? 0) === 0) {
+        const startedAt = Date.now();
         try {
-          await Promise.race([
+          const saved = await Promise.race([
             backfillAttachments(id, req.user!.user_account_id),
-            new Promise<void>((_, rej) => setTimeout(() => rej(new Error('backfill timeout')), 8000)),
+            new Promise<number>((_, rej) => setTimeout(() => rej(new Error('backfill timeout')), 15000)),
           ]);
+          console.log(`[mailbox] backfill msg ${id}: saved ${saved} attachment(s) in ${Date.now() - startedAt}ms`);
         } catch (err: any) {
           // Non-fatal — just log and continue. Common causes: IMAP slow,
-          // message deleted from server, account creds rotated.
-          console.warn(`[mailbox] attachment backfill for msg ${id} failed: ${err.message}`);
+          // message deleted from server, account creds rotated, folder
+          // name on the server differs from what we synced.
+          console.warn(`[mailbox] backfill msg ${id} failed in ${Date.now() - startedAt}ms: ${err.message}`);
         }
       }
     }
