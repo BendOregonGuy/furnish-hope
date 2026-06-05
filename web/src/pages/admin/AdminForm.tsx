@@ -185,15 +185,18 @@ export function AdminForm() {
   // -------------------------------------------------------------------
   const createMut = useMutation({
     mutationFn: (body: any) => apiPost<RowResponse>(`/api/admin/${table}`, body),
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'list', table] });
       setInitialValues(values); // clear dirty before navigating
-      const newId = meta && data?.row?.[meta.pk];
-      if (newId) {
-        navigate(`/admin/${table}/${newId}`, { replace: true });
-      } else {
-        navigate(`/admin/${table}`);
-      }
+      // After a successful create, go back to the list. The previous
+      // behaviour was to navigate to the new row's detail/edit page,
+      // but visually that looks IDENTICAL to the create form, which
+      // makes it appear nothing happened — staff report "the save
+      // button does nothing." The list view shows the new record at
+      // the top (the invalidate above forces a re-fetch) and makes
+      // the result obvious. If a user wants to continue editing the
+      // record, it's one click away from the list.
+      navigate(`/admin/${table}`);
     },
     onError: (err: any) => setTopError(err.message ?? 'Save failed'),
   });
