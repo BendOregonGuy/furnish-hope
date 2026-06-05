@@ -12,7 +12,7 @@
 
 import { Router } from 'express';
 import { query, queryOne } from '../db/pool.js';
-import { syncAllAccountsForUser } from '../email/sync.js';
+import { syncAllAccountsForUser, backfillAttachments } from '../email/sync.js';
 import { buildSmtpTransporter, type EmailAccountRow } from '../email/transports.js';
 import { recordSentMessage } from '../email/sync.js';
 
@@ -175,6 +175,33 @@ mailboxRouter.get('/messages/:id', async (req, res, next) => {
     // content_id). Used by the frontend to:
     //  - rewrite cid: refs in body_html to point at /attachments/:id
     //  - show non-inline files as download chips at the bottom
+    //
+    // If has_attachments=true but nothing is stored locally, the message
+    // was synced BEFORE the attachment-storage feature shipped. Pull the
+    // original from IMAP on-demand and save the attachments now so the
+    // inline images render. Bound at 8s — if IMAP is slow or the message
+    // is gone we just return the message without attachments; the user
+    // sees the body either way. Subsequent opens are fast because the
+    // attachments are then in the DB.
+    if (m.has_attachments) {
+      const existing = await queryOne<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM tbl_email_attachment WHERE message_id = $1`,
+        [id],
+      );
+      if (Number(existing?.count ?? 0) === 0) {
+        try {
+          await Promise.race([
+            backfillAttachments(id, req.user!.user_account_id),
+            new Promise<void>((_, rej) => setTimeout(() => rej(new Error('backfill timeout')), 8000)),
+          ]);
+        } catch (err: any) {
+          // Non-fatal — just log and continue. Common causes: IMAP slow,
+          // message deleted from server, account creds rotated.
+          console.warn(`[mailbox] attachment backfill for msg ${id} failed: ${err.message}`);
+        }
+      }
+    }
+
     const atts = await query<{
       email_attachment_id: number;
       filename: string;

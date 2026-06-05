@@ -248,6 +248,73 @@ async function persistMessage(a: PersistArgs): Promise<void> {
   }
 }
 
+/**
+ * Backfill attachments for a message that was synced BEFORE the
+ * attachment-storage feature shipped. The message has
+ * has_attachments=true but no rows in tbl_email_attachment because the
+ * IMAP source was discarded at sync time.
+ *
+ * We re-fetch the original message from IMAP by UID, parse it, and
+ * save the attachments. Idempotent: if rows already exist for this
+ * message we no-op. Returns the number of attachments saved (0 if
+ * nothing was recoverable or already present).
+ */
+export async function backfillAttachments(messageId: number, userAccountId: number): Promise<number> {
+  // Skip if attachments are already stored — keeps callers from
+  // accidentally double-charging IMAP on every message open.
+  const already = await queryOne<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM tbl_email_attachment WHERE message_id = $1`,
+    [messageId],
+  );
+  if (Number(already?.count ?? 0) > 0) return 0;
+
+  // Get the IMAP coordinates: which account, folder, and UID to fetch.
+  const meta = await queryOne<{
+    email_account_id: number;
+    folder: string;
+    imap_uid: number | null;
+  }>(`
+    SELECT email_account_id, folder, imap_uid
+    FROM tbl_email_message
+    WHERE message_id = $1 AND user_account_id = $2
+  `, [messageId, userAccountId]);
+  if (!meta || !meta.imap_uid || !meta.folder) return 0;
+
+  const acct = await queryOne<EmailAccountRow>(
+    `SELECT * FROM tbl_email_account WHERE email_account_id = $1`,
+    [meta.email_account_id],
+  );
+  if (!acct) return 0;
+
+  const client = buildImapClient(acct);
+  let saved = 0;
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock(meta.folder);
+    try {
+      // fetch a single UID. Loop is convenient even though there's only
+      // one — imapflow's fetch is always async-iterable.
+      for await (const msg of client.fetch(
+        `${meta.imap_uid}`,
+        { uid: true, source: true },
+        { uid: true },
+      )) {
+        if (!msg.source) continue;
+        const parsed = await simpleParser(msg.source as Buffer);
+        if (Array.isArray(parsed.attachments) && parsed.attachments.length > 0) {
+          await persistAttachments(messageId, parsed.attachments);
+          saved = parsed.attachments.length;
+        }
+      }
+    } finally {
+      lock.release();
+    }
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
+  }
+  return saved;
+}
+
 /** Insert every attachment row for a message. Caps individual files at
  *  15MB so a runaway HTML email with a huge embed doesn't bloat the DB.
  *  mailparser gives us a Buffer per attachment along with content-type,
