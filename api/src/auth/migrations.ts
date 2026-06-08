@@ -1313,6 +1313,33 @@ const MIGRATIONS: Migration[] = [
       await query(`CREATE INDEX IF NOT EXISTS idx_tbl_email_template_user ON tbl_email_template(user_account_id, sort_order, name)`);
     },
   },
+
+  // ============================================================
+  // tbl_org_branding — the org's logo image (BYTEA), shown on PDF
+  // receipts and (eventually) other branded outputs. Single-row
+  // table — branding_id is fixed at 1 by an INSERT-or-UPDATE.
+  // Stored in the DB rather than the filesystem so deploys don't
+  // wipe it and so we don't depend on a specific mount layout in
+  // production (DO App Platform doesn't share fs with the build).
+  // ============================================================
+  {
+    name: 'tbl_org_branding',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_org_branding (
+          branding_id    INTEGER PRIMARY KEY DEFAULT 1 CHECK (branding_id = 1),
+          logo_data      BYTEA,
+          content_type   VARCHAR(80),
+          filename       VARCHAR(200),
+          updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id)
+        )
+      `);
+      // Seed the singleton row so subsequent UPDATEs always have a
+      // target. logo_data starts NULL — no logo until uploaded.
+      await query(`INSERT INTO tbl_org_branding (branding_id) VALUES (1) ON CONFLICT DO NOTHING`);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

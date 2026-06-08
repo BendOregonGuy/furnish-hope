@@ -13,7 +13,7 @@
  */
 
 import { Router } from 'express';
-import { query } from '../db/pool.js';
+import { query, queryOne } from '../db/pool.js';
 
 export const orgInfoRouter = Router();
 
@@ -48,6 +48,36 @@ orgInfoRouter.get('/', async (_req, res, next) => {
     const map: Record<string, string> = {};
     for (const k of KEYS) map[k] = '';
     for (const r of rows) map[r.setting_key] = r.setting_value ?? '';
+
+    // Tack on a has_logo flag + a cache-busting key so the UI knows
+    // whether to fetch /api/org-info/logo. The key changes whenever
+    // the logo is updated/deleted, so the browser refetches the right
+    // version.
+    const logo = await queryOne<{ has_logo: boolean; updated_at: string }>(
+      `SELECT (logo_data IS NOT NULL) AS has_logo, updated_at FROM tbl_org_branding WHERE branding_id = 1`,
+    );
+    (map as any).has_logo = !!logo?.has_logo;
+    (map as any).logo_updated_at = logo?.updated_at ?? null;
     res.json(map);
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  GET /api/org-info/logo — stream the logo bytes                    */
+/*  Long-cached because the URL includes ?v=<updated_at> for          */
+/*  invalidation on upload/delete.                                    */
+/* ----------------------------------------------------------------- */
+
+orgInfoRouter.get('/logo', async (_req, res, next) => {
+  try {
+    const row = await queryOne<{ logo_data: Buffer | null; content_type: string | null }>(
+      `SELECT logo_data, content_type FROM tbl_org_branding WHERE branding_id = 1`,
+    );
+    if (!row || !row.logo_data || !row.content_type) {
+      return res.status(404).json({ error: 'No logo set' });
+    }
+    res.setHeader('Content-Type', row.content_type);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(row.logo_data);
   } catch (err) { next(err); }
 });

@@ -74,6 +74,8 @@ if (!IS_PROD) {
 // is idempotent, and whichever runs first wins. Without this, big
 // uploads die with "request entity too large" before the router runs.
 app.use('/api/attachments', express.json({ limit: '20mb' }));
+// Logo upload — capped at 2MB in the route handler, parser limit a touch higher.
+app.use('/api/admin/settings/logo', express.json({ limit: '5mb' }));
 app.use(express.json({ limit: '1mb' }));
 app.use(createSessionMiddleware());
 

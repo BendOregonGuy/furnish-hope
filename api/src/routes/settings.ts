@@ -121,3 +121,62 @@ export async function getSetting(key: string): Promise<string | null> {
   );
   return row?.setting_value ?? null;
 }
+
+/* ----------------------------------------------------------------- */
+/*  Org logo — branding image used on PDF receipts                    */
+/*  POST /logo      multipart/form-data or { data_base64, content_type, filename } */
+/*  DELETE /logo    clears the stored logo                            */
+/* ----------------------------------------------------------------- */
+
+interface LogoUploadPayload {
+  data_base64: string;
+  content_type: string;
+  filename?: string;
+}
+
+settingsRouter.post('/logo', async (req, res, next) => {
+  try {
+    const body = req.body as LogoUploadPayload;
+    if (!body?.data_base64 || !body.content_type) {
+      return res.status(400).json({ error: 'data_base64 and content_type are required' });
+    }
+    if (!/^image\/(png|jpe?g|gif|webp|svg\+xml)$/i.test(body.content_type)) {
+      return res.status(400).json({ error: 'Logo must be PNG, JPG, GIF, WebP, or SVG.' });
+    }
+    const buf = Buffer.from(body.data_base64, 'base64');
+    if (buf.length === 0) return res.status(400).json({ error: 'Empty file.' });
+    if (buf.length > 2 * 1024 * 1024) return res.status(400).json({ error: 'Logo too large (2MB max).' });
+
+    await query(
+      `UPDATE tbl_org_branding
+          SET logo_data = $1, content_type = $2, filename = $3,
+              updated_at = NOW(), updated_by_user_account_id = $4
+        WHERE branding_id = 1`,
+      [buf, body.content_type, body.filename ?? null, req.user!.user_account_id],
+    );
+    res.json({ ok: true, size_bytes: buf.length });
+  } catch (err) { next(err); }
+});
+
+settingsRouter.delete('/logo', async (req, res, next) => {
+  try {
+    await query(
+      `UPDATE tbl_org_branding
+          SET logo_data = NULL, content_type = NULL, filename = NULL,
+              updated_at = NOW(), updated_by_user_account_id = $1
+        WHERE branding_id = 1`,
+      [req.user!.user_account_id],
+    );
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+/** Helper for other routes (receipt generator) — returns the raw logo
+ *  bytes + content_type, or null if no logo is uploaded. */
+export async function getOrgLogo(): Promise<{ data: Buffer; content_type: string } | null> {
+  const row = await queryOne<{ logo_data: Buffer | null; content_type: string | null }>(
+    `SELECT logo_data, content_type FROM tbl_org_branding WHERE branding_id = 1`,
+  );
+  if (!row || !row.logo_data || !row.content_type) return null;
+  return { data: row.logo_data, content_type: row.content_type };
+}

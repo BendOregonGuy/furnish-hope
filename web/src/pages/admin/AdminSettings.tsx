@@ -10,10 +10,15 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPut } from '../../lib/api.ts';
+import { apiDelete, apiGet, apiPost, apiPut } from '../../lib/api.ts';
 import { PageHeader, Loading, ErrorBox } from '../../components/ui.tsx';
 import { Section } from '../../components/forms/FormSection.tsx';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges.ts';
+
+interface OrgInfo {
+  has_logo: boolean;
+  logo_updated_at: string | null;
+}
 
 interface Setting {
   setting_key: string;
@@ -201,6 +206,8 @@ export function AdminSettings() {
         </div>
       )}
 
+      <LogoSection />
+
       <form onSubmit={handleSubmit} className="space-y-5 max-w-3xl">
         {SECTIONS.map(sec => (
           <Section key={sec.title} title={sec.title} hint={sec.hint}>
@@ -308,4 +315,128 @@ export function AdminSettings() {
       </form>
     </>
   );
+}
+
+/* ----------------------------------------------------------------- */
+/*  Logo upload section                                               */
+/*  Lives outside the bulk-save form because it's a separate upload   */
+/*  flow (POST/DELETE on /api/admin/settings/logo) — bundling it      */
+/*  into the bulk PUT would awkwardly mix binary into text settings.  */
+/* ----------------------------------------------------------------- */
+
+function LogoSection() {
+  const queryClient = useQueryClient();
+  const { data: orgInfo } = useQuery<OrgInfo>({
+    queryKey: ['org-info'],
+    queryFn: () => apiGet('/api/org-info'),
+  });
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const cacheKey = orgInfo?.logo_updated_at ? encodeURIComponent(orgInfo.logo_updated_at) : '';
+  const logoUrl = orgInfo?.has_logo ? `/api/org-info/logo?v=${cacheKey}` : null;
+
+  const deleteMut = useMutation({
+    mutationFn: () => apiDelete('/api/admin/settings/logo'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-info'] });
+      setErr(null);
+    },
+    onError: (e: any) => setErr(e.message ?? 'Failed to remove logo'),
+  });
+
+  async function handleFile(file: File) {
+    setErr(null);
+    if (file.size > 2 * 1024 * 1024) {
+      setErr('Logo must be 2MB or smaller.');
+      return;
+    }
+    if (!/^image\/(png|jpe?g|gif|webp|svg\+xml)$/i.test(file.type)) {
+      setErr('Logo must be a PNG, JPG, GIF, WebP, or SVG image.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const data_base64 = await fileToBase64(file);
+      await apiPost('/api/admin/settings/logo', {
+        data_base64,
+        content_type: file.type,
+        filename: file.name,
+      });
+      queryClient.invalidateQueries({ queryKey: ['org-info'] });
+    } catch (e: any) {
+      setErr(e.message ?? 'Upload failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card mb-5 max-w-3xl">
+      <div className="card-head">
+        <h3 className="font-display font-medium text-[17px] m-0">Logo</h3>
+        <span className="text-xs text-ink-faint">Appears on PDF receipts and manifests.</span>
+      </div>
+      <div className="flex items-start gap-5 flex-wrap">
+        <div className="w-40 h-24 border border-hairline rounded-md bg-cream/50 flex items-center justify-center overflow-hidden">
+          {logoUrl ? (
+            <img src={logoUrl} alt="Current logo" className="max-w-full max-h-full object-contain" />
+          ) : (
+            <span className="text-[11px] text-ink-faint italic">No logo set</span>
+          )}
+        </div>
+        <div className="flex-1 min-w-[260px] space-y-2">
+          <label className="inline-block">
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+              className="hidden"
+              disabled={busy}
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+                // Reset input so the same file can be re-selected after an error.
+                e.target.value = '';
+              }}
+            />
+            <span className={`btn-primary text-xs cursor-pointer inline-block ${busy ? 'opacity-60' : ''}`}>
+              {busy ? 'Uploading…' : (logoUrl ? 'Replace logo' : 'Upload logo')}
+            </span>
+          </label>
+          {logoUrl && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Remove the org logo? PDF receipts will fall back to a text-only header.')) {
+                  deleteMut.mutate();
+                }
+              }}
+              disabled={deleteMut.isPending}
+              className="text-xs text-terracotta hover:text-terracotta-deep ml-3 disabled:opacity-50"
+            >
+              Remove logo
+            </button>
+          )}
+          <div className="text-[11px] text-ink-faint">
+            PNG or JPG works best. SVG and GIF accepted but PDF receipts only render PNG/JPG. Max 2MB.
+          </div>
+          {err && <div className="text-xs text-terracotta-deep">{err}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Strip the "data:image/png;base64," prefix — we only want the payload.
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('Read failed'));
+    reader.readAsDataURL(file);
+  });
 }

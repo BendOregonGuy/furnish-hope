@@ -10,8 +10,7 @@
  */
 
 import PDFDocument from 'pdfkit';
-import path from 'node:path';
-import { existsSync } from 'node:fs';
+import { getOrgLogo } from '../routes/settings.js';
 
 export interface ReceiptData {
   org: {
@@ -54,16 +53,16 @@ export interface ReceiptData {
  * as an attachment or streaming back as an HTTP response.
  */
 export async function generateReceiptPdf(d: ReceiptData): Promise<Buffer> {
-  // Try to find the project logo. The repo's static logo lives at
-  // web/public/logo.png — the API doesn't see that bundle directly,
-  // but if a copy was placed next to the API (or symlinked) we'll use
-  // it. Falls back to a typographic header if missing.
-  const logoCandidates = [
-    path.join(process.cwd(), 'logo.png'),
-    path.join(process.cwd(), 'public', 'logo.png'),
-    path.join(process.cwd(), '..', 'web', 'public', 'logo.png'),
-  ];
-  const logoPath = logoCandidates.find(p => existsSync(p)) ?? null;
+  // Pull the org logo from the DB. Uploaded once via Admin → Settings;
+  // stored in tbl_org_branding as BYTEA so it survives deploys and
+  // doesn't depend on filesystem layout in production. pdfkit accepts
+  // a Buffer directly for PNG and JPEG. SVG isn't supported by pdfkit
+  // natively — admin UI rejects SVG at upload time too, but we
+  // defensively skip it here.
+  const orgLogo = await getOrgLogo();
+  const usableLogo = orgLogo && /^image\/(png|jpe?g)$/i.test(orgLogo.content_type)
+    ? orgLogo.data
+    : null;
 
   const doc = new PDFDocument({
     size: 'LETTER',
@@ -84,8 +83,16 @@ export async function generateReceiptPdf(d: ReceiptData): Promise<Buffer> {
 
   /* ---------- Header ---------- */
   const headerTop = doc.y;
-  if (logoPath) {
-    try { doc.image(logoPath, 54, headerTop, { height: 60 }); } catch { /* fall through */ }
+  let logoRendered = false;
+  if (usableLogo) {
+    try {
+      doc.image(usableLogo, 54, headerTop, { height: 60 });
+      logoRendered = true;
+    } catch {
+      // pdfkit can throw on corrupt image data — fall back to text header.
+    }
+  }
+  if (logoRendered) {
     doc.fontSize(20).fillColor('#1a1611').text(d.org.name, 130, headerTop + 6);
     doc.fontSize(9).fillColor('#666').text('Tax-deductible donation receipt', 130, headerTop + 32);
   } else {
