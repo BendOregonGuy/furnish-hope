@@ -497,7 +497,7 @@ emailRouter.get('/oauth/callback', async (req, res, next) => {
 /*    q=<substring>      matched case-insensitively against name+email*/
 /* ----------------------------------------------------------------- */
 
-const PICKER_TYPES = new Set(['all', 'staff', 'volunteer', 'donor', 'client', 'agency']);
+const PICKER_TYPES = new Set(['all', 'staff', 'volunteer', 'donor', 'client', 'agency', 'vendor']);
 
 emailRouter.get('/contact-picker', async (req, res, next) => {
   try {
@@ -582,6 +582,23 @@ emailRouter.get('/contact-picker', async (req, res, next) => {
         JOIN tbl_contact c ON c.contact_id = ac.contact_id
         JOIN tbl_agency ag ON ag.agency_id = ac.agency_id
         WHERE c.email IS NOT NULL AND c.email <> ''
+
+        UNION ALL
+
+        -- Vendors / suppliers / trades-people. Prefer business name
+        -- over personal when present so "Bend Plumbing" wins over
+        -- "Joe Smith" in the picker. Inactive vendors hidden.
+        SELECT
+          COALESCE(v.business_name, c.first_name || ' ' || c.last_name) ||
+            (CASE WHEN vs.vendor_specialty IS NOT NULL THEN ' — ' || vs.vendor_specialty ELSE '' END),
+          c.email,
+          'Vendor',
+          'vendor',
+          v.vendor_id
+        FROM tbl_vendor v
+        JOIN tbl_contact c ON c.contact_id = v.contact_id
+        LEFT JOIN lkp_vendor_specialty vs ON vs.vendor_specialty_id = v.vendor_specialty_id
+        WHERE v.is_active = true AND c.email IS NOT NULL AND c.email <> ''
       )
       SELECT display_name, email, type_label, entity_type, entity_id
       FROM all_contacts

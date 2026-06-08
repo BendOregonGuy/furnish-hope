@@ -1315,6 +1315,104 @@ const MIGRATIONS: Migration[] = [
   },
 
   // ============================================================
+  // Vendors / suppliers / trades-people. Operational directory only —
+  // bills + payments + 1099s stay in QuickBooks (the books of record).
+  // FH stores who we work with, what they do, the documents we keep
+  // on file (W-9, COI), and the correspondence + service history.
+  //
+  // Vendors join to tbl_contact for name/phone/email — same pattern
+  // as donors/clients/agency_contacts/facility_staff so the existing
+  // contact infrastructure (search, recipient picker, etc.) just
+  // includes them.
+  // ============================================================
+  {
+    name: 'tbl_vendor + lookups',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_vendor_type (
+          vendor_type_id   SERIAL PRIMARY KEY,
+          vendor_type      VARCHAR(50) NOT NULL UNIQUE,
+          description      VARCHAR(200),
+          sort_order       INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_vendor_specialty (
+          vendor_specialty_id SERIAL PRIMARY KEY,
+          vendor_specialty    VARCHAR(80) NOT NULL UNIQUE,
+          description         VARCHAR(200),
+          sort_order          INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+
+      // Seed types
+      const types: Array<[string, string, number]> = [
+        ['Trade-Person',     'Plumber, electrician, HVAC tech — individual service providers we hire by the job.', 10],
+        ['Service Provider', 'Recurring service contractors — cleaning, landscaping, IT support, etc.',           20],
+        ['Supplier',         'Suppliers we buy goods from — packing materials, office, fuel, etc.',                30],
+        ['Professional',     'Accountant, attorney, insurance broker, consultants.',                                40],
+        ['Other',            'Anything that doesn’t fit the categories above.',                                90],
+      ];
+      for (const [name, desc, sort] of types) {
+        await query(`
+          INSERT INTO lkp_vendor_type (vendor_type, description, sort_order)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (vendor_type) DO NOTHING
+        `, [name, desc, sort]);
+      }
+
+      // Seed specialties — useful filter chips even if many vendors
+      // are "Other". Admins can add more via the generic admin UI.
+      const specialties: Array<[string, number]> = [
+        ['Plumber', 10],['Electrician', 20],['HVAC', 30],['Carpenter', 40],
+        ['Painter', 50],['Landscaper', 60],['Cleaner', 70],['Pest Control', 80],
+        ['Locksmith', 90],['IT / Technology', 100],['Legal', 110],['Accountant', 120],
+        ['Insurance', 130],['Fuel', 140],['Office Supplies', 150],['Packing / Moving Supplies', 160],
+        ['Vehicle Repair', 170],['Storage', 180],['Other', 900],
+      ];
+      for (const [name, sort] of specialties) {
+        await query(`
+          INSERT INTO lkp_vendor_specialty (vendor_specialty, sort_order)
+          VALUES ($1, $2)
+          ON CONFLICT (vendor_specialty) DO NOTHING
+        `, [name, sort]);
+      }
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_vendor (
+          vendor_id           SERIAL PRIMARY KEY,
+          contact_id          INTEGER NOT NULL REFERENCES tbl_contact(contact_id),
+          vendor_type_id      INTEGER NOT NULL REFERENCES lkp_vendor_type(vendor_type_id),
+          vendor_specialty_id INTEGER REFERENCES lkp_vendor_specialty(vendor_specialty_id),
+          business_name       VARCHAR(200),
+          -- Compliance flags + expiry dates. Drive "missing/expired"
+          -- pre-year-end and pre-audit reports later. The actual
+          -- documents attach via the entity-attachments widget.
+          w9_received         BOOLEAN NOT NULL DEFAULT false,
+          w9_received_date    DATE,
+          coi_received        BOOLEAN NOT NULL DEFAULT false,
+          coi_expires_at      DATE,
+          -- Optional operational fields
+          default_hourly_rate NUMERIC(10,2),
+          payment_terms       VARCHAR(80),      -- "Net 30", "Due on receipt", etc
+          tax_id              VARCHAR(40),       -- EIN/SSN — encrypt later if needed
+          notes               TEXT,
+          is_active           BOOLEAN NOT NULL DEFAULT true,
+          -- QBO sync columns — set when the bookkeeper pushes this
+          -- vendor to QBO. Phase 3, not used yet but reserved.
+          qbo_vendor_id       VARCHAR(40),
+          qbo_synced_at       TIMESTAMPTZ,
+          created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_vendor_type ON tbl_vendor(vendor_type_id, vendor_specialty_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_vendor_contact ON tbl_vendor(contact_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_vendor_active ON tbl_vendor(is_active) WHERE is_active = true`);
+    },
+  },
+
+  // ============================================================
   // OAuth columns for tbl_email_account. Lets users sign in with
   // Google / Microsoft instead of generating an app-specific
   // password. auth_type already exists ('password' | 'oauth'); the

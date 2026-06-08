@@ -37,6 +37,7 @@ const sections: NavSection[] = [
       { to: '/deliveries',name: 'Deliveries',          icon: 'truck' },
       { to: '/pickups',   name: 'Donation Pickups',    icon: 'package' },
       { to: '/inventory', name: 'Inventory',           icon: 'box' },
+      { to: '/vendors',   name: 'Vendors',             icon: 'users' },
     ],
   },
   {

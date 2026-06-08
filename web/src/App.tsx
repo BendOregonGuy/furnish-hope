@@ -41,6 +41,9 @@ import { EventForm } from './pages/EventForm.tsx';
 import { EmailAccounts } from './pages/EmailAccounts.tsx';
 import { EmailCompose } from './pages/EmailCompose.tsx';
 import { EmailTemplates } from './pages/EmailTemplates.tsx';
+import { Vendors } from './pages/Vendors.tsx';
+import { VendorDetail } from './pages/VendorDetail.tsx';
+import { VendorForm } from './pages/VendorForm.tsx';
 import { Mailbox } from './pages/Mailbox.tsx';
 import { PickupManifest } from './pages/PickupManifest.tsx';
 import { DeliveryManifest } from './pages/DeliveryManifest.tsx';
@@ -150,6 +153,10 @@ function AppShell() {
           <Route path="/email/accounts" element={<EmailAccounts />} />
           <Route path="/email/compose" element={<EmailCompose />} />
           <Route path="/email/templates" element={<EmailTemplates />} />
+          <Route path="/vendors" element={<Vendors />} />
+          <Route path="/vendors/new" element={<VendorForm />} />
+          <Route path="/vendors/:id" element={<VendorDetail />} />
+          <Route path="/vendors/:id/edit" element={<VendorForm />} />
           <Route path="/email/mailbox" element={<Mailbox />} />
 
           {/* Admin section is admin-only. The RequireAdmin wrapper renders

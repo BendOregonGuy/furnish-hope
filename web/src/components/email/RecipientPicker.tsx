@@ -109,6 +109,7 @@ export function RecipientPicker({
                 <option value="donor">Donor</option>
                 <option value="client">Client</option>
                 <option value="agency">Agency</option>
+                <option value="vendor">Vendor</option>
               </select>
               <span className="text-[10px] text-ink-faint">→ {target.toUpperCase()}</span>
             </div>

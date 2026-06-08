@@ -32,7 +32,7 @@ const MAX_BYTES = 10 * 1024 * 1024;   // 10 MB
 const VALID_ENTITY_TYPES = new Set([
   'donor', 'client', 'volunteer', 'contact', 'agency',
   'pickup', 'delivery', 'campaign', 'event', 'pledge', 'donation',
-  'request', 'inventory', 'corp_facility', 'vehicle',
+  'request', 'inventory', 'corp_facility', 'vehicle', 'vendor',
 ]);
 
 function isValidEntityType(t: string): boolean {
