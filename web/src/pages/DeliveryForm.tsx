@@ -402,7 +402,19 @@ export function DeliveryForm() {
         <Section
           title="Items loaded"
           hint="Inventory items going on this delivery."
-          actions={errors._items && <span className="text-[11px] text-terracotta-deep font-medium">{errors._items}</span>}
+          actions={
+            <div className="flex items-center gap-3">
+              {errors._items && <span className="text-[11px] text-terracotta-deep font-medium">{errors._items}</span>}
+              <CopyItemsFromRequestButton
+                requestId={values.client_provisioning_request_id ?? null}
+                currentItemIds={items.map(i => i.corp_facility_inventory_item_id).filter((v): v is number => v != null)}
+                onApply={(newRows, mode) => {
+                  if (mode === 'replace') setItems(newRows);
+                  else setItems(prev => [...prev, ...newRows]);
+                }}
+              />
+            </div>
+          }
         >
           <SubformList<ItemRow>
             rows={items}
@@ -521,4 +533,95 @@ function initialVehicleFkLabel(d: any, columnName: string): string | undefined {
     case 'rental_agency_id':         return d.rental_agency;
     default: return undefined;
   }
+}
+
+/* ----------------------------------------------------------------- */
+/*  Copy-items-from-request button                                    */
+/*  Pulls the reserved inventory items off the selected provisioning  */
+/*  request and adds them to the delivery's "Items loaded" list. Lets */
+/*  staff skip the tedious re-entry that "we already matched these to */
+/*  the request, why am I picking them again?" implies.               */
+/* ----------------------------------------------------------------- */
+
+function CopyItemsFromRequestButton({
+  requestId,
+  currentItemIds,
+  onApply,
+}: {
+  requestId: number | null;
+  currentItemIds: number[];
+  onApply: (rows: ItemRow[], mode: 'replace' | 'append') => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!requestId) {
+    return (
+      <span className="text-[11px] text-ink-faint italic">
+        Pick a request above to enable copy-items.
+      </span>
+    );
+  }
+
+  async function handleClick() {
+    setError(null);
+    setPending(true);
+    try {
+      const detail = await apiGet<{ matches: Array<{ inv_item_id: number }> }>(`/api/requests/${requestId}`);
+      const matches = (detail.matches ?? []).map(m => Number(m.inv_item_id)).filter(Number.isFinite);
+      if (matches.length === 0) {
+        setError(
+          'This request has no inventory items matched/reserved yet. ' +
+          'Open the request and reserve inventory first, then come back.',
+        );
+        return;
+      }
+
+      // Deduplicate against items already on the form.
+      const already = new Set(currentItemIds);
+      const fresh = matches.filter(id => !already.has(id));
+      const dupes = matches.length - fresh.length;
+
+      // If nothing fresh, tell the user — don't silently no-op.
+      if (fresh.length === 0) {
+        setError(`All ${matches.length} reserved items are already on this delivery.`);
+        return;
+      }
+
+      // Decide append vs. replace based on whether anything is here.
+      let mode: 'append' | 'replace' = 'append';
+      if (currentItemIds.length > 0) {
+        const choice = window.confirm(
+          `This request has ${matches.length} reserved item${matches.length === 1 ? '' : 's'} ` +
+          `(${fresh.length} new${dupes > 0 ? `, ${dupes} already here` : ''}).\n\n` +
+          'Click OK to APPEND the new items to the existing list, or Cancel and pick "Clear list" first to replace.',
+        );
+        if (!choice) return;
+      }
+
+      const rows: ItemRow[] = fresh.map(id => ({ corp_facility_inventory_item_id: id }));
+      onApply(rows, mode);
+    } catch (err: any) {
+      setError(err.message ?? 'Could not load request items.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={pending}
+        className="text-[11px] text-terracotta hover:text-terracotta-deep border border-hairline-strong px-2 py-1 rounded hover:border-terracotta disabled:opacity-50"
+        title="Pull reserved inventory items from the selected request into this delivery"
+      >
+        {pending ? 'Loading…' : '📋 Copy items from request'}
+      </button>
+      {error && (
+        <span className="text-[11px] text-terracotta-deep ml-2 font-medium">{error}</span>
+      )}
+    </>
+  );
 }
