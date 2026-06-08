@@ -54,17 +54,22 @@ mailboxRouter.get('/sync-state', async (req, res, next) => {
 });
 
 /* ----------------------------------------------------------------- */
-/*  GET /messages — list                                              */
+/*  GET /messages — list (now thread-grouped)                         */
 /*                                                                    */
-/*  Filters (all optional):                                           */
-/*    folder=inbox|sent                                               */
-/*    account_id=<int>                                                */
-/*    participant=<email-address>   (case-insensitive match against   */
-/*                                   from_address OR to_addresses     */
-/*                                   OR cc_addresses)                 */
-/*    q=<text>                      (full-text-ish ILIKE on subject + */
-/*                                   from_name + body_preview)        */
-/*    limit (default 50, max 200)                                     */
+/*  Returns ONE row per conversation thread (not per message). Each   */
+/*  row carries the most-recent message's metadata + a count of how   */
+/*  many messages are in the thread. Click → expand the full thread   */
+/*  via GET /threads/:thread_id.                                      */
+/*                                                                    */
+/*  Folder filter operates at the thread level:                       */
+/*    inbox  → threads with at least one inbound message              */
+/*    sent   → threads with at least one outbound message             */
+/*    all    → every thread                                           */
+/*  A back-and-forth thread appears in BOTH inbox and sent — matches  */
+/*  Gmail's "Conversations" model.                                    */
+/*                                                                    */
+/*  q / participant filters still apply at the message level — if     */
+/*  ANY message in a thread matches, the whole thread shows up.       */
 /* ----------------------------------------------------------------- */
 
 mailboxRouter.get('/messages', async (req, res, next) => {
@@ -76,45 +81,101 @@ mailboxRouter.get('/messages', async (req, res, next) => {
     const q = (req.query.q as string | undefined)?.trim() || null;
     const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50)));
 
-    const conds: string[] = ['m.user_account_id = $1'];
+    // Per-message conditions (applied inside the EXISTS subquery to
+    // determine which threads qualify). These filter THREADS by
+    // whether any constituent message matches.
+    const msgConds: string[] = ['m2.user_account_id = $1'];
     const params: any[] = [userId];
-    if (folder === 'inbox') conds.push(`m.direction = 'in'`);
-    else if (folder === 'sent') conds.push(`m.direction = 'out'`);
-    if (accountId) { params.push(accountId); conds.push(`m.email_account_id = $${params.length}`); }
+    if (accountId) { params.push(accountId); msgConds.push(`m2.email_account_id = $${params.length}`); }
     if (participant) {
       params.push(participant);
-      conds.push(`(
-        LOWER(m.from_address) = $${params.length}
-        OR POSITION($${params.length} IN LOWER(m.to_addresses))  > 0
-        OR POSITION($${params.length} IN LOWER(m.cc_addresses))  > 0
-        OR POSITION($${params.length} IN LOWER(m.bcc_addresses)) > 0
+      msgConds.push(`(
+        LOWER(m2.from_address) = $${params.length}
+        OR POSITION($${params.length} IN LOWER(m2.to_addresses))  > 0
+        OR POSITION($${params.length} IN LOWER(m2.cc_addresses))  > 0
+        OR POSITION($${params.length} IN LOWER(m2.bcc_addresses)) > 0
       )`);
     }
     if (q) {
       params.push(`%${q}%`);
-      conds.push(`(m.subject ILIKE $${params.length} OR m.from_name ILIKE $${params.length} OR m.body_preview ILIKE $${params.length})`);
+      msgConds.push(`(m2.subject ILIKE $${params.length} OR m2.from_name ILIKE $${params.length} OR m2.body_preview ILIKE $${params.length} OR m2.from_address ILIKE $${params.length})`);
     }
+
+    // Folder filter applies to the thread (any message must satisfy).
+    const folderCondition = folder === 'inbox'
+      ? `AND EXISTS (SELECT 1 FROM tbl_email_message m3 WHERE m3.user_account_id = $1 AND m3.thread_id = t.thread_id AND m3.direction = 'in')`
+      : folder === 'sent'
+        ? `AND EXISTS (SELECT 1 FROM tbl_email_message m3 WHERE m3.user_account_id = $1 AND m3.thread_id = t.thread_id AND m3.direction = 'out')`
+        : '';
+
     params.push(limit);
 
+    // The query has three layers:
+    //   1. thread_summary: one row per (user, thread) with count + flags
+    //   2. latest_in_thread: DISTINCT ON gets the newest message's metadata per thread
+    //   3. SELECT joins them, applies folder/search filter, returns latest+stats
     const rows = await query(`
+      WITH thread_summary AS (
+        SELECT
+          m.thread_id,
+          COUNT(*) AS message_count,
+          MAX(m.sent_at) AS latest_sent_at,
+          BOOL_OR(m.direction = 'in' AND m.read_at IS NULL) AS has_unread,
+          BOOL_OR(m.direction = 'in')  AS has_inbound,
+          BOOL_OR(m.direction = 'out') AS has_outbound
+        FROM tbl_email_message m
+        WHERE m.user_account_id = $1
+        GROUP BY m.thread_id
+      ),
+      latest AS (
+        SELECT DISTINCT ON (m.thread_id)
+          m.thread_id,
+          m.message_id,
+          m.folder,
+          m.direction,
+          m.from_address,
+          m.from_name,
+          m.to_addresses,
+          m.subject,
+          m.body_preview,
+          m.has_attachments,
+          m.sent_at,
+          m.received_at,
+          m.read_at,
+          a.email_address AS account_email
+        FROM tbl_email_message m
+        JOIN tbl_email_account a ON a.email_account_id = m.email_account_id
+        WHERE m.user_account_id = $1
+        ORDER BY m.thread_id, m.sent_at DESC
+      )
       SELECT
-        m.message_id,
-        m.folder,
-        m.direction,
-        m.from_address,
-        m.from_name,
-        m.to_addresses,
-        m.subject,
-        m.body_preview,
-        m.has_attachments,
-        m.sent_at,
-        m.received_at,
-        m.read_at,
-        a.email_address AS account_email
-      FROM tbl_email_message m
-      JOIN tbl_email_account a ON a.email_account_id = m.email_account_id
-      WHERE ${conds.join(' AND ')}
-      ORDER BY m.sent_at DESC
+        l.message_id,
+        l.thread_id,
+        l.folder,
+        l.direction,
+        l.from_address,
+        l.from_name,
+        l.to_addresses,
+        l.subject,
+        l.body_preview,
+        l.has_attachments,
+        l.sent_at,
+        l.received_at,
+        l.read_at,
+        l.account_email,
+        t.message_count::int  AS message_count,
+        t.has_unread          AS thread_has_unread,
+        t.has_inbound         AS thread_has_inbound,
+        t.has_outbound        AS thread_has_outbound
+      FROM latest l
+      JOIN thread_summary t ON t.thread_id = l.thread_id
+      WHERE EXISTS (
+        SELECT 1 FROM tbl_email_message m2
+        WHERE m2.thread_id = l.thread_id
+          AND ${msgConds.join(' AND ')}
+      )
+      ${folderCondition}
+      ORDER BY l.sent_at DESC
       LIMIT $${params.length}
     `, params);
 
@@ -136,6 +197,110 @@ mailboxRouter.get('/unread-count', async (req, res, next) => {
         AND read_at IS NULL
     `, [req.user!.user_account_id]);
     res.json({ count: Number(row?.count ?? 0) });
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  GET /threads/:thread_id — every message in the conversation       */
+/*                                                                    */
+/*  Returns the full thread (oldest first) with body, attachments,    */
+/*  and per-message read flags. Side-effect: marks every inbound      */
+/*  message in the thread as read on first fetch — opening a thread   */
+/*  "reads" the whole conversation (matches Gmail behaviour).         */
+/* ----------------------------------------------------------------- */
+
+mailboxRouter.get('/threads/:thread_id', async (req, res, next) => {
+  try {
+    const threadId = Number(req.params.thread_id);
+    if (!Number.isInteger(threadId) || threadId <= 0) return res.status(400).json({ error: 'Invalid thread id' });
+
+    // Pull every message in the thread, plus account email for display.
+    const messages = await query<any>(`
+      SELECT
+        m.message_id,
+        m.thread_id,
+        m.folder,
+        m.direction,
+        m.imap_uid,
+        m.message_id_header,
+        m.in_reply_to,
+        m.from_address,
+        m.from_name,
+        m.to_addresses,
+        m.cc_addresses,
+        m.bcc_addresses,
+        m.subject,
+        m.body_text,
+        m.body_html,
+        m.body_preview,
+        m.has_attachments,
+        m.sent_at,
+        m.received_at,
+        m.read_at,
+        a.email_address AS account_email
+      FROM tbl_email_message m
+      JOIN tbl_email_account a ON a.email_account_id = m.email_account_id
+      WHERE m.thread_id = $1 AND m.user_account_id = $2
+      ORDER BY m.sent_at ASC, m.message_id ASC
+    `, [threadId, req.user!.user_account_id]);
+
+    if (messages.length === 0) return res.status(404).json({ error: 'Thread not found' });
+
+    // Best-effort attachment backfill for the LATEST message — that's
+    // the one the UI auto-expands. Older messages backfill on click
+    // when their detail loads. Keeps thread-open latency bounded.
+    const latest = messages[messages.length - 1];
+    if (latest.has_attachments) {
+      const existing = await queryOne<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM tbl_email_attachment WHERE message_id = $1`,
+        [latest.message_id],
+      );
+      if (Number(existing?.count ?? 0) === 0) {
+        try {
+          await Promise.race([
+            backfillAttachments(latest.message_id, req.user!.user_account_id),
+            new Promise<number>((_, rej) => setTimeout(() => rej(new Error('backfill timeout')), 15000)),
+          ]);
+        } catch (err: any) {
+          console.warn(`[mailbox] thread backfill msg ${latest.message_id} failed: ${err.message}`);
+        }
+      }
+    }
+
+    // Auto-mark every inbound message in the thread as read.
+    await query(`
+      UPDATE tbl_email_message
+         SET read_at = COALESCE(read_at, NOW())
+       WHERE thread_id = $1
+         AND user_account_id = $2
+         AND direction = 'in'
+         AND read_at IS NULL
+    `, [threadId, req.user!.user_account_id]);
+
+    // Refresh the in-memory read_at flags so the response reflects the
+    // just-updated state without an extra round-trip.
+    for (const m of messages) {
+      if (m.direction === 'in' && !m.read_at) m.read_at = new Date().toISOString();
+    }
+
+    // Per-message attachment metadata. Fetch in one query for the
+    // whole thread, then group client-side here.
+    const messageIds = messages.map(m => m.message_id);
+    const attachments = await query<any>(`
+      SELECT email_attachment_id, message_id, filename, content_type, size_bytes, is_inline, content_id
+      FROM tbl_email_attachment
+      WHERE message_id = ANY($1::int[])
+      ORDER BY email_attachment_id
+    `, [messageIds]);
+    const attsByMessage: Record<number, any[]> = {};
+    for (const a of attachments) {
+      (attsByMessage[a.message_id] ??= []).push(a);
+    }
+    for (const m of messages) {
+      m.attachments = attsByMessage[m.message_id] ?? [];
+    }
+
+    res.json({ thread_id: threadId, messages });
   } catch (err) { next(err); }
 });
 

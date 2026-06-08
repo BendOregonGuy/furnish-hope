@@ -246,6 +246,43 @@ async function persistMessage(a: PersistArgs): Promise<void> {
       await persistAttachments(messageId, p.attachments);
     }
   }
+
+  // Compute and persist thread_id. If our in_reply_to header matches
+  // an existing message we have stored for this user, inherit its
+  // thread_id — that puts us in the same conversation as the parent.
+  // Otherwise we start a new thread rooted at ourselves.
+  if (messageId) {
+    await assignThreadId(messageId, a.userId, inReplyTo);
+  }
+}
+
+/** Compute and persist thread_id for a freshly-inserted message.
+ *  Idempotent: no-ops if the row already has a non-null thread_id
+ *  that's still consistent with its parent. */
+export async function assignThreadId(
+  messageId: number,
+  userAccountId: number,
+  inReplyTo: string | null,
+): Promise<void> {
+  let threadId: number | null = null;
+
+  if (inReplyTo) {
+    const parent = await queryOne<{ thread_id: number }>(
+      `SELECT thread_id FROM tbl_email_message
+        WHERE user_account_id = $1 AND message_id_header = $2
+        ORDER BY sent_at DESC LIMIT 1`,
+      [userAccountId, inReplyTo],
+    );
+    if (parent?.thread_id) threadId = parent.thread_id;
+  }
+
+  // No parent in our DB → this message roots its own thread.
+  if (threadId == null) threadId = messageId;
+
+  await query(
+    `UPDATE tbl_email_message SET thread_id = $1 WHERE message_id = $2`,
+    [threadId, messageId],
+  );
 }
 
 /**
@@ -418,7 +455,7 @@ export async function recordSentMessage(args: {
   const ccLower = normalizeList(args.cc ?? '');
   const bccLower = normalizeList(args.bcc ?? '');
 
-  await query(`
+  const result = await query<{ message_id: number }>(`
     INSERT INTO tbl_email_message
       (user_account_id, email_account_id, folder, direction,
        message_id_header, in_reply_to,
@@ -433,7 +470,8 @@ export async function recordSentMessage(args: {
             $10, $11, $12, $13, $14,
             NOW())
     ON CONFLICT (user_account_id, message_id_header) WHERE message_id_header IS NOT NULL
-      DO NOTHING
+      DO UPDATE SET message_id_header = EXCLUDED.message_id_header
+    RETURNING message_id
   `, [
     args.userId, args.emailAccountId,
     args.messageIdHeader, args.inReplyTo ?? null,
@@ -441,6 +479,14 @@ export async function recordSentMessage(args: {
     toLower, ccLower, bccLower,
     args.subject.slice(0, 500), args.bodyText, args.bodyHtml, preview, args.hasAttachments,
   ]);
+
+  // Stitch the sent message into its conversation thread. For replies
+  // this puts the sent copy in the same thread as the original; for
+  // brand-new sends it starts a fresh thread rooted at this message.
+  const messageId = result[0]?.message_id;
+  if (messageId) {
+    await assignThreadId(messageId, args.userId, args.inReplyTo ?? null);
+  }
 }
 
 function normalizeList(s: string): string {

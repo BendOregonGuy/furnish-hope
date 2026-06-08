@@ -27,6 +27,18 @@ export interface EmailAttachmentMeta {
 
 export interface MessageListItem {
   message_id: number;
+  /** Conversation thread this message belongs to. The list endpoint
+   *  returns ONE row per thread (showing the latest message), so
+   *  thread_id is what we click into for the full conversation. */
+  thread_id: number;
+  /** Total messages in the thread (≥1). When > 1 we show a count
+   *  badge in the row. */
+  message_count: number;
+  /** Aggregate flags across the thread — drives the unread dot and
+   *  the inbox/sent appearance even for threads with mixed direction. */
+  thread_has_unread: boolean;
+  thread_has_inbound: boolean;
+  thread_has_outbound: boolean;
   folder: string;
   direction: 'in' | 'out';
   from_address: string;
@@ -50,7 +62,8 @@ export function MessageList({
   emptyHint?: string;
   loading?: boolean;
 }) {
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  // The list groups by thread; expansion is per-thread.
+  const [expandedThread, setExpandedThread] = useState<number | null>(null);
 
   if (loading) return <Loading />;
   if (messages.length === 0) {
@@ -60,11 +73,11 @@ export function MessageList({
   return (
     <div className="divide-y divide-hairline">
       {messages.map(m => (
-        <MessageRow
-          key={m.message_id}
+        <ThreadRow
+          key={m.thread_id}
           msg={m}
-          expanded={expandedId === m.message_id}
-          onToggle={() => setExpandedId(expandedId === m.message_id ? null : m.message_id)}
+          expanded={expandedThread === m.thread_id}
+          onToggle={() => setExpandedThread(expandedThread === m.thread_id ? null : m.thread_id)}
         />
       ))}
     </div>
@@ -75,20 +88,25 @@ export function MessageList({
 /*  Row                                                               */
 /* ----------------------------------------------------------------- */
 
-function MessageRow({
+function ThreadRow({
   msg, expanded, onToggle,
 }: {
   msg: MessageListItem;
   expanded: boolean;
   onToggle: () => void;
 }) {
+  // For the row label, prefer the most-recent message's "other party":
+  //   - Inbound latest → show sender
+  //   - Outbound latest → show first recipient
   const senderLabel = msg.direction === 'out'
     ? `To: ${msg.to_addresses.split(',')[0]}${msg.to_addresses.split(',').length > 1 ? ` +${msg.to_addresses.split(',').length - 1}` : ''}`
     : (msg.from_name ? `${msg.from_name} <${msg.from_address}>` : msg.from_address);
 
-  // Unread = inbound + never opened. Outbound messages are always "read"
-  // since the user authored them; we don't badge them as unread.
-  const isUnread = msg.direction === 'in' && !msg.read_at;
+  // Unread highlight uses the THREAD-wide flag, not just the latest
+  // message's read_at — a thread with an old unread reply should still
+  // glow until the user opens it.
+  const isUnread = msg.thread_has_unread;
+  const count = msg.message_count ?? 1;
 
   return (
     <div className={isUnread ? 'bg-terracotta/[0.04]' : ''}>
@@ -97,16 +115,15 @@ function MessageRow({
         onClick={onToggle}
         className="w-full text-left px-3 py-3 hover:bg-terracotta/[0.06] flex items-baseline gap-3 cursor-pointer"
       >
-        {/* Status dot: solid colored when unread, hollow ring when read/sent. */}
         <span
           className={`inline-block w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
             isUnread
               ? 'bg-terracotta'
-              : msg.direction === 'out'
+              : msg.thread_has_outbound && !msg.thread_has_inbound
                 ? 'bg-sage/40'
                 : 'bg-ink-faint/30'
           }`}
-          title={isUnread ? 'Unread' : 'Read'}
+          title={isUnread ? 'Unread reply' : 'Read'}
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 mb-0.5">
@@ -116,6 +133,11 @@ function MessageRow({
             <span className={`truncate ${isUnread ? 'font-semibold text-ink' : 'font-medium'}`}>
               {senderLabel}
             </span>
+            {count > 1 && (
+              <span className="text-[10px] text-ink-faint font-medium" title={`${count} messages in this conversation`}>
+                ({count})
+              </span>
+            )}
             {msg.has_attachments && <span className="text-[10px] text-ink-faint">📎</span>}
             <span className="ml-auto text-[11px] text-ink-faint whitespace-nowrap">
               {new Date(msg.sent_at).toLocaleString()}
@@ -131,42 +153,175 @@ function MessageRow({
           )}
         </div>
       </button>
-      {expanded && <MessageDetail messageId={msg.message_id} onClose={onToggle} />}
+      {expanded && <ThreadDetail threadId={msg.thread_id} onClose={onToggle} />}
     </div>
   );
 }
 
 /* ----------------------------------------------------------------- */
-/*  Detail + reply                                                    */
+/*  Thread detail (every message in the conversation, chronological)  */
 /* ----------------------------------------------------------------- */
 
-interface FullMessage extends MessageListItem {
+interface FullMessage {
+  message_id: number;
+  thread_id: number;
+  folder: string;
+  direction: 'in' | 'out';
+  from_address: string;
+  from_name: string | null;
+  to_addresses: string;
+  cc_addresses: string;
+  bcc_addresses: string;
+  subject: string | null;
   body_text: string | null;
   body_html: string | null;
-  cc_addresses: string;
+  has_attachments: boolean;
+  sent_at: string;
+  received_at: string | null;
+  read_at: string | null;
   account_email: string;
   message_id_header: string | null;
   attachments?: EmailAttachmentMeta[];
 }
 
-function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () => void }) {
+interface ThreadResponse {
+  thread_id: number;
+  messages: FullMessage[];
+}
+
+function ThreadDetail({ threadId, onClose }: { threadId: number; onClose: () => void }) {
   const qc = useQueryClient();
-  const { data: msg, isLoading, error } = useQuery<FullMessage>({
-    queryKey: ['mailbox', 'message', messageId],
-    queryFn: () => apiGet(`/api/mailbox/messages/${messageId}`),
+  const { data, isLoading, error } = useQuery<ThreadResponse>({
+    queryKey: ['mailbox', 'thread', threadId],
+    queryFn: () => apiGet(`/api/mailbox/threads/${threadId}`),
   });
 
-  // Detail fetch auto-marks inbound messages as read on the server.
-  // Invalidate list queries so the row updates from unread → read
-  // styling without the user having to refresh. Also bumps the sidebar
-  // unread-count badge.
+  // Side-effect: thread fetch auto-marks every inbound message in the
+  // thread as read. Invalidate list queries so the row + unread badge
+  // reflect the change without a manual refresh.
   useEffect(() => {
-    if (msg && msg.direction === 'in') {
+    if (data && data.messages.some(m => m.direction === 'in')) {
       qc.invalidateQueries({ queryKey: ['mailbox', 'list'] });
       qc.invalidateQueries({ queryKey: ['mailbox', 'participant'] });
       qc.invalidateQueries({ queryKey: ['mailbox', 'unread-count'] });
     }
-  }, [msg?.message_id, msg?.read_at, qc]);
+  }, [data?.thread_id, qc]);
+
+  // Track which prior messages the user has expanded. The latest
+  // message starts expanded automatically; older ones are collapsed.
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const latestId = data?.messages[data.messages.length - 1]?.message_id ?? null;
+
+  if (isLoading) return <div className="bg-cream/30 border-t border-hairline px-4 py-3 text-xs text-ink-faint">Loading conversation…</div>;
+  if (error) return <div className="bg-cream/30 border-t border-hairline px-4 py-3 text-xs text-terracotta-deep">{(error as any).message ?? 'Failed to load conversation'}</div>;
+  if (!data || data.messages.length === 0) return null;
+
+  const latest = data.messages[data.messages.length - 1];
+
+  return (
+    <div className="bg-cream/30 border-t border-hairline px-4 py-3 space-y-3">
+      {/* Each message in the thread, oldest first. Latest is auto-
+          expanded; the rest collapsed by default — click the header
+          to expand inline. */}
+      {data.messages.map((m, idx) => {
+        const isLatest = m.message_id === latestId;
+        const isExpanded = isLatest || expanded.has(m.message_id);
+        return (
+          <MessageInThread
+            key={m.message_id}
+            msg={m}
+            expanded={isExpanded}
+            isFirst={idx === 0}
+            onToggle={() => {
+              if (isLatest) return; // can't collapse the latest
+              setExpanded(prev => {
+                const next = new Set(prev);
+                if (next.has(m.message_id)) next.delete(m.message_id);
+                else next.add(m.message_id);
+                return next;
+              });
+            }}
+          />
+        );
+      })}
+
+      {/* Reply form — always anchored to the latest message in the
+          thread. Reply target is the other party of the latest msg. */}
+      <ThreadReply latest={latest} onClose={onClose} onSent={() => {
+        qc.invalidateQueries({ queryKey: ['mailbox'] });
+      }} />
+    </div>
+  );
+}
+
+/** Render one message inside a thread. Collapsed view shows a single
+ *  header line (sender + date); expanded shows the full body and
+ *  attachments. The latest message is always expanded; others toggle
+ *  on click. */
+function MessageInThread({
+  msg, expanded, isFirst, onToggle,
+}: {
+  msg: FullMessage;
+  expanded: boolean;
+  isFirst: boolean;
+  onToggle: () => void;
+}) {
+  const senderLine = msg.from_name ? `${msg.from_name} <${msg.from_address}>` : msg.from_address;
+  const directionLabel = msg.direction === 'out' ? 'You wrote' : 'From';
+  return (
+    <div className={`bg-paper border border-hairline rounded-md ${isFirst ? '' : ''}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full text-left px-3 py-2 hover:bg-cream/40 cursor-pointer"
+        title={expanded ? 'Click to collapse' : 'Click to expand'}
+      >
+        <div className="flex items-baseline gap-2 flex-wrap text-xs">
+          <span className="text-ink-faint uppercase tracking-widest text-[10px] font-medium">{directionLabel}</span>
+          <span className="font-medium truncate flex-1">{senderLine}</span>
+          {msg.has_attachments && <span className="text-[10px] text-ink-faint">📎</span>}
+          <span className="text-[11px] text-ink-faint whitespace-nowrap">{new Date(msg.sent_at).toLocaleString()}</span>
+        </div>
+        {!expanded && msg.body_text && (
+          <div className="text-[11px] text-ink-soft truncate mt-0.5">{msg.body_text.replace(/\s+/g, ' ').slice(0, 140)}</div>
+        )}
+      </button>
+      {expanded && (
+        <div className="px-3 pb-3 border-t border-hairline/40">
+          <div className="grid grid-cols-[60px_1fr] gap-x-3 text-xs text-ink-soft my-3">
+            <div className="text-ink-faint uppercase tracking-widest text-[10px] font-medium">To</div>
+            <div>{msg.to_addresses || '—'}</div>
+            {msg.cc_addresses && (
+              <>
+                <div className="text-ink-faint uppercase tracking-widest text-[10px] font-medium">Cc</div>
+                <div>{msg.cc_addresses}</div>
+              </>
+            )}
+          </div>
+          <MessageBody msg={msg} />
+          <AttachmentChips msg={msg} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Reply form anchored to the latest message in a thread. Replies are
+ *  threaded automatically — the server attaches the same thread_id to
+ *  the outbound message via the In-Reply-To header. */
+function ThreadReply({ latest, onClose, onSent }: { latest: FullMessage; onClose: () => void; onSent: () => void }) {
+  const qc = useQueryClient();
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyAll, setReplyAll] = useState(false);
+  const [replyBody, setReplyBody] = useState('');
+  const [replyError, setReplyError] = useState<string | null>(null);
+  const [toExtra, setToExtra] = useState('');
+  const [ccExtra, setCcExtra] = useState('');
+  const [bccExtra, setBccExtra] = useState('');
+  const replyAttachments = useAttachments();
+
+  // Reply target is always anchored to the LATEST message in the thread.
+  const messageId = latest.message_id;
 
   const markUnreadMut = useMutation({
     mutationFn: () => apiPost(`/api/mailbox/messages/${messageId}/mark-unread`, {}),
@@ -175,18 +330,6 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
       onClose();
     },
   });
-
-  const [replyOpen, setReplyOpen] = useState(false);
-  const [replyAll, setReplyAll] = useState(false);
-  const [replyBody, setReplyBody] = useState('');
-  const [replyError, setReplyError] = useState<string | null>(null);
-  // Extra recipients added via the contact picker. These get merged
-  // server-side with the auto-computed defaults (the original sender
-  // for To; the original Cc list when reply_all is on).
-  const [toExtra, setToExtra] = useState('');
-  const [ccExtra, setCcExtra] = useState('');
-  const [bccExtra, setBccExtra] = useState('');
-  const replyAttachments = useAttachments();
 
   const replyMut = useMutation({
     mutationFn: () => apiPost(`/api/mailbox/messages/${messageId}/reply`, {
@@ -203,151 +346,110 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
       setReplyError(null);
       setToExtra(''); setCcExtra(''); setBccExtra('');
       replyAttachments.clear();
-      qc.invalidateQueries({ queryKey: ['mailbox'] });
+      onSent();
     },
     onError: (err: any) => setReplyError(err.message ?? 'Reply failed'),
   });
 
+  const replyTargetLabel = latest.direction === 'in'
+    ? latest.from_address
+    : (latest.to_addresses.split(',')[0] ?? '?');
+
   return (
-    <div className="bg-cream/30 border-t border-hairline px-4 py-3">
-      {isLoading && <div className="text-xs text-ink-faint">Loading…</div>}
-      {error && <div className="text-xs text-terracotta-deep">{(error as any).message ?? 'Load failed'}</div>}
-      {msg && (
-        <>
-          <div className="grid grid-cols-[60px_1fr] gap-x-3 text-xs text-ink-soft mb-3">
-            <div className="text-ink-faint uppercase tracking-widest text-[10px] font-medium">From</div>
-            <div>{msg.from_name ? `${msg.from_name} <${msg.from_address}>` : msg.from_address}</div>
-            <div className="text-ink-faint uppercase tracking-widest text-[10px] font-medium">To</div>
-            <div>{msg.to_addresses || '—'}</div>
-            {msg.cc_addresses && (
-              <>
-                <div className="text-ink-faint uppercase tracking-widest text-[10px] font-medium">Cc</div>
-                <div>{msg.cc_addresses}</div>
-              </>
-            )}
-            <div className="text-ink-faint uppercase tracking-widest text-[10px] font-medium">Date</div>
-            <div>{new Date(msg.sent_at).toLocaleString()}</div>
-          </div>
+    <div>
+      <div className="flex gap-2 flex-wrap items-center mt-1">
+        <button type="button" onClick={() => { setReplyOpen(true); setReplyAll(false); }} className="btn-primary text-xs">Reply</button>
+        {latest.cc_addresses && (
+          <button type="button" onClick={() => { setReplyOpen(true); setReplyAll(true); }} className="btn-ghost text-xs">Reply all</button>
+        )}
+        {latest.direction === 'in' && (
+          <button
+            type="button"
+            onClick={() => markUnreadMut.mutate()}
+            disabled={markUnreadMut.isPending}
+            className="text-xs text-ink-faint hover:text-terracotta"
+          >
+            Mark as unread
+          </button>
+        )}
+        <button type="button" onClick={onClose} className="text-xs text-ink-faint hover:text-terracotta ml-auto">Collapse</button>
+      </div>
 
-          {/* Body. If the message has an HTML part, render it sanitized
-              via DOMPurify — that lets inline images, links, and basic
-              formatting come through while stripping scripts and event
-              handlers. If only plain text is present, render that with
-              whitespace preserved. Inline images (cid: refs) get
-              rewritten to point at our /attachments/:id endpoint. */}
-          <MessageBody msg={msg} />
-
-          {/* Non-inline attachments — files the sender attached but did
-              not embed in the body (PDFs, docs, photos sent as files,
-              etc). Inline images are excluded because they're already
-              shown in the body. */}
-          <AttachmentChips msg={msg} />
-
-          <div className="flex gap-2 flex-wrap items-center">
-            {/* type="button" everywhere — MessageList is embedded in admin
-                detail pages whose outer <form> would otherwise treat these
-                as type=submit and save (or wipe) the parent record. */}
-            <button type="button" onClick={() => { setReplyOpen(true); setReplyAll(false); }} className="btn-primary text-xs">Reply</button>
-            {msg.cc_addresses && (
-              <button type="button" onClick={() => { setReplyOpen(true); setReplyAll(true); }} className="btn-ghost text-xs">Reply all</button>
-            )}
-            {msg.direction === 'in' && (
-              <button
-                type="button"
-                onClick={() => markUnreadMut.mutate()}
-                disabled={markUnreadMut.isPending}
-                className="text-xs text-ink-faint hover:text-terracotta"
-              >
-                Mark as unread
-              </button>
-            )}
-            <button type="button" onClick={onClose} className="text-xs text-ink-faint hover:text-terracotta ml-auto">Collapse</button>
-          </div>
-
-          {replyOpen && (
-            <div className="mt-3 p-3 bg-paper rounded border border-hairline">
-              <div className="text-[11px] text-ink-faint mb-2 flex items-center justify-between gap-2">
-                <div>
-                  Replying to <strong>{msg.direction === 'in' ? msg.from_address : (msg.to_addresses.split(',')[0] ?? '?')}</strong>
-                  {replyAll && msg.cc_addresses && <> · also Cc: {msg.cc_addresses}</>}
-                  {msg.account_email && <> · from <strong>{msg.account_email}</strong></>}
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {/* Each picker is preceded by a "To" / "Cc" / "Bcc"
-                      label so the three identical "+ Contact ▾" buttons
-                      are visually distinguishable. The label is what
-                      tells the user which list the picked contact lands
-                      in. */}
-                  <span className="inline-flex items-center gap-1">
-                    <span className="text-[10px] uppercase tracking-widest text-ink-faint font-medium">To</span>
-                    <RecipientPicker target="to" onPick={email => setToExtra(prev => appendRecipient(prev, email))} />
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="text-[10px] uppercase tracking-widest text-ink-faint font-medium">Cc</span>
-                    <RecipientPicker target="cc" onPick={email => setCcExtra(prev => appendRecipient(prev, email))} />
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="text-[10px] uppercase tracking-widest text-ink-faint font-medium">Bcc</span>
-                    <RecipientPicker target="bcc" onPick={email => setBccExtra(prev => appendRecipient(prev, email))} />
-                  </span>
-                  <TemplatePicker
-                    onApply={t => setReplyBody(prev => prev ? `${prev}\n\n${t.body}` : t.body)}
-                  />
-                </div>
-              </div>
-
-              {/* Show extra recipients the user added. They can edit
-                  inline if they need to remove or fix something. */}
-              {(toExtra || ccExtra || bccExtra) && (
-                <div className="mb-2 grid grid-cols-[40px_1fr] gap-x-2 text-[11px]">
-                  {toExtra && <>
-                    <div className="text-ink-faint uppercase tracking-widest font-medium">+ To</div>
-                    <input type="text" value={toExtra} onChange={e => setToExtra(e.target.value)} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs" />
-                  </>}
-                  {ccExtra && <>
-                    <div className="text-ink-faint uppercase tracking-widest font-medium">+ Cc</div>
-                    <input type="text" value={ccExtra} onChange={e => setCcExtra(e.target.value)} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs" />
-                  </>}
-                  {bccExtra && <>
-                    <div className="text-ink-faint uppercase tracking-widest font-medium">+ Bcc</div>
-                    <input type="text" value={bccExtra} onChange={e => setBccExtra(e.target.value)} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs" />
-                  </>}
-                </div>
-              )}
-
-              <textarea
-                rows={5}
-                className="field-input font-sans"
-                value={replyBody}
-                onChange={e => setReplyBody(e.target.value)}
-                placeholder="Type your reply…"
-                autoFocus
+      {replyOpen && (
+        <div className="mt-3 p-3 bg-paper rounded border border-hairline">
+          <div className="text-[11px] text-ink-faint mb-2 flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              Replying to <strong>{replyTargetLabel}</strong>
+              {replyAll && latest.cc_addresses && <> · also Cc: {latest.cc_addresses}</>}
+              {latest.account_email && <> · from <strong>{latest.account_email}</strong></>}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1">
+                <span className="text-[10px] uppercase tracking-widest text-ink-faint font-medium">To</span>
+                <RecipientPicker target="to" onPick={email => setToExtra(prev => appendRecipient(prev, email))} />
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="text-[10px] uppercase tracking-widest text-ink-faint font-medium">Cc</span>
+                <RecipientPicker target="cc" onPick={email => setCcExtra(prev => appendRecipient(prev, email))} />
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="text-[10px] uppercase tracking-widest text-ink-faint font-medium">Bcc</span>
+                <RecipientPicker target="bcc" onPick={email => setBccExtra(prev => appendRecipient(prev, email))} />
+              </span>
+              <TemplatePicker
+                onApply={t => setReplyBody(prev => prev ? `${prev}\n\n${t.body}` : t.body)}
               />
-              <div className="mt-2">
-                <AttachmentPicker
-                  files={replyAttachments.files}
-                  onAdd={replyAttachments.add}
-                  onRemove={replyAttachments.remove}
-                />
-              </div>
-              {replyError && <div className="text-xs text-terracotta-deep mt-2">{replyError}</div>}
-              <div className="flex justify-end gap-2 mt-2">
-                <button type="button" onClick={() => { setReplyOpen(false); setReplyError(null); replyAttachments.clear(); }} className="btn-ghost text-xs">Cancel</button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!replyBody.trim()) { setReplyError('Reply body is required.'); return; }
-                    replyMut.mutate();
-                  }}
-                  disabled={replyMut.isPending}
-                  className="btn-primary text-xs disabled:opacity-60"
-                >
-                  {replyMut.isPending ? 'Sending…' : 'Send reply'}
-                </button>
-              </div>
+            </div>
+          </div>
+
+          {(toExtra || ccExtra || bccExtra) && (
+            <div className="mb-2 grid grid-cols-[40px_1fr] gap-x-2 text-[11px]">
+              {toExtra && <>
+                <div className="text-ink-faint uppercase tracking-widest font-medium">+ To</div>
+                <input type="text" value={toExtra} onChange={e => setToExtra(e.target.value)} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs" />
+              </>}
+              {ccExtra && <>
+                <div className="text-ink-faint uppercase tracking-widest font-medium">+ Cc</div>
+                <input type="text" value={ccExtra} onChange={e => setCcExtra(e.target.value)} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs" />
+              </>}
+              {bccExtra && <>
+                <div className="text-ink-faint uppercase tracking-widest font-medium">+ Bcc</div>
+                <input type="text" value={bccExtra} onChange={e => setBccExtra(e.target.value)} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs" />
+              </>}
             </div>
           )}
-        </>
+
+          <textarea
+            rows={5}
+            className="field-input font-sans"
+            value={replyBody}
+            onChange={e => setReplyBody(e.target.value)}
+            placeholder="Type your reply…"
+            autoFocus
+          />
+          <div className="mt-2">
+            <AttachmentPicker
+              files={replyAttachments.files}
+              onAdd={replyAttachments.add}
+              onRemove={replyAttachments.remove}
+            />
+          </div>
+          {replyError && <div className="text-xs text-terracotta-deep mt-2">{replyError}</div>}
+          <div className="flex justify-end gap-2 mt-2">
+            <button type="button" onClick={() => { setReplyOpen(false); setReplyError(null); replyAttachments.clear(); }} className="btn-ghost text-xs">Cancel</button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!replyBody.trim()) { setReplyError('Reply body is required.'); return; }
+                replyMut.mutate();
+              }}
+              disabled={replyMut.isPending}
+              className="btn-primary text-xs disabled:opacity-60"
+            >
+              {replyMut.isPending ? 'Sending…' : 'Send reply'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1315,6 +1315,74 @@ const MIGRATIONS: Migration[] = [
   },
 
   // ============================================================
+  // Email threading — group a back-and-forth conversation into a
+  // single thread. thread_id = message_id of the conversation's
+  // root (the first message in the chain). Backfilled via recursive
+  // CTE that walks In-Reply-To headers; new messages get their
+  // thread_id computed at insert time by sync.ts / send paths.
+  //
+  // Per-user scoping: message-id headers are global identifiers but
+  // we still scope the lookup by user_account_id, so two users who
+  // happen to be on opposite sides of a CC chain don't accidentally
+  // share a thread row.
+  // ============================================================
+  {
+    name: 'tbl_email_message.thread_id',
+    async run() {
+      await query(`ALTER TABLE tbl_email_message ADD COLUMN IF NOT EXISTS thread_id INTEGER`);
+
+      // Backfill in two passes:
+      //  1. Recursive CTE: chase In-Reply-To chains to find each
+      //     message's root. Roots are messages whose in_reply_to is
+      //     null or references a Message-Id we don't have stored.
+      //  2. Anything still NULL after (1) is its own root.
+      await query(`
+        WITH RECURSIVE chain AS (
+          SELECT
+            m.user_account_id,
+            m.message_id,
+            m.message_id AS thread_root,
+            m.message_id_header
+          FROM tbl_email_message m
+          WHERE m.in_reply_to IS NULL
+             OR NOT EXISTS (
+               SELECT 1
+               FROM tbl_email_message p
+               WHERE p.user_account_id = m.user_account_id
+                 AND p.message_id_header = m.in_reply_to
+             )
+
+          UNION ALL
+
+          SELECT
+            m.user_account_id,
+            m.message_id,
+            c.thread_root,
+            m.message_id_header
+          FROM tbl_email_message m
+          JOIN chain c
+            ON c.user_account_id = m.user_account_id
+           AND c.message_id_header = m.in_reply_to
+          WHERE m.in_reply_to IS NOT NULL
+        )
+        UPDATE tbl_email_message t
+        SET thread_id = c.thread_root
+        FROM chain c
+        WHERE t.message_id = c.message_id
+          AND t.thread_id IS DISTINCT FROM c.thread_root
+      `);
+
+      // Anything the CTE didn't reach (truly orphan or cyclic) gets
+      // its own message_id as thread_id so the column is never null.
+      await query(`UPDATE tbl_email_message SET thread_id = message_id WHERE thread_id IS NULL`);
+
+      await query(`ALTER TABLE tbl_email_message ALTER COLUMN thread_id SET NOT NULL`);
+      // Index for the per-user grouped list query.
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_email_message_thread ON tbl_email_message(user_account_id, thread_id, sent_at DESC)`);
+    },
+  },
+
+  // ============================================================
   // tbl_org_branding — the org's logo image (BYTEA), shown on PDF
   // receipts and (eventually) other branded outputs. Single-row
   // table — branding_id is fixed at 1 by an INSERT-or-UPDATE.
