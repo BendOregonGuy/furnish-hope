@@ -309,6 +309,120 @@ emailRouter.post('/accounts/:id/default', async (req, res, next) => {
 });
 
 /* ----------------------------------------------------------------- */
+/*  GET /api/email/contact-picker?q=<search>&type=<filter>            */
+/*                                                                    */
+/*  Powers the "+ Contact" affordance next to To / Cc / Bcc fields    */
+/*  in the Compose and Reply forms. Returns up to 100 contacts (with  */
+/*  emails on file) drawn from staff, volunteers, donors, clients,    */
+/*  and agency contacts.                                              */
+/*                                                                    */
+/*  Filters:                                                          */
+/*    type=all (default) | staff | volunteer | donor | client | agency*/
+/*    q=<substring>      matched case-insensitively against name+email*/
+/* ----------------------------------------------------------------- */
+
+const PICKER_TYPES = new Set(['all', 'staff', 'volunteer', 'donor', 'client', 'agency']);
+
+emailRouter.get('/contact-picker', async (req, res, next) => {
+  try {
+    const rawType = String(req.query.type ?? 'all').toLowerCase();
+    const type = PICKER_TYPES.has(rawType) ? rawType : 'all';
+    const q = String(req.query.q ?? '').trim();
+    const qParam = q.length > 0 ? `%${q.toLowerCase()}%` : null;
+
+    // UNION across every place a contact lives. Each branch filters
+    // to contacts that actually have an email — contacts with no email
+    // can't be picked as a recipient, so we exclude them from the list
+    // rather than show them disabled (less visual noise).
+    const rows = await query<{
+      display_name: string;
+      email: string;
+      type_label: string;
+      entity_type: string;
+      entity_id: number;
+    }>(`
+      WITH all_contacts AS (
+        -- Paid staff
+        SELECT
+          (c.first_name || ' ' || c.last_name) AS display_name,
+          c.email AS email,
+          'Staff' AS type_label,
+          'staff' AS entity_type,
+          fs.facility_staff_id AS entity_id
+        FROM tbl_facility_staff fs
+        JOIN tbl_contact c ON c.contact_id = fs.contact_id
+        WHERE fs.is_volunteer = false AND c.email IS NOT NULL AND c.email <> ''
+
+        UNION ALL
+
+        -- Volunteers
+        SELECT
+          (c.first_name || ' ' || c.last_name),
+          c.email,
+          'Volunteer',
+          'volunteer',
+          fs.facility_staff_id
+        FROM tbl_facility_staff fs
+        JOIN tbl_contact c ON c.contact_id = fs.contact_id
+        WHERE fs.is_volunteer = true AND c.email IS NOT NULL AND c.email <> ''
+
+        UNION ALL
+
+        -- Donors (via their primary contact)
+        SELECT
+          (c.first_name || ' ' || c.last_name),
+          c.email,
+          'Donor',
+          'donor',
+          d.donor_id
+        FROM tbl_donor d
+        JOIN tbl_contact c ON c.contact_id = d.contact_id
+        WHERE c.email IS NOT NULL AND c.email <> ''
+
+        UNION ALL
+
+        -- Clients
+        SELECT
+          (c.first_name || ' ' || c.last_name),
+          c.email,
+          'Client',
+          'client',
+          cl.client_id
+        FROM tbl_client cl
+        JOIN tbl_contact c ON c.contact_id = cl.contact_id
+        WHERE c.email IS NOT NULL AND c.email <> ''
+
+        UNION ALL
+
+        -- Agency contacts — name includes the agency in parens so
+        -- you can tell two same-named contacts apart.
+        SELECT
+          (c.first_name || ' ' || c.last_name || ' (' || ag.agency_name || ')'),
+          c.email,
+          'Agency',
+          'agency',
+          ac.agency_contact_id
+        FROM tbl_agency_contact ac
+        JOIN tbl_contact c ON c.contact_id = ac.contact_id
+        JOIN tbl_agency ag ON ag.agency_id = ac.agency_id
+        WHERE c.email IS NOT NULL AND c.email <> ''
+      )
+      SELECT display_name, email, type_label, entity_type, entity_id
+      FROM all_contacts
+      WHERE
+        ($1::text = 'all' OR entity_type = $1)
+        AND ($2::text IS NULL
+             OR LOWER(display_name) LIKE $2
+             OR LOWER(email) LIKE $2)
+      ORDER BY display_name
+      LIMIT 100
+    `, [type, qParam]);
+
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
 /*  POST /api/email/send  (Phase 4B)                                  */
 /* ----------------------------------------------------------------- */
 

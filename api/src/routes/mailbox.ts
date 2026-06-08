@@ -314,6 +314,11 @@ interface ReplyPayload {
   reply_all?: boolean;   // include original Cc list
   subject?: string;      // override; default = "Re: <original subject>"
   attachments?: Array<{ filename: string; content_base64: string; content_type?: string }>;
+  /** Optional extra recipients added via the contact picker. Merged
+   *  with the auto-computed defaults (reply target, reply_all cc). */
+  to_extra?: string;
+  cc_extra?: string;
+  bcc_extra?: string;
 }
 
 mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
@@ -352,7 +357,16 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
 
     const subject = body.subject?.trim()
       || (orig.subject?.toLowerCase().startsWith('re:') ? orig.subject : `Re: ${orig.subject ?? ''}`);
-    const cc = body.reply_all ? (orig.cc_addresses || undefined) : undefined;
+
+    // Merge auto-computed defaults with any extras the user added via
+    // the contact picker. Dedupe case-insensitively so the same address
+    // doesn't end up in the list twice.
+    const finalTo = mergeAddresses(replyTo, body.to_extra);
+    const finalCc = mergeAddresses(
+      body.reply_all ? (orig.cc_addresses || null) : null,
+      body.cc_extra,
+    );
+    const finalBcc = mergeAddresses(null, body.bcc_extra);
 
     const attachments = (body.attachments ?? []).map(a => ({
       filename: a.filename,
@@ -375,8 +389,9 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
     try {
       const info = await transporter.sendMail({
         from: acct.email_address,
-        to: replyTo,
-        cc,
+        to: finalTo || undefined,
+        cc: finalCc || undefined,
+        bcc: finalBcc || undefined,
         subject,
         text: textWithSig || undefined,
         html: htmlWithSig || undefined,
@@ -391,9 +406,9 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
           emailAccountId: acct.email_account_id,
           fromAddress: acct.email_address,
           fromName: null,
-          to: replyTo,
-          cc: cc ?? null,
-          bcc: null,
+          to: finalTo || replyTo,
+          cc: finalCc || null,
+          bcc: finalBcc || null,
           subject,
           bodyText: textWithSig ?? null,
           bodyHtml: htmlWithSig ?? null,
@@ -417,6 +432,24 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
 function firstOf(csv: string | null): string | null {
   if (!csv) return null;
   return csv.split(',').map(s => s.trim()).filter(Boolean)[0] ?? null;
+}
+
+/** Combine two comma-separated address lists, trim each entry, drop
+ *  blanks, and dedupe case-insensitively. Used to merge auto-computed
+ *  reply recipients with any extras the user added via the picker. */
+function mergeAddresses(a: string | null | undefined, b: string | null | undefined): string {
+  const all = [a, b].filter(Boolean).join(',');
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of all.split(',')) {
+    const s = part.trim();
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out.join(', ');
 }
 
 function escapeHtml(s: string): string {

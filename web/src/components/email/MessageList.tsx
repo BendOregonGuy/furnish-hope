@@ -14,6 +14,7 @@ import { apiGet, apiPost } from '../../lib/api.ts';
 import { Loading, EmptyState } from '../ui.tsx';
 import { useAttachments, AttachmentPicker } from './attachments.tsx';
 import { TemplatePicker } from './TemplatePicker.tsx';
+import { RecipientPicker, appendRecipient } from './RecipientPicker.tsx';
 
 export interface EmailAttachmentMeta {
   email_attachment_id: number;
@@ -179,6 +180,12 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
   const [replyAll, setReplyAll] = useState(false);
   const [replyBody, setReplyBody] = useState('');
   const [replyError, setReplyError] = useState<string | null>(null);
+  // Extra recipients added via the contact picker. These get merged
+  // server-side with the auto-computed defaults (the original sender
+  // for To; the original Cc list when reply_all is on).
+  const [toExtra, setToExtra] = useState('');
+  const [ccExtra, setCcExtra] = useState('');
+  const [bccExtra, setBccExtra] = useState('');
   const replyAttachments = useAttachments();
 
   const replyMut = useMutation({
@@ -186,11 +193,15 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
       body_text: replyBody,
       reply_all: replyAll,
       attachments: replyAttachments.files,
+      to_extra:  toExtra.trim() || undefined,
+      cc_extra:  ccExtra.trim() || undefined,
+      bcc_extra: bccExtra.trim() || undefined,
     }),
     onSuccess: () => {
       setReplyOpen(false);
       setReplyBody('');
       setReplyError(null);
+      setToExtra(''); setCcExtra(''); setBccExtra('');
       replyAttachments.clear();
       qc.invalidateQueries({ queryKey: ['mailbox'] });
     },
@@ -261,10 +272,35 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
                   {replyAll && msg.cc_addresses && <> · also Cc: {msg.cc_addresses}</>}
                   {msg.account_email && <> · from <strong>{msg.account_email}</strong></>}
                 </div>
-                <TemplatePicker
-                  onApply={t => setReplyBody(prev => prev ? `${prev}\n\n${t.body}` : t.body)}
-                />
+                <div className="flex items-center gap-2">
+                  <RecipientPicker target="to"  onPick={email => setToExtra(prev => appendRecipient(prev, email))} />
+                  <RecipientPicker target="cc"  onPick={email => setCcExtra(prev => appendRecipient(prev, email))} />
+                  <RecipientPicker target="bcc" onPick={email => setBccExtra(prev => appendRecipient(prev, email))} />
+                  <TemplatePicker
+                    onApply={t => setReplyBody(prev => prev ? `${prev}\n\n${t.body}` : t.body)}
+                  />
+                </div>
               </div>
+
+              {/* Show extra recipients the user added. They can edit
+                  inline if they need to remove or fix something. */}
+              {(toExtra || ccExtra || bccExtra) && (
+                <div className="mb-2 grid grid-cols-[40px_1fr] gap-x-2 text-[11px]">
+                  {toExtra && <>
+                    <div className="text-ink-faint uppercase tracking-widest font-medium">+ To</div>
+                    <input type="text" value={toExtra} onChange={e => setToExtra(e.target.value)} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs" />
+                  </>}
+                  {ccExtra && <>
+                    <div className="text-ink-faint uppercase tracking-widest font-medium">+ Cc</div>
+                    <input type="text" value={ccExtra} onChange={e => setCcExtra(e.target.value)} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs" />
+                  </>}
+                  {bccExtra && <>
+                    <div className="text-ink-faint uppercase tracking-widest font-medium">+ Bcc</div>
+                    <input type="text" value={bccExtra} onChange={e => setBccExtra(e.target.value)} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs" />
+                  </>}
+                </div>
+              )}
+
               <textarea
                 rows={5}
                 className="field-input font-sans"

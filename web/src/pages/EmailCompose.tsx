@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { apiGet, apiPost } from '../lib/api.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { TemplatePicker } from '../components/email/TemplatePicker.tsx';
+import { RecipientPicker, appendRecipient } from '../components/email/RecipientPicker.tsx';
 
 interface Account {
   email_account_id: number;
@@ -142,13 +143,16 @@ export function EmailCompose() {
 
         {/* To */}
         <div>
-          <label className="field-label">
-            To
-            {!showCc && (
-              <button type="button" onClick={() => setShowCc(true)} className="ml-2 text-[10px] normal-case tracking-normal text-terracotta hover:text-terracotta-deep">
-                + Cc / Bcc
-              </button>
-            )}
+          <label className="field-label flex items-center justify-between">
+            <span>
+              To
+              {!showCc && (
+                <button type="button" onClick={() => setShowCc(true)} className="ml-2 text-[10px] normal-case tracking-normal text-terracotta hover:text-terracotta-deep">
+                  + Cc / Bcc
+                </button>
+              )}
+            </span>
+            <RecipientPicker target="to" onPick={email => setTo(prev => appendRecipient(prev, email))} />
           </label>
           <input
             type="text"
@@ -163,11 +167,17 @@ export function EmailCompose() {
         {showCc && (
           <>
             <div>
-              <label className="field-label">Cc</label>
+              <label className="field-label flex items-center justify-between">
+                <span>Cc</span>
+                <RecipientPicker target="cc" onPick={email => setCc(prev => appendRecipient(prev, email))} />
+              </label>
               <input type="text" className="field-input" value={cc} onChange={e => setCc(e.target.value)} />
             </div>
             <div>
-              <label className="field-label">Bcc</label>
+              <label className="field-label flex items-center justify-between">
+                <span>Bcc</span>
+                <RecipientPicker target="bcc" onPick={email => setBcc(prev => appendRecipient(prev, email))} />
+              </label>
               <input type="text" className="field-input" value={bcc} onChange={e => setBcc(e.target.value)} />
             </div>
           </>
