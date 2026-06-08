@@ -4,7 +4,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { apiDelete, apiGet, apiPost, apiPut } from '../lib/api.ts';
 import { PageHeader, Loading, ErrorBox, EmptyState } from '../components/ui.tsx';
@@ -21,6 +21,7 @@ interface ProviderPreset {
   app_password_url: string;
   notes: string;
   requires_app_password: boolean;
+  oauth_provider?: 'google' | 'microsoft';
 }
 
 interface Account {
@@ -45,6 +46,31 @@ interface Account {
 
 export function EmailAccounts() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // After returning from a Google/Microsoft OAuth flow, the server
+  // redirects to /email/accounts?oauth=success&email=... or
+  // ?oauth_error=...
+  const oauthSuccess = searchParams.get('oauth') === 'success';
+  const oauthError = searchParams.get('oauth_error');
+  const oauthEmail = searchParams.get('email');
+  useEffect(() => {
+    if (oauthSuccess || oauthError) {
+      queryClient.invalidateQueries({ queryKey: ['email', 'accounts'] });
+      // Clear the query params after we read them so a refresh doesn't
+      // re-show the banner. Keep this effect dep-free of the params
+      // themselves so it only runs once per arrival.
+      const timer = window.setTimeout(() => {
+        searchParams.delete('oauth');
+        searchParams.delete('oauth_error');
+        searchParams.delete('email');
+        searchParams.delete('provider');
+        setSearchParams(searchParams, { replace: true });
+      }, 8000);
+      return () => window.clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { data: providers } = useQuery<{ providers: ProviderPreset[] }>({
     queryKey: ['email', 'providers'],
     queryFn: () => apiGet('/api/email/providers'),
@@ -85,6 +111,17 @@ export function EmailAccounts() {
         emphasis="accounts"
         subtitle="Connect your inboxes so the app can send receipts, acknowledgements, and campaign emails through them."
       />
+
+      {oauthSuccess && (
+        <div className="mb-5 p-3 bg-sage-soft text-[#3F4A33] rounded-md text-sm">
+          ✓ Connected {oauthEmail ?? 'your account'} via OAuth. The account is ready to use.
+        </div>
+      )}
+      {oauthError && (
+        <div className="mb-5 p-3 bg-terracotta-soft text-terracotta-deep rounded-md text-sm">
+          OAuth sign-in failed: {oauthError}
+        </div>
+      )}
 
       {/* Account list */}
       {isLoading && <Loading />}
@@ -300,6 +337,13 @@ function AccountForm({
         <button type="button" onClick={onCancel} className="text-xs text-ink-soft hover:text-terracotta">Cancel</button>
       </div>
 
+      {/* OAuth "Sign in with…" button — only shown for providers that
+          support it (Google, Microsoft). One click → redirected to
+          provider → consent → bounced back as a connected account. */}
+      {!isEdit && preset.oauth_provider && (
+        <OAuthSignInButton provider={preset.oauth_provider} label={preset.label} />
+      )}
+
       {/* Setup instructions */}
       {preset.notes && (
         <div className="mb-4 p-3 bg-gold-soft border border-gold/40 rounded-md text-[13px] text-ink-soft">
@@ -444,5 +488,46 @@ function AccountForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/* ----------------------------------------------------------------- */
+/*  OAuth sign-in button — one-click Google / Microsoft connect       */
+/* ----------------------------------------------------------------- */
+
+function OAuthSignInButton({ provider, label }: { provider: 'google' | 'microsoft'; label: string }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleClick() {
+    setErr(null);
+    setBusy(true);
+    try {
+      const { url } = await apiGet<{ url: string }>(`/api/email/oauth/${provider}/start`);
+      // Full-page redirect — provider posts back to /api/email/oauth/callback
+      // which then redirects to /email/accounts?oauth=success or ?oauth_error=
+      window.location.assign(url);
+    } catch (e: any) {
+      setBusy(false);
+      setErr(e.message ?? 'Failed to start OAuth flow');
+    }
+  }
+
+  return (
+    <div className="mb-4">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={busy}
+        className="w-full bg-paper border-2 border-hairline-strong rounded-md px-4 py-2.5 text-sm font-medium hover:border-terracotta hover:bg-terracotta/[0.04] disabled:opacity-60 flex items-center justify-center gap-3"
+      >
+        <span className="text-lg">{provider === 'google' ? '🇬' : '🪟'}</span>
+        <span>{busy ? 'Opening sign-in…' : `Sign in with ${label} →`}</span>
+      </button>
+      <p className="text-[11px] text-ink-faint mt-1.5 text-center">
+        Recommended. You'll be redirected to {label} to approve access, then bounced back here.
+      </p>
+      {err && <div className="mt-2 text-xs text-terracotta-deep">{err}</div>}
+    </div>
   );
 }

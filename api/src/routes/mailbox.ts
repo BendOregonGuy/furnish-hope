@@ -513,7 +513,7 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
     const acct = await queryOne<EmailAccountRow & { signature: string | null }>(`
       SELECT email_account_id, email_address, username,
              imap_host, imap_port, imap_secure,
-             smtp_host, smtp_port, smtp_secure, encrypted_password,
+             smtp_host, smtp_port, smtp_secure, encrypted_password, auth_type,
              signature
       FROM tbl_email_account
       WHERE email_account_id = $1
@@ -550,7 +550,7 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
       ? `${body.body_html}<br><br><pre style="font-family:inherit;white-space:pre-wrap;margin:0">${escapeHtml(sig)}</pre>`
       : body.body_html;
 
-    const transporter = buildSmtpTransporter(acct);
+    const transporter = await buildSmtpTransporter(acct);
     try {
       const info = await transporter.sendMail({
         from: acct.email_address,

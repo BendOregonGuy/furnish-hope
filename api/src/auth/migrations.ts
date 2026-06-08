@@ -1315,6 +1315,27 @@ const MIGRATIONS: Migration[] = [
   },
 
   // ============================================================
+  // OAuth columns for tbl_email_account. Lets users sign in with
+  // Google / Microsoft instead of generating an app-specific
+  // password. auth_type already exists ('password' | 'oauth'); the
+  // tokens themselves live in encrypted columns and get refreshed
+  // automatically when they expire.
+  // ============================================================
+  {
+    name: 'tbl_email_account.oauth_columns',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_email_account
+          ADD COLUMN IF NOT EXISTS oauth_provider           VARCHAR(20),
+          ADD COLUMN IF NOT EXISTS oauth_access_token_enc   TEXT,
+          ADD COLUMN IF NOT EXISTS oauth_refresh_token_enc  TEXT,
+          ADD COLUMN IF NOT EXISTS oauth_expires_at         TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS oauth_scope              TEXT
+      `);
+    },
+  },
+
+  // ============================================================
   // Email threading — group a back-and-forth conversation into a
   // single thread. thread_id = message_id of the conversation's
   // root (the first message in the chain). Backfilled via recursive

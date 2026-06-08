@@ -23,6 +23,10 @@ export interface ProviderPreset {
   /** True when the provider mandates an app-specific password (the user's
    *  primary login password won't work for IMAP/SMTP). */
   requires_app_password: boolean;
+  /** If set, the UI should offer "Sign in with X" via OAuth in addition
+   *  to (or instead of) the password form. Drives the SSO button on
+   *  the account-connect page. */
+  oauth_provider?: 'google' | 'microsoft';
 }
 
 export const PROVIDERS: Record<string, ProviderPreset> = {
@@ -37,9 +41,11 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
     smtp_secure: true,
     app_password_url: 'https://myaccount.google.com/apppasswords',
     notes:
-      'Gmail with 2-Step Verification requires an App Password — your normal Google password will not work. ' +
-      'Go to the App Passwords page, generate one labeled "Furnish Hope", and paste it below.',
+      'Recommended: click "Sign in with Google" above for one-click connection. ' +
+      'Alternatively you can use an App Password — generate one labeled "Furnish Hope" ' +
+      'on the Google App Passwords page and paste it below.',
     requires_app_password: true,
+    oauth_provider: 'google',
   },
   icloud: {
     id: 'icloud',
@@ -67,12 +73,11 @@ export const PROVIDERS: Record<string, ProviderPreset> = {
     smtp_secure: false, // STARTTLS on 587
     app_password_url: 'https://account.microsoft.com/security',
     notes:
-      '⚠️ Microsoft disabled basic authentication for all personal Outlook.com / Hotmail accounts in September 2024 ' +
-      '(Microsoft 365 work accounts since 2022). Password-based IMAP/SMTP — including app passwords — will fail with ' +
-      '"535 5.7.139 Authentication unsuccessful, basic authentication is disabled." OAuth 2.0 is the only path forward; ' +
-      'we have not implemented OAuth for Microsoft yet. Workaround: forward Outlook → Gmail and connect the Gmail ' +
-      'account here, or use a different provider.',
-    requires_app_password: true,
+      'Microsoft disabled basic authentication for Outlook/Hotmail and Microsoft 365 work accounts. ' +
+      'Click "Sign in with Microsoft" above — that\'s the only way to connect Outlook now. ' +
+      'Password fields below are kept for the rare custom-IMAP setup that still supports basic auth.',
+    requires_app_password: false,
+    oauth_provider: 'microsoft',
   },
   yahoo: {
     id: 'yahoo',

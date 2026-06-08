@@ -17,12 +17,21 @@
  */
 
 import { Router } from 'express';
+import { randomBytes } from 'node:crypto';
 import { query, queryOne, withTransaction } from '../db/pool.js';
 import { auditCreate, auditDelete, auditUpdate } from '../auth/audit.js';
 import { encryptSecret } from '../email/crypto.js';
 import { PROVIDERS, getProvider } from '../email/providers.js';
 import { buildSmtpTransporter, testImap, testSmtp, type EmailAccountRow } from '../email/transports.js';
 import { recordSentMessage } from '../email/sync.js';
+import {
+  OAUTH_PROVIDERS,
+  getOAuthCredentials,
+  buildAuthorizeUrl,
+  exchangeCodeForTokens,
+  fetchUserInfo,
+  type OAuthProviderId,
+} from '../email/oauth.js';
 
 export const emailRouter = Router();
 
@@ -246,7 +255,7 @@ emailRouter.post('/accounts/:id/test', async (req, res, next) => {
     const acct = await queryOne<EmailAccountRow>(`
       SELECT email_account_id, email_address, username,
              imap_host, imap_port, imap_secure,
-             smtp_host, smtp_port, smtp_secure, encrypted_password
+             smtp_host, smtp_port, smtp_secure, encrypted_password, auth_type
         FROM tbl_email_account
        WHERE email_account_id = $1 AND user_account_id = $2
     `, [id, userId]);
@@ -306,6 +315,160 @@ emailRouter.post('/accounts/:id/default', async (req, res, next) => {
     });
     res.json({ ok: true });
   } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  OAuth — Google (Gmail) and Microsoft (Outlook / O365)             */
+/*                                                                    */
+/*  GET  /api/email/oauth/:provider/start                             */
+/*    Returns { url } the client should redirect to. Stashes a CSRF   */
+/*    state nonce in the session.                                     */
+/*                                                                    */
+/*  GET  /api/email/oauth/callback?code=&state=                       */
+/*    Provider redirects here. We verify state, exchange code for     */
+/*    tokens, fetch the user's email, INSERT the row, redirect back   */
+/*    to /email/accounts in the SPA.                                  */
+/* ----------------------------------------------------------------- */
+
+declare module 'express-session' {
+  interface SessionData {
+    emailOAuthState?: {
+      nonce: string;
+      provider: OAuthProviderId;
+      createdAt: number;
+    };
+  }
+}
+
+function oauthRedirectUri(req: any): string {
+  // Honor APP_BASE_URL when set (DO production), else derive from the
+  // request. Critical that this matches EXACTLY what's registered in
+  // the provider console — even trailing slash differences break it.
+  const base = process.env.APP_BASE_URL?.replace(/\/$/, '')
+    ?? `${req.protocol}://${req.get('host')}`;
+  return `${base}/api/email/oauth/callback`;
+}
+
+emailRouter.get('/oauth/:provider/start', (req, res, next) => {
+  try {
+    const providerId = req.params.provider as OAuthProviderId;
+    const provider = OAUTH_PROVIDERS[providerId];
+    if (!provider) return res.status(400).json({ error: 'Unknown OAuth provider' });
+
+    const { clientId } = getOAuthCredentials(providerId); // throws if env vars missing
+    const nonce = randomBytes(24).toString('hex');
+    req.session.emailOAuthState = { nonce, provider: providerId, createdAt: Date.now() };
+
+    const url = buildAuthorizeUrl(provider, clientId, oauthRedirectUri(req), nonce);
+    res.json({ url });
+  } catch (err: any) { next(err); }
+});
+
+emailRouter.get('/oauth/callback', async (req, res, next) => {
+  try {
+    const code = req.query.code as string | undefined;
+    const state = req.query.state as string | undefined;
+    const oauthErr = req.query.error as string | undefined;
+
+    // Provider returned an error (user denied, etc).
+    if (oauthErr) {
+      return res.redirect(`/email/accounts?oauth_error=${encodeURIComponent(oauthErr)}`);
+    }
+    if (!code || !state) return res.status(400).send('Missing code or state');
+
+    // Verify the state nonce we stashed at /start.
+    const stashed = req.session.emailOAuthState;
+    if (!stashed || stashed.nonce !== state) return res.status(400).send('Invalid OAuth state');
+    if (Date.now() - stashed.createdAt > 10 * 60 * 1000) return res.status(400).send('OAuth state expired — try again');
+
+    const provider = OAUTH_PROVIDERS[stashed.provider];
+    const { clientId, clientSecret } = getOAuthCredentials(stashed.provider);
+    const redirectUri = oauthRedirectUri(req);
+
+    // Exchange code → tokens, then fetch the user's email.
+    const tokens = await exchangeCodeForTokens(provider, clientId, clientSecret, redirectUri, code);
+    if (!tokens.refresh_token) {
+      // Without a refresh_token we couldn't keep this account working
+      // past the first hour. Force the user to retry; Google requires
+      // prompt=consent to issue one, which we already pass.
+      return res.redirect(`/email/accounts?oauth_error=${encodeURIComponent('No refresh token received. Please disconnect and try again.')}`);
+    }
+    // Pull into a local so TS narrows for use inside the closures below.
+    const refreshToken: string = tokens.refresh_token;
+    const { email } = await fetchUserInfo(provider, tokens.access_token);
+
+    // Clear the one-time state.
+    req.session.emailOAuthState = undefined;
+
+    const userId = req.user!.user_account_id;
+    const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+
+    // Upsert the account. If the user reconnects an account they
+    // already have (same email + user), we update the tokens rather
+    // than failing on the unique constraint.
+    await withTransaction(async (tx) => {
+      const existing = await tx.queryOne<{ email_account_id: number }>(
+        `SELECT email_account_id FROM tbl_email_account
+          WHERE user_account_id = $1 AND LOWER(email_address) = LOWER($2)`,
+        [userId, email],
+      );
+
+      if (existing) {
+        await tx.query(`
+          UPDATE tbl_email_account
+             SET auth_type = 'oauth',
+                 oauth_provider = $1,
+                 oauth_access_token_enc = $2,
+                 oauth_refresh_token_enc = $3,
+                 oauth_expires_at = $4,
+                 oauth_scope = $5,
+                 imap_host = $6, imap_port = $7, imap_secure = $8,
+                 smtp_host = $9, smtp_port = $10, smtp_secure = $11,
+                 username = $12,
+                 last_tested_at = NULL, last_test_status = NULL, last_test_error = NULL
+           WHERE email_account_id = $13
+        `, [
+          stashed.provider,
+          encryptSecret(tokens.access_token),
+          encryptSecret(refreshToken),
+          expiresAt,
+          tokens.scope ?? provider.scopes.join(' '),
+          provider.imap.host, provider.imap.port, provider.imap.secure,
+          provider.smtp.host, provider.smtp.port, provider.smtp.secure,
+          email,
+          existing.email_account_id,
+        ]);
+      } else {
+        await tx.query(`
+          INSERT INTO tbl_email_account
+            (user_account_id, email_address, provider, auth_type,
+             oauth_provider, oauth_access_token_enc, oauth_refresh_token_enc,
+             oauth_expires_at, oauth_scope,
+             imap_host, imap_port, imap_secure,
+             smtp_host, smtp_port, smtp_secure,
+             username, is_default_send)
+          VALUES ($1, $2, $3, 'oauth', $4, $5, $6, $7, $8,
+                  $9, $10, $11, $12, $13, $14, $15,
+                  NOT EXISTS (SELECT 1 FROM tbl_email_account WHERE user_account_id = $1))
+        `, [
+          userId, email, provider.accountProvider,
+          stashed.provider,
+          encryptSecret(tokens.access_token),
+          encryptSecret(refreshToken),
+          expiresAt,
+          tokens.scope ?? provider.scopes.join(' '),
+          provider.imap.host, provider.imap.port, provider.imap.secure,
+          provider.smtp.host, provider.smtp.port, provider.smtp.secure,
+          email,
+        ]);
+      }
+    });
+
+    res.redirect(`/email/accounts?oauth=success&provider=${stashed.provider}&email=${encodeURIComponent(email)}`);
+  } catch (err: any) {
+    console.error('[email:oauth callback]', err);
+    res.redirect(`/email/accounts?oauth_error=${encodeURIComponent(err.message ?? 'OAuth callback failed')}`);
+  }
 });
 
 /* ----------------------------------------------------------------- */
@@ -452,7 +615,7 @@ emailRouter.post('/send', async (req, res, next) => {
       acct = await queryOne<EmailAccountRow & { signature: string | null }>(`
         SELECT email_account_id, email_address, username,
                imap_host, imap_port, imap_secure,
-               smtp_host, smtp_port, smtp_secure, encrypted_password,
+               smtp_host, smtp_port, smtp_secure, encrypted_password, auth_type,
                signature
           FROM tbl_email_account
          WHERE email_account_id = $1 AND user_account_id = $2
@@ -461,7 +624,7 @@ emailRouter.post('/send', async (req, res, next) => {
       acct = await queryOne<EmailAccountRow & { signature: string | null }>(`
         SELECT email_account_id, email_address, username,
                imap_host, imap_port, imap_secure,
-               smtp_host, smtp_port, smtp_secure, encrypted_password,
+               smtp_host, smtp_port, smtp_secure, encrypted_password, auth_type,
                signature
           FROM tbl_email_account
          WHERE user_account_id = $1 AND is_default_send = true
@@ -484,7 +647,7 @@ emailRouter.post('/send', async (req, res, next) => {
       ? `${body.body_html}<br><br><pre style="font-family:inherit;white-space:pre-wrap;margin:0">${escapeHtml(sig)}</pre>`
       : body.body_html;
 
-    const transporter = buildSmtpTransporter(acct);
+    const transporter = await buildSmtpTransporter(acct);
     try {
       const info = await transporter.sendMail({
         from: acct.email_address,

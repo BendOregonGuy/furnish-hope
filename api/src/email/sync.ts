@@ -61,7 +61,7 @@ async function syncOneAccount(
   userId: number,
   opts?: { limit?: number },
 ): Promise<SyncSummary> {
-  const client = buildImapClient(acct);
+  const client = await buildImapClient(acct);
   await client.connect();
   try {
     // INBOX first. We bubble errors up via the per-folder error field
@@ -323,7 +323,7 @@ export async function backfillAttachments(messageId: number, userAccountId: numb
   );
   if (!acct) return 0;
 
-  const client = buildImapClient(acct);
+  const client = await buildImapClient(acct);
   let saved = 0;
   try {
     await client.connect();

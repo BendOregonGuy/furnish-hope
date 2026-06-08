@@ -213,7 +213,7 @@ async function sendOne(donationId: number, userId: number, accountIdOverride?: n
 
   // Send.
   try {
-    const transporter = buildSmtpTransporter(acct);
+    const transporter = await buildSmtpTransporter(acct);
     const info = await transporter.sendMail({
       from: acct.email_address,
       to: donorEmail.email,
