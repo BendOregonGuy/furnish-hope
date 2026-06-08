@@ -40,9 +40,22 @@ export const emailRouter = Router();
 /* ----------------------------------------------------------------- */
 
 emailRouter.get('/providers', (_req, res) => {
-  // Strip the password URLs into a list shape the UI can iterate; presets are
-  // already public, no encryption concerns.
-  res.json({ providers: Object.values(PROVIDERS) });
+  // Presets are public (host/port/notes), no encryption concerns.
+  //
+  // Decorate each preset with oauth_available — true only when the
+  // provider declares an oauth_provider AND we have the OAuth client
+  // credentials set in env vars. Lets the UI render the "Sign in
+  // with…" button only when it'll actually work, keeping the connect
+  // form clean during the password-only dev phase.
+  const oauthAvail: Record<string, boolean> = {
+    google:    !!(process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET),
+    microsoft: !!(process.env.MICROSOFT_OAUTH_CLIENT_ID && process.env.MICROSOFT_OAUTH_CLIENT_SECRET),
+  };
+  const providers = Object.values(PROVIDERS).map(p => ({
+    ...p,
+    oauth_available: p.oauth_provider ? !!oauthAvail[p.oauth_provider] : false,
+  }));
+  res.json({ providers });
 });
 
 /* ----------------------------------------------------------------- */

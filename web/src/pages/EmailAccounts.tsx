@@ -22,6 +22,10 @@ interface ProviderPreset {
   notes: string;
   requires_app_password: boolean;
   oauth_provider?: 'google' | 'microsoft';
+  /** Server reports true only when the OAuth client credentials are
+   *  configured for this provider in env vars. Hides the "Sign in
+   *  with…" button until OAuth is actually usable. */
+  oauth_available?: boolean;
 }
 
 interface Account {
@@ -337,10 +341,12 @@ function AccountForm({
         <button type="button" onClick={onCancel} className="text-xs text-ink-soft hover:text-terracotta">Cancel</button>
       </div>
 
-      {/* OAuth "Sign in with…" button — only shown for providers that
-          support it (Google, Microsoft). One click → redirected to
-          provider → consent → bounced back as a connected account. */}
-      {!isEdit && preset.oauth_provider && (
+      {/* OAuth "Sign in with…" button — only shown when the provider
+          supports it AND the server has the OAuth client credentials
+          configured (so clicking does something useful). Until you
+          set GOOGLE_OAUTH_CLIENT_ID / MICROSOFT_OAUTH_CLIENT_ID in
+          DigitalOcean, the form falls back to the password-only flow. */}
+      {!isEdit && preset.oauth_provider && preset.oauth_available && (
         <OAuthSignInButton provider={preset.oauth_provider} label={preset.label} />
       )}
 
