@@ -48,7 +48,7 @@ emailRouter.get('/accounts', async (req, res, next) => {
              auth_type, imap_host, imap_port, imap_secure,
              smtp_host, smtp_port, smtp_secure, username,
              is_default_send, last_tested_at, last_test_status, last_test_error,
-             created_at,
+             signature, created_at,
              (encrypted_password IS NOT NULL) AS has_password
         FROM tbl_email_account
        WHERE user_account_id = $1
@@ -72,7 +72,7 @@ emailRouter.get('/accounts/:id', async (req, res, next) => {
              auth_type, imap_host, imap_port, imap_secure,
              smtp_host, smtp_port, smtp_secure, username,
              is_default_send, last_tested_at, last_test_status, last_test_error,
-             created_at,
+             signature, created_at,
              (encrypted_password IS NOT NULL) AS has_password
         FROM tbl_email_account
        WHERE email_account_id = $1 AND user_account_id = $2
@@ -99,6 +99,8 @@ interface AccountWritePayload {
   username?: string | null;
   password?: string;
   is_default_send?: boolean;
+  /** Plain-text signature appended to outbound mail (and replies). */
+  signature?: string | null;
 }
 
 emailRouter.post('/accounts', async (req, res, next) => {
@@ -120,8 +122,8 @@ emailRouter.post('/accounts', async (req, res, next) => {
           (user_account_id, display_name, email_address, provider,
            imap_host, imap_port, imap_secure,
            smtp_host, smtp_port, smtp_secure,
-           username, encrypted_password, is_default_send)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+           username, encrypted_password, is_default_send, signature)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         RETURNING *
       `, [
         userId, body.display_name ?? null, body.email_address.trim(), body.provider,
@@ -130,6 +132,7 @@ emailRouter.post('/accounts', async (req, res, next) => {
         body.username ?? body.email_address.trim(),
         body.password ? encryptSecret(body.password) : null,
         body.is_default_send ?? false,
+        body.signature ?? null,
       ]);
       await auditCreate(req, 'tbl_email_account', r!.email_account_id, redactForAudit(r!), tx);
       return r!.email_account_id;
@@ -176,15 +179,20 @@ emailRouter.put('/accounts/:id', async (req, res, next) => {
         ? encryptSecret(body.password)
         : before.encrypted_password;
 
+      // Preserve existing signature when caller omits the field (undefined)
+      // — only overwrite when they explicitly pass it (including null/empty).
+      const newSignature = body.signature === undefined ? before.signature : body.signature;
+
       const after = await tx.queryOne<Record<string, any>>(`
         UPDATE tbl_email_account
            SET display_name = $1, email_address = $2, provider = $3,
                imap_host = $4, imap_port = $5, imap_secure = $6,
                smtp_host = $7, smtp_port = $8, smtp_secure = $9,
                username = $10, encrypted_password = $11, is_default_send = $12,
+               signature = $13,
                -- clear stale test result on edit so the user re-tests
                last_tested_at = NULL, last_test_status = NULL, last_test_error = NULL
-         WHERE email_account_id = $13 AND user_account_id = $14
+         WHERE email_account_id = $14 AND user_account_id = $15
          RETURNING *
       `, [
         body.display_name ?? null, body.email_address.trim(), body.provider,
@@ -193,6 +201,7 @@ emailRouter.put('/accounts/:id', async (req, res, next) => {
         body.username ?? body.email_address.trim(),
         newEncrypted,
         body.is_default_send ?? false,
+        newSignature,
         id, userId,
       ]);
       if (after) await auditUpdate(req, 'tbl_email_account', id, redactForAudit(before), redactForAudit(after), tx);
@@ -326,23 +335,40 @@ emailRouter.post('/send', async (req, res, next) => {
     // Pick the account: explicit, else default, else error.
     let acct: EmailAccountRow | null;
     if (body.email_account_id) {
-      acct = await queryOne<EmailAccountRow>(`
+      acct = await queryOne<EmailAccountRow & { signature: string | null }>(`
         SELECT email_account_id, email_address, username,
                imap_host, imap_port, imap_secure,
-               smtp_host, smtp_port, smtp_secure, encrypted_password
+               smtp_host, smtp_port, smtp_secure, encrypted_password,
+               signature
           FROM tbl_email_account
          WHERE email_account_id = $1 AND user_account_id = $2
       `, [body.email_account_id, userId]);
     } else {
-      acct = await queryOne<EmailAccountRow>(`
+      acct = await queryOne<EmailAccountRow & { signature: string | null }>(`
         SELECT email_account_id, email_address, username,
                imap_host, imap_port, imap_secure,
-               smtp_host, smtp_port, smtp_secure, encrypted_password
+               smtp_host, smtp_port, smtp_secure, encrypted_password,
+               signature
           FROM tbl_email_account
          WHERE user_account_id = $1 AND is_default_send = true
       `, [userId]);
     }
     if (!acct) return res.status(400).json({ error: 'No email account selected and no default set.' });
+
+    // Append the account's signature to the outgoing body. The
+    // signature is plain text — if the caller is sending plain text we
+    // tack it on with a blank line; if they're sending HTML we wrap it
+    // in <pre> so newlines are preserved. Caller can suppress by
+    // passing { skip_signature: true } (used by the bulk receipt
+    // sender, which already builds its own footer).
+    const sig: string | null = (acct as any).signature ?? null;
+    const skipSig: boolean = !!(body as any).skip_signature;
+    const textWithSig = body.body_text && sig && !skipSig
+      ? `${body.body_text.replace(/\s+$/, '')}\n\n${sig}\n`
+      : body.body_text;
+    const htmlWithSig = body.body_html && sig && !skipSig
+      ? `${body.body_html}<br><br><pre style="font-family:inherit;white-space:pre-wrap;margin:0">${escapeHtml(sig)}</pre>`
+      : body.body_html;
 
     const transporter = buildSmtpTransporter(acct);
     try {
@@ -352,8 +378,8 @@ emailRouter.post('/send', async (req, res, next) => {
         cc: body.cc || undefined,
         bcc: body.bcc || undefined,
         subject: body.subject,
-        text: body.body_text || undefined,
-        html: body.body_html || undefined,
+        text: textWithSig || undefined,
+        html: htmlWithSig || undefined,
         attachments: (body.attachments ?? []).map(a => ({
           filename: a.filename,
           content: Buffer.from(a.content_base64, 'base64'),
@@ -374,8 +400,8 @@ emailRouter.post('/send', async (req, res, next) => {
           cc: body.cc ?? null,
           bcc: body.bcc ?? null,
           subject: body.subject,
-          bodyText: body.body_text ?? null,
-          bodyHtml: body.body_html ?? null,
+          bodyText: textWithSig ?? null,
+          bodyHtml: htmlWithSig ?? null,
           messageIdHeader: info.messageId ?? null,
           inReplyTo: (body as any).in_reply_to ?? null,
           hasAttachments: (body.attachments ?? []).length > 0,
@@ -444,6 +470,17 @@ function shortErr(e: any): string {
   if (!e) return 'unknown';
   const msg = String(e.message ?? e);
   return msg.length > 240 ? msg.slice(0, 240) + '…' : msg;
+}
+
+/** Escape plain text for safe inclusion inside an HTML email body
+ *  (used when appending a plain-text signature to an HTML message). */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /** Strip encrypted_password before logging in the audit log. */

@@ -13,6 +13,7 @@ import DOMPurify from 'dompurify';
 import { apiGet, apiPost } from '../../lib/api.ts';
 import { Loading, EmptyState } from '../ui.tsx';
 import { useAttachments, AttachmentPicker } from './attachments.tsx';
+import { TemplatePicker } from './TemplatePicker.tsx';
 
 export interface EmailAttachmentMeta {
   email_attachment_id: number;
@@ -254,10 +255,15 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
 
           {replyOpen && (
             <div className="mt-3 p-3 bg-paper rounded border border-hairline">
-              <div className="text-[11px] text-ink-faint mb-2">
-                Replying to <strong>{msg.direction === 'in' ? msg.from_address : (msg.to_addresses.split(',')[0] ?? '?')}</strong>
-                {replyAll && msg.cc_addresses && <> · also Cc: {msg.cc_addresses}</>}
-                {msg.account_email && <> · from <strong>{msg.account_email}</strong></>}
+              <div className="text-[11px] text-ink-faint mb-2 flex items-center justify-between gap-2">
+                <div>
+                  Replying to <strong>{msg.direction === 'in' ? msg.from_address : (msg.to_addresses.split(',')[0] ?? '?')}</strong>
+                  {replyAll && msg.cc_addresses && <> · also Cc: {msg.cc_addresses}</>}
+                  {msg.account_email && <> · from <strong>{msg.account_email}</strong></>}
+                </div>
+                <TemplatePicker
+                  onApply={t => setReplyBody(prev => prev ? `${prev}\n\n${t.body}` : t.body)}
+                />
               </div>
               <textarea
                 rows={5}

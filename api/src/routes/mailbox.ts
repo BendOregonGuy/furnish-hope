@@ -340,10 +340,11 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
     const replyTo = orig.direction === 'in' ? orig.from_address : firstOf(orig.to_addresses);
     if (!replyTo) return res.status(400).json({ error: 'No recipient on original message.' });
 
-    const acct = await queryOne<EmailAccountRow>(`
+    const acct = await queryOne<EmailAccountRow & { signature: string | null }>(`
       SELECT email_account_id, email_address, username,
              imap_host, imap_port, imap_secure,
-             smtp_host, smtp_port, smtp_secure, encrypted_password
+             smtp_host, smtp_port, smtp_secure, encrypted_password,
+             signature
       FROM tbl_email_account
       WHERE email_account_id = $1
     `, [orig.email_account_id]);
@@ -359,6 +360,17 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
       contentType: a.content_type,
     }));
 
+    // Append the user's signature to the reply body (text and/or html).
+    // Mirrors the behaviour in /api/email/send so signatures show up
+    // whether the user composes new or replies.
+    const sig = acct.signature;
+    const textWithSig = body.body_text && sig
+      ? `${body.body_text.replace(/\s+$/, '')}\n\n${sig}\n`
+      : body.body_text;
+    const htmlWithSig = body.body_html && sig
+      ? `${body.body_html}<br><br><pre style="font-family:inherit;white-space:pre-wrap;margin:0">${escapeHtml(sig)}</pre>`
+      : body.body_html;
+
     const transporter = buildSmtpTransporter(acct);
     try {
       const info = await transporter.sendMail({
@@ -366,8 +378,8 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
         to: replyTo,
         cc,
         subject,
-        text: body.body_text || undefined,
-        html: body.body_html || undefined,
+        text: textWithSig || undefined,
+        html: htmlWithSig || undefined,
         inReplyTo: orig.message_id_header ?? undefined,
         references: orig.message_id_header ?? undefined,
         attachments: attachments.length > 0 ? attachments : undefined,
@@ -383,8 +395,8 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
           cc: cc ?? null,
           bcc: null,
           subject,
-          bodyText: body.body_text ?? null,
-          bodyHtml: body.body_html ?? null,
+          bodyText: textWithSig ?? null,
+          bodyHtml: htmlWithSig ?? null,
           messageIdHeader: info.messageId ?? null,
           inReplyTo: orig.message_id_header ?? null,
           hasAttachments: attachments.length > 0,
@@ -405,4 +417,13 @@ mailboxRouter.post('/messages/:id/reply', async (req, res, next) => {
 function firstOf(csv: string | null): string | null {
   if (!csv) return null;
   return csv.split(',').map(s => s.trim()).filter(Boolean)[0] ?? null;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

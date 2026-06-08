@@ -40,6 +40,7 @@ interface Account {
   last_test_status: string | null;
   last_test_error: string | null;
   has_password: boolean;
+  signature: string | null;
 }
 
 export function EmailAccounts() {
@@ -240,6 +241,7 @@ function AccountForm({
     username: existing?.username ?? '',
     password: '',
     is_default_send: existing?.is_default_send ?? false,
+    signature: existing?.signature ?? '',
   });
   const [showAdvanced, setShowAdvanced] = useState(preset.id === 'imap');
   const [error, setError] = useState<string | null>(null);
@@ -414,6 +416,21 @@ function AccountForm({
         <input type="checkbox" checked={values.is_default_send} onChange={e => setValues(v => ({ ...v, is_default_send: e.target.checked }))} className="w-4 h-4 accent-terracotta" />
         Use this account as the default for sending email
       </label>
+
+      <div className="mb-4">
+        <label className="field-label">Signature</label>
+        <textarea
+          rows={5}
+          className="field-input font-sans"
+          value={values.signature}
+          onChange={e => setValues(v => ({ ...v, signature: e.target.value }))}
+          placeholder={'Jamie Smith\nFurnish Hope · Community Coordinator\n(541) 555-1234'}
+          maxLength={2000}
+        />
+        <div className="text-[11px] text-ink-faint mt-1">
+          Appended automatically to the bottom of every email you send (compose and replies) from this account.
+        </div>
+      </div>
 
       {error && <div className="mb-4 p-2.5 bg-terracotta-soft text-terracotta-deep rounded-md text-xs">{error}</div>}
 

@@ -1269,6 +1269,50 @@ const MIGRATIONS: Migration[] = [
       await query(`CREATE INDEX IF NOT EXISTS idx_tbl_email_attachment_cid ON tbl_email_attachment(message_id, content_id) WHERE content_id IS NOT NULL`);
     },
   },
+
+  // ============================================================
+  // Per-account email signature. Stored as plain text — staff just
+  // need name + title + phone + maybe a tagline. If we ever add a
+  // rich-text editor we can add a signature_html column alongside.
+  // ============================================================
+  {
+    name: 'tbl_email_account.signature',
+    async run() {
+      await query(`ALTER TABLE tbl_email_account ADD COLUMN IF NOT EXISTS signature TEXT`);
+    },
+  },
+
+  // ============================================================
+  // Email templates — pre-canned messages staff use over and over
+  // (thank-you for cash gift, pickup confirmation, volunteer
+  // welcome, etc). Per-user so each staff member can curate their
+  // own set without stepping on each other; we can layer an
+  // "org-wide" flag later if shared templates become a need.
+  //
+  // Placeholders use the {{name}} syntax — substitution happens
+  // client-side when a template is applied to a compose form.
+  // Supported placeholders today are advisory only (the UI shows
+  // them in the editor) — at apply-time we just text-replace.
+  // ============================================================
+  {
+    name: 'tbl_email_template',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_email_template (
+          email_template_id SERIAL PRIMARY KEY,
+          user_account_id   INTEGER NOT NULL REFERENCES tbl_user_account(user_account_id) ON DELETE CASCADE,
+          name              VARCHAR(120) NOT NULL,
+          description       VARCHAR(300),
+          subject           VARCHAR(500),
+          body              TEXT NOT NULL,
+          sort_order        INTEGER NOT NULL DEFAULT 0,
+          created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_email_template_user ON tbl_email_template(user_account_id, sort_order, name)`);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

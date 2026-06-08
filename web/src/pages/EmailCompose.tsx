@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { apiGet, apiPost } from '../lib/api.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
+import { TemplatePicker } from '../components/email/TemplatePicker.tsx';
 
 interface Account {
   email_account_id: number;
@@ -173,7 +174,19 @@ export function EmailCompose() {
         )}
 
         <div>
-          <label className="field-label">Subject</label>
+          <label className="field-label flex items-center justify-between">
+            <span>Subject</span>
+            <TemplatePicker
+              onApply={t => {
+                if (t.subject) setSubject(t.subject);
+                // Append the body rather than replacing — if the user has
+                // already typed something, we don't want to wipe it. The
+                // "subject" usually wants replacing though since it's one
+                // line.
+                setBody(prev => prev ? `${prev}\n\n${t.body}` : t.body);
+              }}
+            />
+          </label>
           <input
             type="text"
             className="field-input"
@@ -192,6 +205,9 @@ export function EmailCompose() {
             onChange={e => setBody(e.target.value)}
             required
           />
+          <p className="text-[11px] text-ink-faint mt-1">
+            Your signature (set on Email Accounts) is appended automatically when you send.
+          </p>
         </div>
 
         {/* Attachments */}

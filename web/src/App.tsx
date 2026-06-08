@@ -40,6 +40,7 @@ import { EventDetail } from './pages/EventDetail.tsx';
 import { EventForm } from './pages/EventForm.tsx';
 import { EmailAccounts } from './pages/EmailAccounts.tsx';
 import { EmailCompose } from './pages/EmailCompose.tsx';
+import { EmailTemplates } from './pages/EmailTemplates.tsx';
 import { Mailbox } from './pages/Mailbox.tsx';
 import { PickupManifest } from './pages/PickupManifest.tsx';
 import { DeliveryManifest } from './pages/DeliveryManifest.tsx';
@@ -148,6 +149,7 @@ function AppShell() {
 
           <Route path="/email/accounts" element={<EmailAccounts />} />
           <Route path="/email/compose" element={<EmailCompose />} />
+          <Route path="/email/templates" element={<EmailTemplates />} />
           <Route path="/email/mailbox" element={<Mailbox />} />
 
           {/* Admin section is admin-only. The RequireAdmin wrapper renders
