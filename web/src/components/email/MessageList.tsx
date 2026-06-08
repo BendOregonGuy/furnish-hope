@@ -272,10 +272,24 @@ function MessageDetail({ messageId, onClose }: { messageId: number; onClose: () 
                   {replyAll && msg.cc_addresses && <> · also Cc: {msg.cc_addresses}</>}
                   {msg.account_email && <> · from <strong>{msg.account_email}</strong></>}
                 </div>
-                <div className="flex items-center gap-2">
-                  <RecipientPicker target="to"  onPick={email => setToExtra(prev => appendRecipient(prev, email))} />
-                  <RecipientPicker target="cc"  onPick={email => setCcExtra(prev => appendRecipient(prev, email))} />
-                  <RecipientPicker target="bcc" onPick={email => setBccExtra(prev => appendRecipient(prev, email))} />
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Each picker is preceded by a "To" / "Cc" / "Bcc"
+                      label so the three identical "+ Contact ▾" buttons
+                      are visually distinguishable. The label is what
+                      tells the user which list the picked contact lands
+                      in. */}
+                  <span className="inline-flex items-center gap-1">
+                    <span className="text-[10px] uppercase tracking-widest text-ink-faint font-medium">To</span>
+                    <RecipientPicker target="to" onPick={email => setToExtra(prev => appendRecipient(prev, email))} />
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="text-[10px] uppercase tracking-widest text-ink-faint font-medium">Cc</span>
+                    <RecipientPicker target="cc" onPick={email => setCcExtra(prev => appendRecipient(prev, email))} />
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="text-[10px] uppercase tracking-widest text-ink-faint font-medium">Bcc</span>
+                    <RecipientPicker target="bcc" onPick={email => setBccExtra(prev => appendRecipient(prev, email))} />
+                  </span>
                   <TemplatePicker
                     onApply={t => setReplyBody(prev => prev ? `${prev}\n\n${t.body}` : t.body)}
                   />
