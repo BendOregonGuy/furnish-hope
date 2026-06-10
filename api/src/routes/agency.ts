@@ -317,7 +317,7 @@ agencyRouter.get('/referrals/:id', async (req, res, next) => {
         cs.client_status,
         addr.address, addr.address2,
         city.city,
-        state.state_abbr,
+        st.state,
         addr.postalcode,
         r.referral_date,
         c.description AS notes
@@ -329,7 +329,7 @@ agencyRouter.get('/referrals/:id', async (req, res, next) => {
       JOIN lkp_client_status cs  ON cs.client_status_id = c.client_status_id
       LEFT JOIN tbl_address addr ON addr.address_id = contact.address_id
       LEFT JOIN lkp_city city    ON city.city_id    = addr.city_id
-      LEFT JOIN lkp_state state  ON state.state_id  = addr.state_id
+      LEFT JOIN lkp_state st     ON st.state_id     = addr.state_id
       WHERE ac.agency_id = $1 AND c.client_id = $2
       LIMIT 1
     `, [agencyId, id]);

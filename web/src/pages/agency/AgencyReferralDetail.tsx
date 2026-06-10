@@ -22,7 +22,7 @@ interface ReferralDetail {
     address: string | null;
     address2: string | null;
     city: string | null;
-    state_abbr: string | null;
+    state: string | null;
     postalcode: string | null;
     referral_date: string;
     notes: string | null;
@@ -115,9 +115,9 @@ export function AgencyReferralDetail() {
             <Row label="Address" value={
               <>
                 {c.address ?? '—'}{c.address2 ? `, ${c.address2}` : ''}
-                {(c.city || c.state_abbr || c.postalcode) && (
+                {(c.city || c.state || c.postalcode) && (
                   <div className="text-[11px] text-ink-soft mt-0.5">
-                    {[c.city, c.state_abbr, c.postalcode].filter(Boolean).join(', ')}
+                    {[c.city, c.state, c.postalcode].filter(Boolean).join(', ')}
                   </div>
                 )}
               </>

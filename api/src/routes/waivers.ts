@@ -170,14 +170,14 @@ export function mountWaiverOnRequests(router: Router) {
           contact.first_name || ' ' || contact.last_name AS client_name,
           addr.address,
           city.city,
-          state.state_abbr AS state,
+          st.state AS state,
           addr.postalcode
         FROM tbl_client_provisioning_request r
         JOIN tbl_client c ON c.client_id = r.client_id
         JOIN tbl_contact contact ON contact.contact_id = c.contact_id
         LEFT JOIN tbl_address addr ON addr.address_id = contact.address_id
         LEFT JOIN lkp_city city   ON city.city_id     = addr.city_id
-        LEFT JOIN lkp_state state ON state.state_id   = addr.state_id
+        LEFT JOIN lkp_state st    ON st.state_id      = addr.state_id
         WHERE r.client_provisioning_request_id = $1
       `, [reqId]);
       if (!reqRow) return res.status(404).json({ error: 'Provisioning request not found.' });

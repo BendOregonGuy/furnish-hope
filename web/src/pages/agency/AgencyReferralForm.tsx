@@ -13,7 +13,7 @@ import { Loading } from '../../components/ui.tsx';
 interface ClientTypeRow { client_type_id: number; client_type: string }
 interface CityRow      { city_id: number;        city: string }
 interface CountyRow    { county_id: number;      county: string }
-interface StateRow     { state_id: number;       state: string; state_abbr: string }
+interface StateRow     { state_id: number;       state: string }
 
 export function AgencyReferralForm() {
   const navigate = useNavigate();
@@ -157,7 +157,7 @@ export function AgencyReferralForm() {
               <label className="field-label">State <span className="text-terracotta">*</span></label>
               <select className="field-input" value={stateId ?? ''} onChange={e => setStateId(e.target.value ? Number(e.target.value) : null)}>
                 <option value="">Choose…</option>
-                {states?.map(s => <option key={s.state_id} value={s.state_id}>{s.state_abbr ?? s.state}</option>)}
+                {states?.map(s => <option key={s.state_id} value={s.state_id}>{s.state}</option>)}
               </select>
             </div>
             <Field label="ZIP" required value={zip} onChange={setZip} />
