@@ -21,6 +21,11 @@ export interface CurrentUser {
   facility_staff_id: number | null;
   agency_contact_id: number | null;
   display_name: string;
+  /** 'staff' for FH employees/volunteers/admins; 'agency' for
+   *  partner-agency caseworkers (no facility_staff_id, not admin). */
+  role: 'staff' | 'agency';
+  agency_id: number | null;
+  agency_name: string | null;
 }
 
 interface AuthState {

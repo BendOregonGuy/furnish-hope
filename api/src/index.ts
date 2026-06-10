@@ -29,6 +29,7 @@ import { emailTemplatesRouter } from './routes/emailTemplates.js';
 import { vendorsRouter } from './routes/vendors.js';
 import { vendorServicesRouter } from './routes/vendorServices.js';
 import { waiversRouter, mountWaiverOnRequests } from './routes/waivers.js';
+import { agencyRouter } from './routes/agency.js';
 import { quickbooksRouter } from './routes/quickbooks.js';
 import { orgInfoRouter } from './routes/orgInfo.js';
 import { calendarRouter } from './routes/calendar.js';
@@ -41,7 +42,7 @@ import { reportsRouter } from './routes/reports.js';
 import { shiftTemplatesRouter, holidaysRouter } from './routes/shiftTemplates.js';
 import { createSessionMiddleware } from './auth/session.js';
 import { runAuthMigrations } from './auth/migrations.js';
-import { requireUser, requireAdmin } from './auth/middleware.js';
+import { requireUser, requireAdmin, requireStaff } from './auth/middleware.js';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
@@ -99,36 +100,46 @@ app.use('/api/admin/activity', requireAdmin, activityRouter);
 app.use('/api/admin/settings', requireAdmin, settingsRouter);
 app.use('/api/admin', requireAdmin, adminRouter);
 
-// Operational routes — any signed-in user can access.
-app.use('/api/dashboard',  dashboardRouter);
-app.use('/api/clients',    clientsRouter);
-// Mount /:id/waiver endpoints onto the requests router BEFORE the
-// router is registered, so they're part of the same mount point.
-mountWaiverOnRequests(requestsRouter);
-app.use('/api/requests',   requestsRouter);
-app.use('/api/waivers',    waiversRouter);
-app.use('/api/inventory',  inventoryRouter);
-app.use('/api/deliveries', deliveriesRouter);
-app.use('/api/pickups',    pickupsRouter);
-app.use('/api/volunteers', volunteersRouter);
-app.use('/api/lookups',    lookupsRouter);
-app.use('/api/donations',  donationsRouter);
-app.use('/api/pledges',    pledgesRouter);
-app.use('/api/donors',     donorsRouter);
-app.use('/api/vendors',    vendorsRouter);
-app.use('/api/vendor-services', vendorServicesRouter);
-app.use('/api/campaigns',  campaignsRouter);
-app.use('/api/events',     eventsRouter);
-app.use('/api/email',      emailRouter);
-app.use('/api/email-templates', emailTemplatesRouter);
+// Org-info (logo, name, address) is shared — staff use it for
+// manifests / receipts; agency caseworkers use it for branding on
+// the trimmed UI. Safe to expose to both roles since it's already
+// "public-ish" data.
 app.use('/api/org-info',   orgInfoRouter);
-app.use('/api/calendar',   calendarRouter);
-app.use('/api/quick-create', quickCreateRouter);
-app.use('/api/shifts',     shiftsRouter);
-app.use('/api/receipts',   receiptsRouter);
-app.use('/api/mailbox',    mailboxRouter);
-app.use('/api/attachments', attachmentsRouter);
-app.use('/api/reports',    reportsRouter);
+
+// Agency caseworker routes — STRICTLY scoped to their own agency.
+// All endpoints inside enforce requireAgency at the router level.
+app.use('/api/agency',     agencyRouter);
+
+// Everything below is staff-only. Agency users get 403 from
+// requireStaff before reaching the route handler — no chance of a
+// route author forgetting to scope by agency_id and accidentally
+// leaking internal data.
+app.use('/api/dashboard',  requireStaff, dashboardRouter);
+app.use('/api/clients',    requireStaff, clientsRouter);
+mountWaiverOnRequests(requestsRouter);
+app.use('/api/requests',   requireStaff, requestsRouter);
+app.use('/api/waivers',    requireStaff, waiversRouter);
+app.use('/api/inventory',  requireStaff, inventoryRouter);
+app.use('/api/deliveries', requireStaff, deliveriesRouter);
+app.use('/api/pickups',    requireStaff, pickupsRouter);
+app.use('/api/volunteers', requireStaff, volunteersRouter);
+app.use('/api/lookups',    requireStaff, lookupsRouter);
+app.use('/api/donations',  requireStaff, donationsRouter);
+app.use('/api/pledges',    requireStaff, pledgesRouter);
+app.use('/api/donors',     requireStaff, donorsRouter);
+app.use('/api/vendors',    requireStaff, vendorsRouter);
+app.use('/api/vendor-services', requireStaff, vendorServicesRouter);
+app.use('/api/campaigns',  requireStaff, campaignsRouter);
+app.use('/api/events',     requireStaff, eventsRouter);
+app.use('/api/email',      requireStaff, emailRouter);
+app.use('/api/email-templates', requireStaff, emailTemplatesRouter);
+app.use('/api/calendar',   requireStaff, calendarRouter);
+app.use('/api/quick-create', requireStaff, quickCreateRouter);
+app.use('/api/shifts',     requireStaff, shiftsRouter);
+app.use('/api/receipts',   requireStaff, receiptsRouter);
+app.use('/api/mailbox',    requireStaff, mailboxRouter);
+app.use('/api/attachments', requireStaff, attachmentsRouter);
+app.use('/api/reports',    requireStaff, reportsRouter);
 app.use('/api/shift-templates', requireAdmin, shiftTemplatesRouter);
 app.use('/api/holidays',        requireAdmin, holidaysRouter);
 // QuickBooks integration — admin-only because accounting touches the books.

@@ -1,7 +1,7 @@
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar.tsx';
 import { RequireAuth, RequireAdmin } from './components/RequireAuth.tsx';
-import { AuthProvider } from './lib/auth.tsx';
+import { AuthProvider, useAuth } from './lib/auth.tsx';
 import { Login } from './pages/Login.tsx';
 import { Settings } from './pages/Settings.tsx';
 import { Dashboard } from './pages/Dashboard.tsx';
@@ -62,20 +62,57 @@ import { AdminQuickBooks } from './pages/admin/AdminQuickBooks.tsx';
 import { AdminAttachmentStorage } from './pages/admin/AdminAttachmentStorage.tsx';
 import { AdminShiftTemplates } from './pages/admin/AdminShiftTemplates.tsx';
 import { AdminHolidays } from './pages/admin/AdminHolidays.tsx';
+import { AgencyShell } from './pages/agency/AgencyShell.tsx';
+import { AgencyDashboard } from './pages/agency/AgencyDashboard.tsx';
+import { AgencyReferrals } from './pages/agency/AgencyReferrals.tsx';
+import { AgencyReferralForm } from './pages/agency/AgencyReferralForm.tsx';
+import { AgencyReferralDetail } from './pages/agency/AgencyReferralDetail.tsx';
 
 export function App() {
   return (
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        {/* Agency-caseworker routes get their own shell (no staff
+            sidebar). Wrapped in RequireAuth which redirects to login
+            if not signed in. RoleGate inside redirects staff away. */}
+        <Route path="/agency/*" element={
+          <RequireAuth>
+            <RoleGate allow="agency">
+              <AgencyShell />
+            </RoleGate>
+          </RequireAuth>
+        }>
+          <Route index element={<AgencyDashboard />} />
+          <Route path="referrals" element={<AgencyReferrals />} />
+          <Route path="referrals/new" element={<AgencyReferralForm />} />
+          <Route path="referrals/:id" element={<AgencyReferralDetail />} />
+        </Route>
+        {/* Staff / admin — the rest of the app */}
         <Route path="/*" element={
           <RequireAuth>
-            <AppShell />
+            <RoleGate allow="staff">
+              <AppShell />
+            </RoleGate>
           </RequireAuth>
         } />
       </Routes>
     </AuthProvider>
   );
+}
+
+/** Redirect a user away if their role doesn't match the gate. An
+ *  agency caseworker landing on /clients gets bounced to /agency;
+ *  a staff user landing on /agency gets bounced to /. Prevents the
+ *  brief flash of a forbidden shell + the inevitable 403s as the
+ *  forbidden page tries to load data it can't access. */
+function RoleGate({ allow, children }: { allow: 'staff' | 'agency'; children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (user && user.role !== allow) {
+    const dest = user.role === 'agency' ? '/agency' : '/';
+    return <Navigate to={dest} replace />;
+  }
+  return <>{children}</>;
 }
 
 function AppShell() {
