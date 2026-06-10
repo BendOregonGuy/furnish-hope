@@ -28,6 +28,7 @@ import { emailRouter } from './routes/email.js';
 import { emailTemplatesRouter } from './routes/emailTemplates.js';
 import { vendorsRouter } from './routes/vendors.js';
 import { vendorServicesRouter } from './routes/vendorServices.js';
+import { waiversRouter, mountWaiverOnRequests } from './routes/waivers.js';
 import { quickbooksRouter } from './routes/quickbooks.js';
 import { orgInfoRouter } from './routes/orgInfo.js';
 import { calendarRouter } from './routes/calendar.js';
@@ -101,7 +102,11 @@ app.use('/api/admin', requireAdmin, adminRouter);
 // Operational routes — any signed-in user can access.
 app.use('/api/dashboard',  dashboardRouter);
 app.use('/api/clients',    clientsRouter);
+// Mount /:id/waiver endpoints onto the requests router BEFORE the
+// router is registered, so they're part of the same mount point.
+mountWaiverOnRequests(requestsRouter);
 app.use('/api/requests',   requestsRouter);
+app.use('/api/waivers',    waiversRouter);
 app.use('/api/inventory',  inventoryRouter);
 app.use('/api/deliveries', deliveriesRouter);
 app.use('/api/pickups',    pickupsRouter);

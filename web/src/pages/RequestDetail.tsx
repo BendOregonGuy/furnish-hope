@@ -162,6 +162,10 @@ export function RequestDetail() {
       </div>
 
       <div className="mt-5">
+        <WaiverStatusCard requestId={Number(id)} />
+      </div>
+
+      <div className="mt-5">
         <AttachmentsWidget entityType="request" entityId={Number(id)} title="Request documents (intake notes, household needs assessment, photos)" />
       </div>
     </>
@@ -173,4 +177,75 @@ function pillForPriority(p: string) {
   if (s === 'high') return 'pill-terra';
   if (s === 'medium') return 'pill-gold';
   return 'pill-muted';
+}
+
+/* ----------------------------------------------------------------- */
+/*  Waiver status — shows whether the recipient has signed the       */
+/*  furniture waiver for this request, links to sign or view PDF.    */
+/* ----------------------------------------------------------------- */
+
+function WaiverStatusCard({ requestId }: { requestId: number }) {
+  const { data: waiver } = useQuery<{
+    waiver_id: number;
+    typed_legal_name: string;
+    signed_at: string;
+    witness_username: string | null;
+    template_version: string | null;
+    pdf_attachment_id: number | null;
+  } | null>({
+    queryKey: ['request', requestId, 'waiver'],
+    queryFn: () => apiGet(`/api/requests/${requestId}/waiver`),
+  });
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h3 className="font-display font-medium text-[17px] m-0">Furniture waiver</h3>
+        {waiver ? (
+          <span className="pill pill-sage">✓ Signed</span>
+        ) : (
+          <span className="pill pill-terra">Not signed</span>
+        )}
+      </div>
+      {waiver ? (
+        <div className="space-y-1.5 text-sm">
+          <div>
+            Signed by <strong>{waiver.typed_legal_name}</strong> on{' '}
+            <strong>{new Date(waiver.signed_at).toLocaleString()}</strong>.
+          </div>
+          {waiver.witness_username && (
+            <div className="text-[11px] text-ink-faint">
+              Witnessed by {waiver.witness_username}
+              {waiver.template_version && <> · template {waiver.template_version}</>}
+            </div>
+          )}
+          <div className="flex gap-3 mt-3">
+            {waiver.pdf_attachment_id && (
+              <a
+                href={`/api/waivers/${waiver.waiver_id}/pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-ghost text-xs"
+              >
+                View signed PDF
+              </a>
+            )}
+            <Link to={`/requests/${requestId}/sign-waiver`} className="text-xs text-ink-faint hover:text-terracotta self-center">
+              View signing record
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2 text-sm">
+          <p className="text-ink-soft">
+            The recipient hasn't signed the furniture waiver for this request yet.
+            Collect their signature before the delivery — it's required for indemnification.
+          </p>
+          <Link to={`/requests/${requestId}/sign-waiver`} className="btn-primary inline-flex text-xs mt-1">
+            Sign waiver now
+          </Link>
+        </div>
+      )}
+    </div>
+  );
 }

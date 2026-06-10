@@ -1413,6 +1413,98 @@ const MIGRATIONS: Migration[] = [
   },
 
   // ============================================================
+  // Client furniture waiver — IRS-style audit trail of consent.
+  //
+  // tbl_waiver_template: versioned text of the waiver. Insert a new
+  // row whenever the lawyer changes a comma; the old version stays
+  // referenced by every signature that was captured against it, so
+  // a dispute years later can be re-litigated against the EXACT
+  // language the client agreed to at the time.
+  //
+  // tbl_client_waiver: one row per signed instance. Captures the
+  // typed legal name (act of attestation), drawn signature (PNG
+  // BYTEA), timestamp, IP, user-agent, and the staff member who
+  // witnessed the signing. The generated PDF is stored as a regular
+  // attachment on the request via tbl_entity_attachment.
+  //
+  // Linked to tbl_client_provisioning_request 1:1 (a request needs
+  // exactly one signed waiver). Linked to tbl_client redundantly
+  // for fast lookup of "all of Margaret's signed waivers."
+  // ============================================================
+  {
+    name: 'tbl_client_waiver + template',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_waiver_template (
+          waiver_template_id  SERIAL PRIMARY KEY,
+          title               VARCHAR(200) NOT NULL,
+          subtitle            VARCHAR(200),
+          body_markdown       TEXT NOT NULL,
+          version_label       VARCHAR(40),
+          is_current          BOOLEAN NOT NULL DEFAULT false,
+          created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id)
+        )
+      `);
+      // Only ONE row may be is_current=true at a time. Enforced by
+      // a partial unique index — simpler + faster than a trigger.
+      await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_waiver_template_current ON tbl_waiver_template ((1)) WHERE is_current = true`);
+
+      // Seed the v1 template from the reference docx if no template
+      // exists yet. Body uses simple markers (## for section
+      // headings, blank-line paragraph breaks) — the PDF generator
+      // parses these.
+      const have = await queryOne<{ count: string }>(`SELECT COUNT(*)::text AS count FROM tbl_waiver_template`);
+      if (Number(have?.count ?? 0) === 0) {
+        await query(`
+          INSERT INTO tbl_waiver_template
+            (title, subtitle, body_markdown, version_label, is_current)
+          VALUES ($1, $2, $3, $4, true)
+        `, [
+          'Furnish Hope Furniture Waiver',
+          'Please read carefully',
+          [
+            'This waiver allows Furnish Hope or your caseworker to make furniture and household furnishings selections on your behalf.',
+            '',
+            '## NO WARRANTIES',
+            'By signing this waiver, you have agreed to allow your caseworker or a Furnish Hope representative to select the as-is furniture and household furnishings on your behalf. Most furniture and household furnishings selected are known to be used items, in good condition. At the time the furniture and household furnishings are selected, items requested by the recipient will be selected to the extent they are available. No guarantee can be made that all of the items will be available at the time of selection.',
+            '',
+            '## INDEMNIFICATION',
+            'Recipient acknowledges that the used furniture and household furnishings are accepted on an as-is basis, and further agrees to indemnify and hold Furnish Hope free and harmless from any and all liability arising out of the use and transportation of the furniture and household furnishings selected for the recipient.',
+          ].join('\n'),
+          'v1 (2026-06)',
+        ]);
+      }
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_client_waiver (
+          waiver_id                       SERIAL PRIMARY KEY,
+          client_provisioning_request_id  INTEGER NOT NULL REFERENCES tbl_client_provisioning_request(client_provisioning_request_id) ON DELETE CASCADE,
+          client_id                       INTEGER NOT NULL REFERENCES tbl_client(client_id),
+          waiver_template_id              INTEGER NOT NULL REFERENCES tbl_waiver_template(waiver_template_id),
+          typed_legal_name                VARCHAR(200) NOT NULL,
+          signature_image                 BYTEA NOT NULL,
+          signed_at                       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          ip_address                      INET,
+          user_agent                      TEXT,
+          witness_user_account_id         INTEGER NOT NULL REFERENCES tbl_user_account(user_account_id),
+          -- The generated PDF is also attached to the request via
+          -- tbl_entity_attachment so it shows in the existing
+          -- attachments widget. This column stores the attachment id
+          -- for direct linking.
+          pdf_attachment_id               INTEGER REFERENCES tbl_entity_attachment(attachment_id) ON DELETE SET NULL,
+          created_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      // One signed waiver per request — re-signing a request requires
+      // an explicit replace (delete old → insert new). This UNIQUE
+      // also guards against a double-submit race condition.
+      await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_client_waiver_request ON tbl_client_waiver(client_provisioning_request_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_client_waiver_client ON tbl_client_waiver(client_id, signed_at DESC)`);
+    },
+  },
+
+  // ============================================================
   // Vendor service log — an operational journal of what each vendor
   // did, when, where, and what was authorized. Pre-bill, pre-accounting.
   // Builds institutional memory ("did we already call this plumber?
