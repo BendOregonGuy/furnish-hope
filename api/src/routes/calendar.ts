@@ -33,10 +33,12 @@ const DEFAULT_EVENT_START    = '18:00:00';
 const DEFAULT_EVENT_END      = '20:00:00';
 const DEFAULT_SHIFT_START    = '08:00:00';
 const DEFAULT_SHIFT_END      = '12:00:00';
+const DEFAULT_SERVICE_START  = '09:00:00';
+const DEFAULT_SERVICE_END    = '11:00:00';
 
 interface CalendarItem {
   id: string;
-  type: 'pickup' | 'delivery' | 'event' | 'campaign' | 'shift';
+  type: 'pickup' | 'delivery' | 'event' | 'campaign' | 'shift' | 'vendor_service';
   title: string;
   start: string;
   end: string | null;
@@ -154,6 +156,41 @@ calendarRouter.get('/', async (req, res, next) => {
       ORDER BY s.shift_date, s.start_time
     `, [from, to]);
 
+    /* ---------- vendor services (scheduled or completed) ---------- */
+    // Scheduled = upcoming work the calendar should warn us about.
+    // Completed = past work we logged after the fact; still useful to
+    // see on the calendar so "what happened on June 5?" lights up.
+    // Cancelled / Billed are hidden from the calendar by default.
+    const services = await query<{
+      id: number; vendor_id: number; title: string; date: string;
+      start_time: string | null; end_time: string | null;
+      status: string;
+      location_text: string | null;
+      facility_name: string | null;
+    }>(`
+      SELECT
+        s.vendor_service_id AS id,
+        s.vendor_id,
+        COALESCE(v.business_name, c.first_name || ' ' || c.last_name)
+          || (CASE WHEN vs.vendor_specialty IS NOT NULL THEN ' — ' || vs.vendor_specialty ELSE '' END)
+          AS title,
+        s.service_date::text AS date,
+        s.start_time::text   AS start_time,
+        s.end_time::text     AS end_time,
+        ss.vendor_service_status AS status,
+        s.location_text,
+        cf.facility_name
+      FROM tbl_vendor_service s
+      JOIN tbl_vendor v       ON v.vendor_id = s.vendor_id
+      JOIN tbl_contact c      ON c.contact_id = v.contact_id
+      JOIN lkp_vendor_service_status ss ON ss.vendor_service_status_id = s.vendor_service_status_id
+      LEFT JOIN lkp_vendor_specialty vs ON vs.vendor_specialty_id = v.vendor_specialty_id
+      LEFT JOIN tbl_corp_facility cf    ON cf.corp_facility_id = s.corp_facility_id
+      WHERE s.service_date BETWEEN $1::date AND $2::date
+        AND ss.vendor_service_status IN ('Scheduled', 'Completed')
+      ORDER BY s.service_date, s.start_time
+    `, [from, to]);
+
     /* ---------- campaigns (multi-day banners) ---------- */
     // Campaigns can span months; surface any campaign whose range
     // intersects the requested window.
@@ -232,6 +269,23 @@ calendarRouter.get('/', async (req, res, next) => {
         url: `/shifts/${s.id}`,
         color: '#8E6C95', // soft purple — visually distinct from terracotta/sage/gold/slate
         meta: { status: s.status, capacity_needed: s.capacity_needed, filled_count: s.filled_count },
+      });
+    }
+
+    for (const s of services) {
+      const where = s.facility_name || s.location_text || null;
+      items.push({
+        id: `vendor_service:${s.id}`,
+        type: 'vendor_service',
+        title: where ? `${s.title} @ ${where}` : s.title,
+        start: combine(s.date, s.start_time, DEFAULT_SERVICE_START),
+        end:   combine(s.date, s.end_time,   DEFAULT_SERVICE_END),
+        allDay: false,
+        // Link to the vendor's detail page so the user lands in
+        // context (the service log section will be visible on scroll).
+        url: `/vendors/${s.vendor_id}`,
+        color: '#5E708E', // muted blue — distinct from existing palette
+        meta: { status: s.status, location: where, service_id: s.id },
       });
     }
 

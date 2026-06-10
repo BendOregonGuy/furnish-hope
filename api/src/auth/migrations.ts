@@ -1413,6 +1413,65 @@ const MIGRATIONS: Migration[] = [
   },
 
   // ============================================================
+  // Vendor service log — an operational journal of what each vendor
+  // did, when, where, and what was authorized. Pre-bill, pre-accounting.
+  // Builds institutional memory ("did we already call this plumber?
+  // what did they fix?") and feeds a calendar entry for scheduled
+  // service visits. Bills + payments stay in QuickBooks; cost_estimate
+  // here is just an authorization/expectation, not an accounting fact.
+  // ============================================================
+  {
+    name: 'tbl_vendor_service + status lookup',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_vendor_service_status (
+          vendor_service_status_id SERIAL PRIMARY KEY,
+          vendor_service_status    VARCHAR(40) NOT NULL UNIQUE,
+          description              VARCHAR(200),
+          sort_order               INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+      for (const [name, desc, sort] of [
+        ['Scheduled', 'Service is booked but hasn’t happened yet.',           10],
+        ['Completed', 'Vendor finished the work.',                              20],
+        ['Cancelled', 'Service was called off before it happened.',             30],
+        ['Billed',    'Vendor has invoiced — entry now matches a QBO bill.',    40],
+      ] as Array<[string, string, number]>) {
+        await query(
+          `INSERT INTO lkp_vendor_service_status (vendor_service_status, description, sort_order)
+           VALUES ($1, $2, $3) ON CONFLICT (vendor_service_status) DO NOTHING`,
+          [name, desc, sort],
+        );
+      }
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_vendor_service (
+          vendor_service_id         SERIAL PRIMARY KEY,
+          vendor_id                 INTEGER NOT NULL REFERENCES tbl_vendor(vendor_id) ON DELETE CASCADE,
+          service_date              DATE NOT NULL,
+          start_time                TIME,
+          end_time                  TIME,
+          -- Two ways to record where: free-text (covers "unit 4B at 213
+          -- Maple", "warehouse break room") OR a linked facility row
+          -- when it's a corporate site. Both optional; use whatever's
+          -- handy.
+          location_text             VARCHAR(300),
+          corp_facility_id          INTEGER REFERENCES tbl_corp_facility(corp_facility_id),
+          description               TEXT NOT NULL,
+          cost_estimate             NUMERIC(12,2),
+          vendor_service_status_id  INTEGER NOT NULL REFERENCES lkp_vendor_service_status(vendor_service_status_id),
+          notes                     TEXT,
+          created_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id),
+          created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_vendor_service_vendor ON tbl_vendor_service(vendor_id, service_date DESC)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_vendor_service_date  ON tbl_vendor_service(service_date)`);
+    },
+  },
+
+  // ============================================================
   // OAuth columns for tbl_email_account. Lets users sign in with
   // Google / Microsoft instead of generating an app-specific
   // password. auth_type already exists ('password' | 'oauth'); the

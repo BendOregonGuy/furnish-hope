@@ -11,6 +11,7 @@ import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { EmailWidget } from '../components/email/EmailWidget.tsx';
 import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
+import { ServiceLogWidget } from '../components/vendors/ServiceLogWidget.tsx';
 
 interface VendorDetailResponse {
   vendor: {
@@ -140,6 +141,9 @@ export function VendorDetail() {
               <p className="text-sm whitespace-pre-wrap text-ink-soft">{v.notes}</p>
             </div>
           )}
+
+          {/* Service log — operational history of what this vendor did. */}
+          <ServiceLogWidget vendorId={v.vendor_id} />
         </div>
 
         <div className="space-y-5">
