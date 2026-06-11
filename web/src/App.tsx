@@ -40,6 +40,11 @@ import { Events } from './pages/Events.tsx';
 import { EventDetail } from './pages/EventDetail.tsx';
 import { EventForm } from './pages/EventForm.tsx';
 import { EventCheckIn } from './pages/EventCheckIn.tsx';
+import {
+  DoorRoster, RunOfShow, SponsorSheet, Nametags,
+  TableCards, PlaceCards, SeatingChart, PledgeCards,
+  WalkInForm, StaffBriefing, WillCallLabels,
+} from './pages/eventPrints/index.tsx';
 import { EmailAccounts } from './pages/EmailAccounts.tsx';
 import { EmailCompose } from './pages/EmailCompose.tsx';
 import { EmailTemplates } from './pages/EmailTemplates.tsx';
@@ -189,6 +194,17 @@ function AppShell() {
           <Route path="/events/new" element={<EventForm />} />
           <Route path="/events/:id/edit" element={<EventForm />} />
           <Route path="/events/:id/check-in" element={<EventCheckIn />} />
+          <Route path="/events/:id/print/door-roster"     element={<DoorRoster />} />
+          <Route path="/events/:id/print/run-of-show"     element={<RunOfShow />} />
+          <Route path="/events/:id/print/sponsors"        element={<SponsorSheet />} />
+          <Route path="/events/:id/print/nametags"        element={<Nametags />} />
+          <Route path="/events/:id/print/table-cards"     element={<TableCards />} />
+          <Route path="/events/:id/print/place-cards"     element={<PlaceCards />} />
+          <Route path="/events/:id/print/seating-chart"   element={<SeatingChart />} />
+          <Route path="/events/:id/print/pledge-cards"    element={<PledgeCards />} />
+          <Route path="/events/:id/print/walk-in-form"    element={<WalkInForm />} />
+          <Route path="/events/:id/print/staff-briefing"  element={<StaffBriefing />} />
+          <Route path="/events/:id/print/will-call-labels" element={<WillCallLabels />} />
           <Route path="/events/:id" element={<EventDetail />} />
 
           <Route path="/email/accounts" element={<EmailAccounts />} />

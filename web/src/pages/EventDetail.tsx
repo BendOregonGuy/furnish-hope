@@ -2,6 +2,7 @@
  * Read-only event detail with attendee list + one-click check-in.
  */
 
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, apiPost, formatLongDate, formatMoney } from '../lib/api.ts';
@@ -122,6 +123,7 @@ export function EventDetail() {
             <Link to="/events/new" className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta">
               + New event
             </Link>
+            <PrintMenu eventId={String(id)} />
             <Link to={`/events/${id}/check-in`} className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta">
               Day-of check-in →
             </Link>
@@ -372,6 +374,84 @@ export function EventDetail() {
 
 function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return <th className={`text-left text-[11px] tracking-widest uppercase text-ink-faint font-medium pb-2 ${className}`}>{children}</th>;
+}
+
+/** Dropdown of print views for an event. Each item opens the print
+ *  page in a new tab, which auto-launches the browser print dialog. */
+function PrintMenu({ eventId }: { eventId: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false); }
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const items: Array<{ path: string; label: string; group?: string }> = [
+    { group: 'Day-of',       path: 'door-roster',        label: 'Door check-in roster' },
+    { group: 'Day-of',       path: 'run-of-show',        label: 'Run of show' },
+    { group: 'Day-of',       path: 'staff-briefing',     label: 'Staff briefing card' },
+    { group: 'Day-of',       path: 'walk-in-form',       label: 'Walk-in paper form' },
+    { group: 'Sponsors',     path: 'sponsors',           label: 'Sponsor recognition sheet' },
+    { group: 'Seating',      path: 'nametags',           label: 'Name badges (Avery 5395)' },
+    { group: 'Seating',      path: 'table-cards',        label: 'Table cards (numbered tents)' },
+    { group: 'Seating',      path: 'place-cards',        label: 'Place cards' },
+    { group: 'Seating',      path: 'seating-chart',      label: 'Seating chart' },
+    { group: 'Fundraising',  path: 'pledge-cards',       label: 'Pledge cards' },
+    { group: 'Fundraising',  path: 'will-call-labels',   label: 'Will-call labels (Avery 5160)' },
+  ];
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta"
+      >
+        Print ▾
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 w-72 max-h-96 overflow-y-auto bg-paper border border-hairline-strong rounded-md shadow-xl z-40 py-1.5">
+          {Object.entries(groupBy(items, x => x.group ?? 'Other')).map(([grp, list]) => (
+            <div key={grp}>
+              <div className="px-3 pt-2 pb-1 text-[9px] uppercase tracking-widest text-ink-faint font-medium">{grp}</div>
+              {list.map(i => (
+                <a
+                  key={i.path}
+                  href={`/events/${eventId}/print/${i.path}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block px-3 py-1.5 text-xs hover:bg-terracotta/[0.06]"
+                  onClick={() => setOpen(false)}
+                >
+                  {i.label}
+                </a>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function groupBy<T, K extends string>(arr: T[], key: (x: T) => K): Record<K, T[]> {
+  const out: Record<string, T[]> = {};
+  for (const x of arr) {
+    const k = key(x);
+    if (!out[k]) out[k] = [];
+    out[k].push(x);
+  }
+  return out as Record<K, T[]>;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

@@ -112,6 +112,11 @@ section so it doesn't get lost.
 (Deferred: emailed invite links that auto-update RSVPs; inbound email
 parsing for RSVPs. Pick up when there's real demand.)
 
+### Event roles + capacity + sponsorships — shipped 2026-06-11
+**All four items below shipped in commits 66e4beb + a5d5d67.** Schema,
+API, EventForm, and EventDetail all updated. Recommendations were
+followed verbatim. Notes kept here as a historical reference.
+
 ### Event roles + capacity + sponsorships (requested 2026-06-10)
 
 - [ ] **Event Manager** field on `tbl_event`. FK to
@@ -173,6 +178,25 @@ parsing for RSVPs. Pick up when there's real demand.)
       sponsorship IS a donation for accounting/QBO purposes. Default
       to auto-creating donations on save and linking back via
       `tbl_event_sponsor.donation_id`.
+
+### Event printable forms — 11 of 12 shipped 2026-06-11
+**All Tier 1 (except Volunteer Roster), all of Tier 2, and most of
+Tier 3 shipped.** New routes at `/events/:id/print/<name>` for
+door-roster, run-of-show, sponsors, nametags, table-cards,
+place-cards, seating-chart, pledge-cards, walk-in-form,
+staff-briefing, will-call-labels. Discoverable from EventDetail's
+"Print ▾" dropdown menu.
+
+**Still deferred:**
+- Volunteer shift roster — needs to join `tbl_volunteer_shift_signup`
+  by event date; modest backend work. Recommend a small server-side
+  helper that takes the event_id and returns rostered volunteers,
+  rather than client-side joining.
+- Silent auction (sheets + tables) — its own data model.
+- Event program multi-page PDF — needs design pass.
+- Save-the-date / invitation templates — CSV export sufficient.
+- Thank-you letters — extend existing donation ack flow.
+- Acknowledgement / commitment slips — small follow-up to pledge cards.
 
 ### Event printable forms (requested 2026-06-10)
 
