@@ -1775,6 +1775,88 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+
+  // ============================================================
+  // Event attendee workflow (2026-06-10)
+  // ------------------------------------------------------------
+  // - lkp_rsvp_status: proper lookup table replacing the hard-coded
+  //   "Invited / Yes / Maybe / No" strings. Five canonical values
+  //   matching email-invite vocabulary.
+  // - tbl_event_attendee.rsvp_status_id: FK to the lookup.
+  //   Backfilled from the legacy VARCHAR with a tolerant mapping
+  //   (Yes -> Accepted, No -> Declined, case-insensitive). The
+  //   legacy `rsvp_status` VARCHAR column stays for now — readers
+  //   continue to work and we can drop it after a transition.
+  // - tbl_event_attendee.donation_id: optional link to a real
+  //   tbl_donation row, set when a contribution is "promoted" to a
+  //   proper donation (so it shows up in lifetime giving + can
+  //   generate a receipt). NULL means the amount is still
+  //   informational only.
+  // ============================================================
+  {
+    name: 'lkp_rsvp_status + tbl_event_attendee.rsvp_status_id + donation_id',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_rsvp_status (
+          rsvp_status_id  SERIAL PRIMARY KEY,
+          rsvp_status     VARCHAR(40) NOT NULL UNIQUE,
+          sort_order      INTEGER NOT NULL DEFAULT 0,
+          is_active       BOOLEAN NOT NULL DEFAULT true
+        )
+      `);
+      const seed: Array<[string, number]> = [
+        ['Invited',     10],
+        ['Accepted',    20],
+        ['Declined',    30],
+        ['Maybe',       40],
+        ['No response', 50],
+      ];
+      for (const [name, sort] of seed) {
+        await query(
+          `INSERT INTO lkp_rsvp_status (rsvp_status, sort_order)
+             VALUES ($1, $2)
+             ON CONFLICT (rsvp_status) DO NOTHING`,
+          [name, sort],
+        );
+      }
+      await query(`
+        ALTER TABLE tbl_event_attendee
+          ADD COLUMN IF NOT EXISTS rsvp_status_id INTEGER
+            REFERENCES lkp_rsvp_status(rsvp_status_id)
+      `);
+      // Backfill from the legacy VARCHAR. Match by canonical name OR
+      // by the historical short forms the hard-coded dropdown used.
+      await query(`
+        UPDATE tbl_event_attendee ea
+           SET rsvp_status_id = l.rsvp_status_id
+          FROM lkp_rsvp_status l
+         WHERE ea.rsvp_status_id IS NULL
+           AND ea.rsvp_status IS NOT NULL
+           AND TRIM(ea.rsvp_status) <> ''
+           AND (
+                LOWER(TRIM(ea.rsvp_status)) = LOWER(l.rsvp_status)
+                OR (LOWER(TRIM(ea.rsvp_status)) = 'yes' AND l.rsvp_status = 'Accepted')
+                OR (LOWER(TRIM(ea.rsvp_status)) = 'no'  AND l.rsvp_status = 'Declined')
+           )
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_event_attendee_rsvp_status_id
+          ON tbl_event_attendee (rsvp_status_id)
+      `);
+      // Promote-to-donation link. SET NULL on delete so deleting the
+      // donation doesn't cascade-wipe the attendee record.
+      await query(`
+        ALTER TABLE tbl_event_attendee
+          ADD COLUMN IF NOT EXISTS donation_id INTEGER
+            REFERENCES tbl_donation(donation_id) ON DELETE SET NULL
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_event_attendee_donation_id
+          ON tbl_event_attendee (donation_id)
+          WHERE donation_id IS NOT NULL
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */
