@@ -643,25 +643,32 @@ eventsRouter.post('/:id/attendees/:attendeeId/promote-to-donation', async (req, 
            ORDER BY (LOWER(donor_type) = 'individual') DESC, donor_type_id ASC
            LIMIT 1
         `);
+        // Inherit the contact's address if they have one — saves the
+        // user a step on the donor record later. NULL is fine since
+        // the column is now nullable (migration relaxed NOT NULL).
+        const ctx = await tx.queryOne<{ address_id: number | null }>(
+          `SELECT address_id FROM tbl_contact WHERE contact_id = $1`, [attendee.contact_id],
+        );
         donor = await tx.queryOne<{ donor_id: number }>(`
-          INSERT INTO tbl_donor (contact_id, donor_type_id)
-          VALUES ($1, $2)
+          INSERT INTO tbl_donor (contact_id, donor_type_id, address_id, is_recurring)
+          VALUES ($1, $2, $3, false)
           RETURNING donor_id
-        `, [attendee.contact_id, defaultDonorType?.donor_type_id ?? null]);
+        `, [attendee.contact_id, defaultDonorType?.donor_type_id ?? null, ctx?.address_id ?? null]);
       }
 
-      // Sensible defaults for donation_type / payment_method — pick
-      // the "Cash" row if seeded, else the first active row.
+      // Sensible defaults for donation_type / payment_method. The
+      // seed values are Monetary / In-kind / Mixed (not "Cash"), so
+      // "monetary" is the right pick for a contribution.
       const donationType = await tx.queryOne<{ donation_type_id: number }>(`
         SELECT donation_type_id FROM lkp_donation_type
-         ORDER BY (LOWER(donation_type) = 'cash') DESC, donation_type_id ASC
+         ORDER BY (LOWER(donation_type) = 'monetary') DESC, donation_type_id ASC
          LIMIT 1
       `);
       const paymentMethod = await tx.queryOne<{ payment_method_id: number }>(`
         SELECT payment_method_id FROM lkp_payment_method
-         ORDER BY (LOWER(payment_method) = 'cash') DESC, payment_method_id ASC
+         ORDER BY (LOWER(payment_method) IN ('cash','check')) DESC, payment_method_id ASC
          LIMIT 1
-      `).catch(() => null); // lkp_payment_method is optional
+      `);
 
       const description = `Contribution at "${ev.event_name}" on ${
         new Date(ev.event_date).toISOString().slice(0, 10)
@@ -832,9 +839,15 @@ eventsRouter.post('/:id/sponsors/:sponsorId/promote-to-donation', async (req, re
             SELECT donor_type_id FROM lkp_donor_type
              ORDER BY (LOWER(donor_type) = 'individual') DESC, donor_type_id ASC LIMIT 1
           `);
+          // Inherit contact's address if any. NULL is fine since
+          // the column is now nullable (migration relaxed NOT NULL).
+          const ctx = await tx.queryOne<{ address_id: number | null }>(
+            `SELECT address_id FROM tbl_contact WHERE contact_id = $1`, [s.contact_id],
+          );
           const created = await tx.queryOne<{ donor_id: number }>(`
-            INSERT INTO tbl_donor (contact_id, donor_type_id) VALUES ($1, $2) RETURNING donor_id
-          `, [s.contact_id, defaultDonorType?.donor_type_id ?? null]);
+            INSERT INTO tbl_donor (contact_id, donor_type_id, address_id, is_recurring)
+            VALUES ($1, $2, $3, false) RETURNING donor_id
+          `, [s.contact_id, defaultDonorType?.donor_type_id ?? null, ctx?.address_id ?? null]);
           donorId = created!.donor_id;
         }
         const ct = await tx.queryOne<{ name: string }>(
@@ -865,9 +878,14 @@ eventsRouter.post('/:id/sponsors/:sponsorId/promote-to-donation', async (req, re
         if (existing) {
           donorId = existing.donor_id;
         } else {
+          // Seeded contact types are Client / Donor / Staff /
+          // Volunteer / Agency / Vendor. None are a clean fit for a
+          // corporate-sponsor placeholder; "Donor" is the closest
+          // match. Fall back to "Vendor" or first row.
           const defaultContactType = await tx.queryOne<{ contact_type_id: number }>(`
             SELECT contact_type_id FROM lkp_contact_type
-             ORDER BY (LOWER(contact_type) IN ('business','corporate','organization')) DESC,
+             ORDER BY (LOWER(contact_type) = 'donor')  DESC,
+                      (LOWER(contact_type) = 'vendor') DESC,
                       contact_type_id ASC LIMIT 1
           `);
           const newContact = await tx.queryOne<{ contact_id: number }>(`
@@ -876,11 +894,14 @@ eventsRouter.post('/:id/sponsors/:sponsorId/promote-to-donation', async (req, re
           `, [defaultContactType?.contact_type_id ?? null, corp.corp_name]);
           const defaultDonorType = await tx.queryOne<{ donor_type_id: number }>(`
             SELECT donor_type_id FROM lkp_donor_type
-             ORDER BY (LOWER(donor_type) IN ('corporate','business','organization')) DESC,
+             ORDER BY (LOWER(donor_type) IN ('corporate','business','foundation','organization')) DESC,
                       donor_type_id ASC LIMIT 1
           `);
+          // Placeholder contact has no address — NULL is fine
+          // post-migration (relaxed NOT NULL).
           const created = await tx.queryOne<{ donor_id: number }>(`
-            INSERT INTO tbl_donor (contact_id, donor_type_id) VALUES ($1, $2) RETURNING donor_id
+            INSERT INTO tbl_donor (contact_id, donor_type_id, address_id, is_recurring)
+            VALUES ($1, $2, NULL, false) RETURNING donor_id
           `, [newContact!.contact_id, defaultDonorType?.donor_type_id ?? null]);
           donorId = created!.donor_id;
         }
@@ -890,13 +911,15 @@ eventsRouter.post('/:id/sponsors/:sponsorId/promote-to-donation', async (req, re
 
       const donationType = await tx.queryOne<{ donation_type_id: number }>(`
         SELECT donation_type_id FROM lkp_donation_type
-         ORDER BY (LOWER(donation_type) = 'cash') DESC, donation_type_id ASC LIMIT 1
+         ORDER BY (LOWER(donation_type) = 'monetary') DESC, donation_type_id ASC LIMIT 1
       `);
       const paymentMethod = await tx.queryOne<{ payment_method_id: number }>(`
         SELECT payment_method_id FROM lkp_payment_method
-         ORDER BY (LOWER(payment_method) = 'check') DESC, payment_method_id ASC LIMIT 1
-      `).catch(() => null);
+         ORDER BY (LOWER(payment_method) IN ('check','cash')) DESC, payment_method_id ASC LIMIT 1
+      `);
 
+      // tbl_donation.description is VARCHAR(500) post-migration so
+      // long sponsor names + event names fit without truncation.
       const description = `Sponsorship from ${sponsorLabel} for "${ev.event_name}" on ${
         new Date(ev.event_date).toISOString().slice(0, 10)
       }`;

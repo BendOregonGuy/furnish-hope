@@ -178,22 +178,24 @@ export function Nametags() {
               Designed for Avery 5395 / 8395 sheets (3"×4", 6 per page).
               Load in your printer with the badge side up, no scaling.
             </p>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 0,
-              fontSize: '10pt',
-            }}>
+            {/* Inline-block (not Grid) so break-inside: avoid works
+                reliably across Chrome / Firefox / Safari. CSS Grid
+                children explicitly don't honor break-inside in
+                Chrome — cards would split across page boundaries. */}
+            <div style={{ fontSize: '10pt', textAlign: 'left' }}>
               {sorted.map(a => (
                 <div key={a.event_attendee_id} style={{
                   width: '3.5in',
                   height: '2.5in',
                   border: '0.25pt dashed #ccc',
                   padding: '14pt',
-                  display: 'flex',
+                  display: 'inline-flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
+                  verticalAlign: 'top',
                   breakInside: 'avoid',
+                  pageBreakInside: 'avoid',
+                  boxSizing: 'border-box',
                 }}>
                   <div style={{ fontSize: '8pt', color: '#888', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                     {data.event.event_name}
@@ -278,18 +280,24 @@ export function PlaceCards() {
               Print on cardstock, cut along dashed lines, fold once.
               Each card shows the guest name + table number.
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+            {/* Inline-block so break-inside avoids splitting a card
+                across page boundaries. CSS Grid children don't
+                honor break-inside in Chrome. */}
+            <div style={{ textAlign: 'left' }}>
               {sorted.map(a => (
                 <div key={a.event_attendee_id} style={{
                   width: '3.5in',
                   height: '2.5in',
                   border: '0.25pt dashed #ccc',
                   padding: '18pt',
-                  display: 'flex',
+                  display: 'inline-flex',
                   flexDirection: 'column',
                   justifyContent: 'center',
                   textAlign: 'center',
+                  verticalAlign: 'top',
                   breakInside: 'avoid',
+                  pageBreakInside: 'avoid',
+                  boxSizing: 'border-box',
                 }}>
                   <div style={{ fontFamily: 'Spectral, Georgia, serif', fontSize: '20pt', fontWeight: 500 }}>{a.name}</div>
                   {a.table_number && (
@@ -384,14 +392,19 @@ export function PledgeCards() {
             <p className="manifest-screen-only" style={{ fontSize: '10pt', color: '#666', marginBottom: '8pt' }}>
               One card per attendee. Cut along dashed lines and place at each seat.
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+            {/* Inline-block layout for reliable page-break behavior. */}
+            <div style={{ textAlign: 'left' }}>
               {sorted.map(a => (
                 <div key={a.event_attendee_id} style={{
                   width: '3.5in',
                   height: '4in',
                   border: '0.25pt dashed #ccc',
                   padding: '14pt',
+                  display: 'inline-block',
+                  verticalAlign: 'top',
                   breakInside: 'avoid',
+                  pageBreakInside: 'avoid',
+                  boxSizing: 'border-box',
                   fontSize: '9pt',
                 }}>
                   <div style={{ fontSize: '8pt', color: '#888', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '3pt' }}>
@@ -670,18 +683,21 @@ export function WillCallLabels() {
             {paid.length === 0 ? (
               <p style={{ fontStyle: 'italic', color: '#888' }}>No pre-paid attendees yet.</p>
             ) : (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 2.625in)',
-                gridAutoRows: '1in',
-                gap: 0,
-              }}>
+              // Inline-block layout — Grid children ignore break-inside in
+              // Chrome, splitting labels across page boundaries.
+              <div style={{ textAlign: 'left' }}>
                 {paid.map(a => (
                   <div key={a.event_attendee_id} style={{
+                    width: '2.625in',
+                    height: '1in',
                     border: '0.25pt dashed #ddd',
                     padding: '8pt',
                     fontSize: '9pt',
+                    display: 'inline-block',
+                    verticalAlign: 'top',
                     breakInside: 'avoid',
+                    pageBreakInside: 'avoid',
+                    boxSizing: 'border-box',
                     overflow: 'hidden',
                   }}>
                     <div style={{ fontWeight: 600 }}>{a.name}</div>

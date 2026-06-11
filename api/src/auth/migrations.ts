@@ -1937,6 +1937,38 @@ const MIGRATIONS: Migration[] = [
   //   real tbl_donation once promoted (same pattern as attendee
   //   contributions).
   // ============================================================
+  // ============================================================
+  // Relax tbl_donor NOT NULL constraints (2026-06-11) — addresses
+  // a bug where the new event-promote-to-donation endpoints can't
+  // create a donor row for a contact who doesn't already have an
+  // address / "how they found us" attribution. Both fields are
+  // really only meaningful at manual donor creation time; the
+  // auto-promote path can leave them blank, and the user can fill
+  // them in later from the donor edit page.
+  // ============================================================
+  {
+    name: 'tbl_donor: relax address_id + howtheyfoundus_id NOT NULL',
+    async run() {
+      await query(`ALTER TABLE tbl_donor ALTER COLUMN address_id        DROP NOT NULL`);
+      await query(`ALTER TABLE tbl_donor ALTER COLUMN howtheyfoundus_id DROP NOT NULL`);
+    },
+  },
+
+  // ============================================================
+  // tbl_donation.description grows from VARCHAR(100) to VARCHAR(500)
+  // (2026-06-11). The new event-promote-to-donation endpoints build
+  // descriptions like `Contribution at "{event_name}" on YYYY-MM-DD`
+  // which can blow past 100 chars on any event with a long name.
+  // Going to 500 is generous and headroom-friendly; truncation in
+  // app code would have been a silent data loss.
+  // ============================================================
+  {
+    name: 'tbl_donation.description -> VARCHAR(500)',
+    async run() {
+      await query(`ALTER TABLE tbl_donation ALTER COLUMN description TYPE VARCHAR(500)`);
+    },
+  },
+
   {
     name: 'lkp_sponsor_level + tbl_event_sponsor',
     async run() {

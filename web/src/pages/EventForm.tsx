@@ -192,22 +192,28 @@ export function EventForm() {
     initialValues: { ...initial, _ats: initialAttendees, _sp: initialSponsors },
   });
 
+  // Submit passes a snapshot of the values/attendees/sponsors at
+  // submit time as the mutation variable, so onSuccess can baseline
+  // initial-state correctly regardless of what the user has typed
+  // since hitting Save. Without this, the dirty-tracker can either
+  // wipe edits made during a slow request or get stuck "dirty".
+  interface MutVars { body: any; snap: { values: Record<string, any>; attendees: AttendeeRow[]; sponsors: SponsorRow[] } }
   const createMut = useMutation({
-    mutationFn: (body: any) => apiPost<{ event_id: number }>('/api/events', body),
-    onSuccess: (data) => {
+    mutationFn: ({ body }: MutVars) => apiPost<{ event_id: number }>('/api/events', body),
+    onSuccess: (data, { snap }) => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
-      setInitial(values); setInitialAttendees(attendees);
+      setInitial(snap.values); setInitialAttendees(snap.attendees); setInitialSponsors(snap.sponsors);
       navigate(`/events/${data.event_id}`);
     },
     onError: (err: any) => setTopError(err.message ?? 'Save failed'),
   });
 
   const updateMut = useMutation({
-    mutationFn: (body: any) => apiPut<{ event_id: number }>(`/api/events/${id}`, body),
-    onSuccess: () => {
+    mutationFn: ({ body }: MutVars) => apiPut<{ event_id: number }>(`/api/events/${id}`, body),
+    onSuccess: (_data, { snap }) => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
       queryClient.invalidateQueries({ queryKey: ['event', id] });
-      setInitial(values); setInitialAttendees(attendees); setInitialSponsors(sponsors);
+      setInitial(snap.values); setInitialAttendees(snap.attendees); setInitialSponsors(snap.sponsors);
       setTopError(null); setSavedFlash(true);
       if (savedFlashTimer.current) window.clearTimeout(savedFlashTimer.current);
       savedFlashTimer.current = window.setTimeout(() => setSavedFlash(false), 2200);
@@ -219,6 +225,8 @@ export function EventForm() {
     mutationFn: () => apiDelete(`/api/events/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      // Form's about to unmount on navigate — wipe the dirty
+      // tracker first so the "unsaved changes" guard doesn't fire.
       setInitial(values); setInitialAttendees(attendees); setInitialSponsors(sponsors);
       navigate('/events');
     },
@@ -316,8 +324,9 @@ export function EventForm() {
         notes: s.notes || null,
       })),
     };
-    if (isNew) createMut.mutate(body);
-    else updateMut.mutate(body);
+    const vars: MutVars = { body, snap: { values, attendees, sponsors } };
+    if (isNew) createMut.mutate(vars);
+    else updateMut.mutate(vars);
   }
 
   function handleDelete() {
@@ -405,7 +414,16 @@ export function EventForm() {
                     type="radio"
                     name="host_kind"
                     checked={hostKind === k}
-                    onChange={() => setHostKind(k)}
+                    onChange={() => {
+                      setHostKind(k);
+                      // Clear the now-irrelevant FK so the dirty tracker
+                      // doesn't flag a stale value, and so the submit
+                      // payload reflects the user's intent without
+                      // depending on the host_kind === xxx branch in
+                      // handleSubmit.
+                      if (k !== 'contact')   setField('host_contact_id', null);
+                      if (k !== 'corporate') setField('host_corporate_id', null);
+                    }}
                   />
                   {k === 'none' ? 'None' : k === 'contact' ? 'Person' : 'Corporate'}
                 </label>
