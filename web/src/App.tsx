@@ -1,5 +1,6 @@
 import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar.tsx';
+import { ScrollToTop } from './components/ScrollToTop.tsx';
 import { RequireAuth, RequireAdmin } from './components/RequireAuth.tsx';
 import { AuthProvider, useAuth } from './lib/auth.tsx';
 import { Login } from './pages/Login.tsx';
@@ -77,6 +78,7 @@ import { AgencyReferralDetail } from './pages/agency/AgencyReferralDetail.tsx';
 export function App() {
   return (
     <AuthProvider>
+      <ScrollToTop />
       <Routes>
         <Route path="/login" element={<Login />} />
         {/* Agency-caseworker routes get their own shell (no staff
