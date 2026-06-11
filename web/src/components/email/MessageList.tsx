@@ -15,6 +15,7 @@ import { Loading, EmptyState } from '../ui.tsx';
 import { useAttachments, AttachmentPicker } from './attachments.tsx';
 import { TemplatePicker } from './TemplatePicker.tsx';
 import { RecipientPicker, appendRecipient } from './RecipientPicker.tsx';
+import { RecipientAutocomplete } from './RecipientAutocomplete.tsx';
 
 export interface EmailAttachmentMeta {
   email_attachment_id: number;
@@ -405,16 +406,16 @@ function ThreadReply({ latest, onClose, onSent }: { latest: FullMessage; onClose
           {(toExtra || ccExtra || bccExtra) && (
             <div className="mb-2 grid grid-cols-[40px_1fr] gap-x-2 text-[11px]">
               {toExtra && <>
-                <div className="text-ink-faint uppercase tracking-widest font-medium">+ To</div>
-                <input type="text" value={toExtra} onChange={e => setToExtra(e.target.value)} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs" />
+                <div className="text-ink-faint uppercase tracking-widest font-medium pt-1">+ To</div>
+                <RecipientAutocomplete value={toExtra} onChange={setToExtra} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs w-full focus:outline-none focus:border-terracotta" />
               </>}
               {ccExtra && <>
-                <div className="text-ink-faint uppercase tracking-widest font-medium">+ Cc</div>
-                <input type="text" value={ccExtra} onChange={e => setCcExtra(e.target.value)} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs" />
+                <div className="text-ink-faint uppercase tracking-widest font-medium pt-1">+ Cc</div>
+                <RecipientAutocomplete value={ccExtra} onChange={setCcExtra} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs w-full focus:outline-none focus:border-terracotta" />
               </>}
               {bccExtra && <>
-                <div className="text-ink-faint uppercase tracking-widest font-medium">+ Bcc</div>
-                <input type="text" value={bccExtra} onChange={e => setBccExtra(e.target.value)} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs" />
+                <div className="text-ink-faint uppercase tracking-widest font-medium pt-1">+ Bcc</div>
+                <RecipientAutocomplete value={bccExtra} onChange={setBccExtra} className="bg-cream border border-hairline-strong px-2 py-0.5 rounded text-xs w-full focus:outline-none focus:border-terracotta" />
               </>}
             </div>
           )}

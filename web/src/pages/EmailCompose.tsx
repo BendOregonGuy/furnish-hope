@@ -11,6 +11,7 @@ import { apiGet, apiPost } from '../lib/api.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { TemplatePicker } from '../components/email/TemplatePicker.tsx';
 import { RecipientPicker, appendRecipient } from '../components/email/RecipientPicker.tsx';
+import { RecipientAutocomplete } from '../components/email/RecipientAutocomplete.tsx';
 
 interface Account {
   email_account_id: number;
@@ -154,11 +155,9 @@ export function EmailCompose() {
             </span>
             <RecipientPicker target="to" onPick={email => setTo(prev => appendRecipient(prev, email))} />
           </label>
-          <input
-            type="text"
-            className="field-input"
+          <RecipientAutocomplete
             value={to}
-            onChange={e => setTo(e.target.value)}
+            onChange={setTo}
             placeholder="recipient@example.com (comma-separated for multiple)"
             required
           />
@@ -171,14 +170,14 @@ export function EmailCompose() {
                 <span>Cc</span>
                 <RecipientPicker target="cc" onPick={email => setCc(prev => appendRecipient(prev, email))} />
               </label>
-              <input type="text" className="field-input" value={cc} onChange={e => setCc(e.target.value)} />
+              <RecipientAutocomplete value={cc} onChange={setCc} />
             </div>
             <div>
               <label className="field-label flex items-center justify-between">
                 <span>Bcc</span>
                 <RecipientPicker target="bcc" onPick={email => setBcc(prev => appendRecipient(prev, email))} />
               </label>
-              <input type="text" className="field-input" value={bcc} onChange={e => setBcc(e.target.value)} />
+              <RecipientAutocomplete value={bcc} onChange={setBcc} />
             </div>
           </>
         )}
