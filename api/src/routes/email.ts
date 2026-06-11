@@ -497,7 +497,7 @@ emailRouter.get('/oauth/callback', async (req, res, next) => {
 /*    q=<substring>      matched case-insensitively against name+email*/
 /* ----------------------------------------------------------------- */
 
-const PICKER_TYPES = new Set(['all', 'staff', 'volunteer', 'donor', 'client', 'agency', 'vendor']);
+const PICKER_TYPES = new Set(['all', 'staff', 'volunteer', 'donor', 'client', 'agency', 'vendor', 'attendee']);
 
 emailRouter.get('/contact-picker', async (req, res, next) => {
   try {
@@ -599,14 +599,36 @@ emailRouter.get('/contact-picker', async (req, res, next) => {
         JOIN tbl_contact c ON c.contact_id = v.contact_id
         LEFT JOIN lkp_vendor_specialty vs ON vs.vendor_specialty_id = v.vendor_specialty_id
         WHERE v.is_active = true AND c.email IS NOT NULL AND c.email <> ''
+
+        UNION ALL
+
+        -- Event attendees. A "pure" attendee may not be a staff /
+        -- donor / etc — they're just someone we invited to an event.
+        -- Surface them here so invites + thank-you notes can use the
+        -- autocomplete. DISTINCT ON dedupes attendees who appear at
+        -- multiple events (one row per contact).
+        SELECT DISTINCT ON (c.contact_id)
+          (c.first_name || ' ' || c.last_name),
+          c.email,
+          'Attendee',
+          'attendee',
+          c.contact_id
+        FROM tbl_event_attendee ea
+        JOIN tbl_contact c ON c.contact_id = ea.contact_id
+        WHERE c.email IS NOT NULL AND c.email <> ''
       )
       SELECT display_name, email, type_label, entity_type, entity_id
       FROM all_contacts
       WHERE
         ($1::text = 'all' OR entity_type = $1)
+        -- ILIKE (not LOWER()+LIKE) so the pg_trgm GIN indexes on
+        -- tbl_contact (first_name, last_name, email), tbl_vendor
+        -- (business_name), etc. can actually accelerate the predicate.
+        -- LOWER()+LIKE looks like a different expression to the
+        -- planner and the trigram index can't be used.
         AND ($2::text IS NULL
-             OR LOWER(display_name) LIKE $2
-             OR LOWER(email) LIKE $2)
+             OR display_name ILIKE $2
+             OR email ILIKE $2)
       ORDER BY display_name
       LIMIT 100
     `, [type, qParam]);

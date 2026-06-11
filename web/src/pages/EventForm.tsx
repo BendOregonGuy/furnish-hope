@@ -298,7 +298,7 @@ export function EventForm() {
 
         <Section
           title="Attendees"
-          hint="Add RSVPs, contributions, and check-in tracking."
+          hint="Add RSVPs, contributions, and check-in tracking. Each attendee's contact must have an email on file (mobile phone optional)."
           actions={errors._attendees && <span className="text-[11px] text-terracotta-deep font-medium">{errors._attendees}</span>}
         >
           <SubformList<AttendeeRow>

@@ -173,6 +173,8 @@ eventsRouter.post('/', async (req, res, next) => {
       ]);
       const eventId = e!.event_id;
 
+      await assertAttendeeContactsHaveEmail(tx, body.attendees);
+
       for (const a of body.attendees ?? []) {
         await tx.query(`
           INSERT INTO tbl_event_attendee
@@ -223,6 +225,8 @@ eventsRouter.put('/:id', async (req, res, next) => {
         body.is_public ?? false, body.notes ?? null, body.description ?? null, id,
       ]);
       if (after) await auditUpdate(req, 'tbl_event', id, before, after, tx);
+
+      await assertAttendeeContactsHaveEmail(tx, body.attendees);
 
       // Diff attendees.
       const incomingIds = new Set((body.attendees ?? [])
@@ -323,4 +327,41 @@ function withStatus(status: number, message: string): Error {
   const e: any = new Error(message);
   e.status = status;
   return e;
+}
+
+/**
+ * Reject the request if any attendee's linked contact is missing an
+ * email. Required because event-related comms (invites, day-of
+ * updates, thank-you / receipt emails) target attendees by email.
+ *
+ * Mobile phone is intentionally NOT required — some people don't
+ * want to share a cell number, and email alone is sufficient for
+ * the invite/ack flows we've committed to.
+ *
+ * Runs INSIDE the transaction so the validation rolls back cleanly
+ * if it fails and the partial insert never lands.
+ */
+async function assertAttendeeContactsHaveEmail(
+  tx: { query: <T>(sql: string, params?: any[]) => Promise<T[]> },
+  attendees: AttendeePayload[] | undefined,
+): Promise<void> {
+  const ids = (attendees ?? [])
+    .map(a => a.contact_id)
+    .filter((n): n is number => Number.isInteger(n) && n > 0);
+  if (ids.length === 0) return;
+  const missing = await tx.query<{ contact_id: number; name: string }>(`
+    SELECT contact_id,
+           TRIM(COALESCE(first_name, '') || ' ' || COALESCE(last_name, '')) AS name
+    FROM tbl_contact
+    WHERE contact_id = ANY($1::int[])
+      AND (email IS NULL OR email = '')
+  `, [ids]);
+  if (missing.length === 0) return;
+  const names = missing
+    .map(m => m.name?.trim() || `contact #${m.contact_id}`)
+    .join(', ');
+  throw withStatus(
+    400,
+    `Each attendee needs an email on their contact record. Missing email on: ${names}. Edit the contact to add an email, then save again.`,
+  );
 }
