@@ -16,7 +16,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, formatLongDate, formatMoney } from '../lib/api.ts';
+import { apiDelete, apiGet, apiPost, formatLongDate, formatMoney } from '../lib/api.ts';
 import { Loading, ErrorBox, Avatar } from '../components/ui.tsx';
 import { FkSelect } from '../components/admin/FkSelect.tsx';
 
@@ -54,6 +54,15 @@ export function EventCheckIn() {
     mutationFn: (attendeeId: number) => apiPost(`/api/events/${id}/check-in/${attendeeId}`, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['event', id] }),
     onError: (err: any) => window.alert(err.message ?? 'Check-in failed'),
+  });
+
+  // Undo a check-in — mistakes happen (wrong row tapped, etc.).
+  // Confirm prompt sits in the row's onClick so it only fires when
+  // the user taps a row that's already checked in.
+  const uncheckMut = useMutation({
+    mutationFn: (attendeeId: number) => apiDelete(`/api/events/${id}/check-in/${attendeeId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['event', id] }),
+    onError: (err: any) => window.alert(err.message ?? 'Undo failed'),
   });
 
   const filtered = useMemo(() => {
@@ -140,7 +149,15 @@ export function EventCheckIn() {
               key={a.event_attendee_id}
               attendee={a}
               onCheckIn={() => checkInMut.mutate(a.event_attendee_id)}
-              busy={checkInMut.isPending && checkInMut.variables === a.event_attendee_id}
+              onUncheck={() => {
+                if (window.confirm(`Are you sure you want to un-check ${a.name}?`)) {
+                  uncheckMut.mutate(a.event_attendee_id);
+                }
+              }}
+              busy={
+                (checkInMut.isPending && checkInMut.variables === a.event_attendee_id) ||
+                (uncheckMut.isPending && uncheckMut.variables === a.event_attendee_id)
+              }
             />
           ))}
         </div>
@@ -160,16 +177,23 @@ export function EventCheckIn() {
   );
 }
 
-function CheckInRow({ attendee, onCheckIn, busy }: { attendee: Attendee; onCheckIn: () => void; busy: boolean }) {
+function CheckInRow({
+  attendee, onCheckIn, onUncheck, busy,
+}: {
+  attendee: Attendee;
+  onCheckIn: () => void;
+  onUncheck: () => void;
+  busy: boolean;
+}) {
   const checked = !!attendee.checked_in_at;
   return (
     <button
       type="button"
-      onClick={checked || busy ? undefined : onCheckIn}
-      disabled={checked || busy}
+      onClick={busy ? undefined : (checked ? onUncheck : onCheckIn)}
+      disabled={busy}
       className={`w-full text-left card flex items-center gap-3 transition-colors ${
         checked
-          ? 'bg-sage-soft/40 border-sage'
+          ? 'bg-sage-soft/40 border-sage hover:bg-sage-soft/60 cursor-pointer'
           : 'hover:bg-terracotta/5 cursor-pointer'
       }`}
     >
@@ -188,9 +212,14 @@ function CheckInRow({ attendee, onCheckIn, busy }: { attendee: Attendee; onCheck
           <span className="text-xs text-ink-soft">{formatMoney(attendee.amount_contributed)}</span>
         )}
         {checked ? (
-          <span className="text-sage text-sm font-medium whitespace-nowrap">
-            ✓ {new Date(attendee.checked_in_at!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-          </span>
+          <div className="text-right whitespace-nowrap">
+            <div className="text-sage text-sm font-medium">
+              ✓ {new Date(attendee.checked_in_at!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            </div>
+            <div className="text-[10px] text-ink-faint">
+              {busy ? 'Undoing…' : 'Tap to un-check'}
+            </div>
+          </div>
         ) : (
           <span className="text-terracotta font-medium text-sm whitespace-nowrap">
             {busy ? 'Checking in…' : 'Tap to check in'}

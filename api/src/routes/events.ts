@@ -326,6 +326,34 @@ eventsRouter.post('/:id/check-in/:attendeeId', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * Undo a check-in. Mistakes happen — wrong row tapped, wrong person.
+ * Clears checked_in_at and sets attended back to NULL ("undetermined"),
+ * NOT false. False is a "no-show" assertion; null means "we haven't
+ * decided yet." The UI prompts a confirm before calling this.
+ */
+eventsRouter.delete('/:id/check-in/:attendeeId', async (req, res, next) => {
+  try {
+    const attendeeId = Number(req.params.attendeeId);
+    if (!Number.isInteger(attendeeId) || attendeeId <= 0) return res.status(400).json({ error: 'Invalid attendee id' });
+
+    const before = await queryOne<Record<string, any>>(
+      `SELECT * FROM tbl_event_attendee WHERE event_attendee_id = $1`, [attendeeId],
+    );
+    if (!before) return res.status(404).json({ error: 'Attendee not found' });
+
+    const after = await queryOne<Record<string, any>>(`
+      UPDATE tbl_event_attendee
+         SET checked_in_at = NULL,
+             attended = NULL
+       WHERE event_attendee_id = $1
+       RETURNING *
+    `, [attendeeId]);
+    if (after) await auditUpdate(req, 'tbl_event_attendee', attendeeId, before, after);
+    res.json({ attendee: after });
+  } catch (err) { next(err); }
+});
+
 /* ----------------------------------------------------------------- */
 /*  Walk-in                                                           */
 /*                                                                    */
