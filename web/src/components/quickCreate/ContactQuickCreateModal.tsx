@@ -15,7 +15,8 @@ import { ModalShell, Row, Field } from './ModalShell.tsx';
 export function ContactQuickCreateModal({
   onCreated, onCancel,
   defaultContactTypeId,
-}: QuickCreateContext & { defaultContactTypeId?: number }) {
+  requireEmail = false,
+}: QuickCreateContext & { defaultContactTypeId?: number; requireEmail?: boolean }) {
   const [v, setV] = useState({
     contact_type_id: defaultContactTypeId ?? null as number | null,
     first_name: '', last_name: '',
@@ -43,6 +44,7 @@ export function ContactQuickCreateModal({
     if (!v.contact_type_id) missing.push('Type');
     if (!v.first_name.trim()) missing.push('First name');
     if (!v.last_name.trim()) missing.push('Last name');
+    if (requireEmail && !v.email.trim()) missing.push('Email');
     if (missing.length) { setTopError(`Required: ${missing.join(', ')}`); return; }
     createMut.mutate();
   }
@@ -73,8 +75,8 @@ export function ContactQuickCreateModal({
         </Field>
       </Row>
       <Row>
-        <Field label="Email" full>
-          <input type="email" className="field-input" value={v.email} onChange={e => setV({ ...v, email: e.target.value })} maxLength={100} />
+        <Field label="Email" required={requireEmail} full>
+          <input type="email" className="field-input" value={v.email} onChange={e => setV({ ...v, email: e.target.value })} maxLength={100} required={requireEmail} />
         </Field>
       </Row>
       <Row>

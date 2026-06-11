@@ -10,10 +10,10 @@ import type { ColumnMeta } from '../lib/admin.ts';
 import { validateForm, type FormErrors } from '../lib/adminValidate.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { Field } from '../components/admin/Field.tsx';
-import { FkCreateField } from '../components/admin/FkSelectWithCreate.tsx';
+import { FkCreateField, FkSelectWithCreate } from '../components/admin/FkSelectWithCreate.tsx';
 import { AddressQuickCreateModal } from '../components/quickCreate/AddressQuickCreateModal.tsx';
 import { CampaignQuickCreateModal } from '../components/quickCreate/CampaignQuickCreateModal.tsx';
-import { FkSelect } from '../components/admin/FkSelect.tsx';
+import { ContactQuickCreateModal } from '../components/quickCreate/ContactQuickCreateModal.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { Section, FieldGrid, Cell } from '../components/forms/FormSection.tsx';
 import { SubformList, type SubformRow } from '../components/forms/SubformList.tsx';
@@ -318,11 +318,13 @@ export function EventForm() {
             }
             renderRow={(row, update) => (
               <div className="grid grid-cols-[1.6fr_140px_80px_140px_1fr] gap-3 items-start">
-                <FkSelect
+                <FkSelectWithCreate
                   fkTable="tbl_contact"
                   value={row.contact_id}
                   required
                   onChange={v => update({ contact_id: v })}
+                  newButtonLabel="+ New"
+                  renderModal={ctx => <ContactQuickCreateModal {...ctx} requireEmail />}
                 />
                 <select
                   className="field-input"
