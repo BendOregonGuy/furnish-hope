@@ -174,6 +174,113 @@ parsing for RSVPs. Pick up when there's real demand.)
       to auto-creating donations on save and linking back via
       `tbl_event_sponsor.donation_id`.
 
+### Event printable forms (requested 2026-06-10)
+
+All forms follow the existing manifest-print pattern (`ManifestShell`
++ `/manifest` route) — a dedicated print-optimized view at
+`/events/:id/<form-name>` with a "Print" button that opens the
+browser print dialog. Default to letter-size, but offer half-letter
+or Avery-template layouts where it makes sense (badges, table
+tents). All assume the **event roles + sponsorships backlog**
+above ships first for forms that depend on that data.
+
+**Tier 1 — high value, builds on existing data**
+
+- [ ] **Door check-in roster** — printable alphabetical list of all
+      RSVP'd attendees: name, RSVP status, table # (if assigned),
+      contribution due, signature/check-in box. Door staff marks
+      paper if WiFi dies; sync back later. **Operational risk
+      mitigation — recommend prioritizing.** No new schema; pure
+      print view.
+- [ ] **Run-of-show timeline** — minute-by-minute schedule for the
+      event team (cocktails 5:00, program 6:30, paddle raise 7:45,
+      etc.). v1: free-text `run_of_show TEXT` column on `tbl_event`,
+      formatted as a printable card. v2: dedicated
+      `tbl_event_schedule_item` with start_time + title +
+      responsible_party.
+- [ ] **Volunteer shift roster** — who's working what time slot, with
+      phone + role. Volunteers grab one as they arrive. Pulls from
+      existing `tbl_volunteer_shift_signup`. Pure print view.
+- [ ] **Sponsor recognition sheet** — sponsors grouped by level
+      (Platinum first → Bronze last), formatted for emcee scripts +
+      program inserts. **Depends on Corporate Sponsors backlog
+      item.**
+- [ ] **Nametag / badge sheets** — Avery-template-compatible layouts
+      (Avery 5395 / 5384 / 5392 are common). Name + role pill
+      (Staff, Volunteer, Board, Donor, VIP). Print on peel-and-stick
+      sheet stock.
+
+**Tier 2 — useful, modest data additions**
+
+- [ ] **Table cards (numbered table tents)** — big number on both
+      sides, foldable, printed N-up on cardstock. Pure layout work.
+      No schema.
+- [ ] **Place cards by table** — one sheet per table with each seat:
+      name, dietary tag, plus-one notation. Requires **seat / table
+      assignment on attendees** — add `table_number INT` and
+      `seat_number INT` (or VARCHAR) columns to `tbl_event_attendee`
+      plus optional `dietary_notes`.
+- [ ] **Seating chart / map** — overview page showing the venue
+      layout with table numbers and the people at each table. Uses
+      the same seat-assignment data. v1: auto-generated grid
+      based on table count; v2: drag-drop layout editor (much
+      bigger effort, defer).
+- [ ] **Silent auction bid sheets** — one per item: item name +
+      description + photo space + starting bid + minimum increment
+      + numbered rows for bidder# + amount. Requires a new feature:
+      `tbl_auction_item` (event_id, name, description, starting_bid,
+      bid_increment, donor / source, value, photo via attachments)
+      + `tbl_auction_bid` for tracking winners. Scope: ~half a day
+      for the data model + admin + print sheet.
+- [ ] **Pledge cards** — for the paddle raise / appeal. Pre-filled
+      with donor name + suggested giving levels ($25 / $100 / $500
+      / $1,000 / $5,000 / other) + check boxes + signature line.
+      Uses existing donor + giving history.
+
+**Tier 3 — nice-to-have, lower urgency**
+
+- [ ] **Walk-in registration paper form** — blank form mirroring
+      the walk-in modal fields. Captures first/last/email/phone/
+      type/$/notes. For the rare case the iPad is busy and walk-ins
+      stack up at the door. Pure print template, no schema.
+- [ ] **Event program** (multi-page printed booklet) — cover,
+      schedule, sponsor pages, board listing, mission statement,
+      photo spread. PDF generated server-side via pdfkit (same
+      stack as receipts). Needs design + photo upload — bigger
+      project. Defer until there's a specific upcoming event.
+- [ ] **Save-the-date / formal invitation templates** — mail-merge
+      from an invitee list. Probably best done by exporting to CSV
+      and letting the user use their existing letterhead in Word,
+      rather than building a templating engine. Consider just
+      providing a CSV export of "people to invite" instead of
+      printing.
+- [ ] **Day-of staff briefing card** — emergency contacts, venue
+      addresses, vendor phone numbers, evacuation plan, master
+      schedule, key contacts (caterer, AV, photographer). One-page
+      handout. Free-text `staff_briefing TEXT` field on `tbl_event`
+      + a print view. Cheap to ship, often forgotten.
+- [ ] **Thank-you letter templates** — mail-merge to attendees
+      with their contribution + tax-deductible amount + receipt
+      number. Overlaps with existing donation acknowledgement
+      flow; consider extending that instead of building a new
+      template engine.
+- [ ] **Acknowledgement / commitment confirmation slip** — given
+      to attendees who pledge during the appeal. Confirms what
+      they wrote on the pledge card. Print at the back of the
+      house and hand them out before they leave.
+- [ ] **Will-call envelope labels** — printed envelopes for
+      attendees who pre-paid but want to pick up materials at the
+      door (program, name tag, swag). Avery 5160 labels with name
+      + table # + amount paid.
+
+**Suggested phasing**
+
+The four high-ROI items for a furniture-to-housing nonprofit's
+typical gala: door check-in roster, run-of-show printable, sponsor
+recognition sheet, nametag sheets. Probably half a day combined.
+Pledge cards + table cards are the next-most-used items at fundraising
+galas — bring them in for the gala-prep push.
+
 
 ---
 
