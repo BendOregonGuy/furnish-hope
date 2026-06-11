@@ -1678,6 +1678,103 @@ const MIGRATIONS: Migration[] = [
       await query(`INSERT INTO tbl_org_branding (branding_id) VALUES (1) ON CONFLICT DO NOTHING`);
     },
   },
+
+  // ============================================================
+  // Performance indexes (2026-06-10) — for the production scale of
+  // ~3K clients, ~30K inventory items, ~30K emails/year.
+  //
+  // Three btree gaps the original schema missed:
+  //   - tbl_audit_log: only indexed on user_account_id. Every audit
+  //     viewer query sorts by action_at DESC. Without an index on it
+  //     this becomes a full-table sort once the log has any volume.
+  //   - tbl_corp_facility_inventory_item: no index on
+  //     date_added_to_inventory. "Recent intake" reports and any
+  //     date-sorted inventory list scan otherwise.
+  // ============================================================
+  {
+    name: 'performance indexes — audit + inventory dates',
+    async run() {
+      // Single-column desc index for the global audit log viewer.
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_audit_log_action_at
+          ON tbl_audit_log (action_at DESC)
+      `);
+      // Composite for "this user's audit history" — covers both the
+      // filter and the sort with one index lookup.
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_audit_log_user_action_at
+          ON tbl_audit_log (user_account_id, action_at DESC)
+      `);
+      // Most "recent inventory" UI sorts by date_added_to_inventory.
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_corp_facility_inventory_item_date_added
+          ON tbl_corp_facility_inventory_item (date_added_to_inventory DESC)
+      `);
+    },
+  },
+
+  // ============================================================
+  // pg_trgm + substring-search indexes (2026-06-10).
+  //
+  // Every search box in the app uses ILIKE '%foo%' (donor/client
+  // name, vendor name, email subject/from, contact email). A plain
+  // btree can't accelerate a leading-wildcard match, so today these
+  // do sequential scans. Fine at thousands of rows, painful at tens
+  // of thousands.
+  //
+  // pg_trgm + GIN turns substring ILIKE into an index lookup. Also
+  // sets up the autocomplete UI (next feature) to feel instant — a
+  // typeahead query like 'ka' becomes index-driven instead of a
+  // table scan with every keystroke.
+  //
+  // Indexes are kept narrow on purpose: only the columns users
+  // actually search. Body_text is NOT indexed — bodies are huge and
+  // we don't have a "search email bodies" feature today. Add later
+  // if/when that feature lands.
+  // ============================================================
+  {
+    name: 'pg_trgm extension + substring search indexes',
+    async run() {
+      // pg_trgm is on the DO Managed Postgres allowed-extension list.
+      await query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+
+      // Names + emails on tbl_contact — the join target for clients,
+      // donors, volunteers, staff, vendors, agency contacts.
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_contact_first_name_trgm
+          ON tbl_contact USING gin (first_name gin_trgm_ops)
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_contact_last_name_trgm
+          ON tbl_contact USING gin (last_name gin_trgm_ops)
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_contact_email_trgm
+          ON tbl_contact USING gin (email gin_trgm_ops)
+          WHERE email IS NOT NULL
+      `);
+
+      // Vendor business name — only column we ILIKE on directly.
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_vendor_business_name_trgm
+          ON tbl_vendor USING gin (business_name gin_trgm_ops)
+          WHERE business_name IS NOT NULL
+      `);
+
+      // Email subject + from_address for mailbox search.
+      // from_address already has a LOWER() btree for case-insensitive
+      // exact / prefix lookup — trigram complements it for '%foo%'.
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_email_message_subject_trgm
+          ON tbl_email_message USING gin (subject gin_trgm_ops)
+          WHERE subject IS NOT NULL
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_email_message_from_trgm
+          ON tbl_email_message USING gin (from_address gin_trgm_ops)
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */
