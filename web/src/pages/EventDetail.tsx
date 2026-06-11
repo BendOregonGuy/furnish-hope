@@ -9,6 +9,24 @@ import { Loading, ErrorBox, Avatar } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
 import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 
+interface SponsorRow {
+  event_sponsor_id: number;
+  event_id: number;
+  corporate_id: number | null;
+  contact_id: number | null;
+  sponsor_level_id: number;
+  sponsor_level_label: string;
+  sponsor_level_sort: number;
+  amount_pledged: number | string | null;
+  amount_paid: number | string | null;
+  acknowledged: boolean;
+  notes: string | null;
+  donation_id: number | null;
+  donation_receipt_number: string | null;
+  corporate_name: string | null;
+  contact_name: string | null;
+}
+
 interface Detail {
   event: any;
   attendees: Array<{
@@ -22,12 +40,16 @@ interface Detail {
     ticket_count: number;
     checked_in_at: string | null;
     notes: string | null;
+    table_number: string | null;
+    seat_number: string | null;
+    dietary_notes: string | null;
     donation_id: number | null;
     donation_receipt_number: string | null;
     name: string;
     email: string | null;
     mobile_phone: string | null;
   }>;
+  sponsors: SponsorRow[];
   prevId: number | null;
   nextId: number | null;
 }
@@ -57,6 +79,16 @@ export function EventDetail() {
       apiPost<{ donation_id: number }>(`/api/events/${id}/attendees/${attendeeId}/promote-to-donation`, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['event', id] }),
     onError: (err: any) => window.alert(err.message ?? 'Promote failed'),
+  });
+
+  // Same idea for sponsors: promote a sponsorship commitment to a
+  // real tbl_donation. Default to amount_paid if set, else
+  // amount_pledged.
+  const promoteSponsorMut = useMutation({
+    mutationFn: (sponsorId: number) =>
+      apiPost<{ donation_id: number }>(`/api/events/${id}/sponsors/${sponsorId}/promote-to-donation`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['event', id] }),
+    onError: (err: any) => window.alert(err.message ?? 'Promote sponsor failed'),
   });
 
   const deleteMut = useMutation({
@@ -118,6 +150,26 @@ export function EventDetail() {
             {e.address && <><span>·</span><span>{e.address}{e.address2 ? `, ${e.address2}` : ''}, {e.city}</span></>}
             {e.ticket_price != null && <><span>·</span><span>Tickets {formatMoney(e.ticket_price)}</span></>}
           </div>
+          {/* Role + capacity strip — only renders if at least one
+              of the new fields is populated. Keeps older events
+              uncluttered. */}
+          {(e.manager_name || e.host_contact_name || e.host_corporate_name || e.max_attendees != null) && (
+            <div className="flex gap-4 text-[11px] text-ink-soft mt-2 flex-wrap">
+              {e.manager_name && <span><span className="text-ink-faint uppercase tracking-widest">Manager </span>{e.manager_name}</span>}
+              {(e.host_contact_name || e.host_corporate_name) && (
+                <span><span className="text-ink-faint uppercase tracking-widest">Host </span>{e.host_corporate_name ?? e.host_contact_name}</span>
+              )}
+              {e.max_attendees != null && (
+                <span>
+                  <span className="text-ink-faint uppercase tracking-widest">Capacity </span>
+                  {data.attendees.length}/{e.max_attendees}
+                  {data.attendees.length >= e.max_attendees && (
+                    <span className="ml-1 text-terracotta-deep font-medium">· full</span>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div className="text-right">
           <div className="text-[11px] text-ink-faint tracking-widest uppercase font-medium">Raised</div>
@@ -215,6 +267,87 @@ export function EventDetail() {
           </table>
         )}
       </div>
+
+      {/* Sponsors — grouped by level, sorted Title → Bronze. */}
+      {data.sponsors && data.sponsors.length > 0 && (
+        <div className="card mt-5">
+          <div className="card-head">
+            <h3 className="font-display font-medium text-[17px] m-0">Sponsors</h3>
+            <span className="text-xs text-ink-faint">{data.sponsors.length} total · {formatMoney(data.sponsors.reduce((s, x) => s + Number(x.amount_pledged ?? 0), 0))} pledged</span>
+          </div>
+          {(() => {
+            const grouped: Record<string, SponsorRow[]> = {};
+            const order: string[] = [];
+            for (const s of data.sponsors) {
+              if (!grouped[s.sponsor_level_label]) {
+                grouped[s.sponsor_level_label] = [];
+                order.push(s.sponsor_level_label);
+              }
+              grouped[s.sponsor_level_label].push(s);
+            }
+            return (
+              <div className="space-y-3">
+                {order.map(lvl => (
+                  <div key={lvl}>
+                    <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mb-1.5">{lvl}</div>
+                    <div className="space-y-1.5">
+                      {grouped[lvl].map(s => (
+                        <div key={s.event_sponsor_id} className="flex items-baseline justify-between gap-3 flex-wrap py-1.5 border-b border-hairline last:border-b-0">
+                          <div className="text-sm">
+                            <span className="font-medium">{s.corporate_name ?? s.contact_name ?? '—'}</span>
+                            {s.acknowledged && <span className="ml-2 text-[10px] text-sage uppercase tracking-widest">acknowledged</span>}
+                            {s.notes && <span className="ml-2 text-[11px] text-ink-faint">{s.notes}</span>}
+                          </div>
+                          <div className="text-xs text-ink-soft flex items-baseline gap-3">
+                            {s.amount_pledged != null && <span>{formatMoney(s.amount_pledged)} pledged</span>}
+                            {s.amount_paid != null && s.amount_paid !== s.amount_pledged && <span className="text-ink-faint">{formatMoney(s.amount_paid)} paid</span>}
+                            {s.donation_id ? (
+                              <Link to={`/donations/${s.donation_id}`} className="text-sage hover:text-terracotta-deep">
+                                → Donation #{s.donation_id}{s.donation_receipt_number ? ` · ${s.donation_receipt_number}` : ''}
+                              </Link>
+                            ) : (Number(s.amount_paid ?? s.amount_pledged ?? 0) > 0) ? (
+                              <button
+                                type="button"
+                                onClick={() => promoteSponsorMut.mutate(s.event_sponsor_id)}
+                                disabled={promoteSponsorMut.isPending}
+                                className="text-terracotta hover:text-terracotta-deep disabled:opacity-50"
+                                title="Promote this sponsorship to a real donation (counts toward lifetime giving + can generate a receipt)"
+                              >
+                                Convert to donation →
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Run-of-show + staff briefing — only render if populated. */}
+      {(e.run_of_show || e.staff_briefing) && (
+        <div className="card mt-5">
+          <div className="card-head">
+            <h3 className="font-display font-medium text-[17px] m-0">Schedule & briefing</h3>
+          </div>
+          {e.run_of_show && (
+            <div className="mb-4">
+              <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mb-1">Run of show</div>
+              <div className="text-sm text-ink-soft whitespace-pre-line">{e.run_of_show}</div>
+            </div>
+          )}
+          {e.staff_briefing && (
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mb-1">Staff briefing</div>
+              <div className="text-sm text-ink-soft whitespace-pre-line">{e.staff_briefing}</div>
+            </div>
+          )}
+        </div>
+      )}
 
       {e.notes && (
         <div className="card mt-5">
