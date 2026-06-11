@@ -17,6 +17,11 @@
  *   - WillCallLabels — Avery 5160 mailing labels for pre-paid attendees
  */
 
+import { useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { apiGet, formatLongDate } from '../../lib/api.ts';
+import { Loading, ErrorBox } from '../../components/ui.tsx';
+import { ManifestPage, ManifestHeader } from '../../components/manifest/ManifestShell.tsx';
 import { EventPrintPage, dollars, byLastName, byTableSeat } from './common.tsx';
 import type { PrintAttendee } from './common.tsx';
 
@@ -508,6 +513,140 @@ export function StaffBriefing() {
       }}
     />
   );
+}
+
+/* ----------------------------------------------------------------- */
+/*  Volunteer shift roster                                            */
+/*                                                                    */
+/*  Uses its own endpoint (GET /api/events/:id/volunteer-roster)     */
+/*  because shifts aren't joined to events at the schema level —     */
+/*  the server matches by date and returns shifts + signups together.*/
+/* ----------------------------------------------------------------- */
+interface VolunteerRosterShift {
+  shift_id: number;
+  shift_name: string | null;
+  shift_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  capacity_needed: number;
+  notes: string | null;
+  shift_type: string | null;
+  shift_status: string | null;
+  signups: Array<{
+    signup_id: number;
+    facility_staff_id: number;
+    name: string;
+    email: string | null;
+    mobile_phone: string | null;
+    signup_status: string | null;
+    hours_logged: number | string | null;
+    notes: string | null;
+  }>;
+}
+
+interface VolunteerRosterResponse {
+  event: { event_id: number; event_name: string; event_date: string };
+  shifts: VolunteerRosterShift[];
+}
+
+export function VolunteerRoster() {
+  const { id } = useParams<{ id: string }>();
+  const { data, isLoading, error } = useQuery<VolunteerRosterResponse>({
+    queryKey: ['event', id, 'volunteer-roster'],
+    queryFn: () => apiGet(`/api/events/${id}/volunteer-roster`),
+  });
+  if (isLoading) return <Loading />;
+  if (error) return <ErrorBox error={error} />;
+  if (!data) return null;
+
+  const totalSignups = data.shifts.reduce((n, s) => n + s.signups.length, 0);
+  const totalCapacity = data.shifts.reduce((n, s) => n + (s.capacity_needed ?? 0), 0);
+
+  return (
+    <ManifestPage>
+      <ManifestHeader
+        title={`${data.event.event_name} · Volunteer shift roster`}
+        meta={formatLongDate(data.event.event_date)}
+      />
+      <p style={{ fontSize: '10pt', color: '#444', marginBottom: '14pt' }}>
+        Volunteers scheduled for shifts on the event date. Confirmed sign-ups across all shifts:{' '}
+        <strong>{totalSignups}{totalCapacity > 0 ? ` / ${totalCapacity}` : ''}</strong>.
+        Give a copy to each shift lead and pin one in the break area.
+      </p>
+      {data.shifts.length === 0 ? (
+        <p style={{ fontStyle: 'italic', color: '#888' }}>
+          No volunteer shifts are scheduled for {formatLongDate(data.event.event_date)}.
+          Create shifts via the Shifts page if you need volunteer coverage.
+        </p>
+      ) : (
+        data.shifts.map(s => (
+          <div key={s.shift_id} style={{ marginBottom: '18pt', breakInside: 'avoid' }}>
+            <div style={{
+              fontFamily: 'Spectral, Georgia, serif',
+              fontSize: '14pt',
+              fontWeight: 500,
+              borderBottom: '1pt solid #1a1a1a',
+              paddingBottom: '3pt',
+              marginBottom: '6pt',
+            }}>
+              {s.shift_name ?? s.shift_type ?? 'Shift'}
+              <span style={{ fontSize: '9pt', color: '#666', fontWeight: 400, marginLeft: '8pt' }}>
+                {s.start_time && s.end_time ? `${formatTime(s.start_time)} – ${formatTime(s.end_time)}` : s.start_time ? formatTime(s.start_time) : ''}
+                {s.shift_status ? ` · ${s.shift_status}` : ''}
+                {' · '}{s.signups.length}{s.capacity_needed > 0 ? ` / ${s.capacity_needed}` : ''} signed up
+              </span>
+            </div>
+            {s.notes && (
+              <div style={{ fontSize: '9pt', color: '#666', fontStyle: 'italic', marginBottom: '4pt' }}>
+                {s.notes}
+              </div>
+            )}
+            {s.signups.length === 0 ? (
+              <div style={{ fontSize: '10pt', color: '#888', fontStyle: 'italic' }}>
+                No one signed up yet. Open spots: {s.capacity_needed}.
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10pt' }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: '18pt', padding: '3pt' }}></th>
+                    <th style={{ textAlign: 'left', padding: '3pt', fontSize: '8pt', color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Name</th>
+                    <th style={{ textAlign: 'left', padding: '3pt', fontSize: '8pt', color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Phone</th>
+                    <th style={{ textAlign: 'left', padding: '3pt', fontSize: '8pt', color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Email</th>
+                    <th style={{ textAlign: 'right', padding: '3pt', fontSize: '8pt', color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Arrived</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.signups.map(sg => (
+                    <tr key={sg.signup_id} style={{ borderBottom: '0.5pt solid #d8d4cc' }}>
+                      <td style={{ padding: '4pt 3pt' }}>
+                        <span style={{ display: 'inline-block', width: '11pt', height: '11pt', border: '1px solid #555', borderRadius: '2px' }} />
+                      </td>
+                      <td style={{ padding: '4pt 3pt' }}>
+                        <strong>{sg.name}</strong>
+                        {sg.notes && <span style={{ fontSize: '8pt', color: '#888', marginLeft: '6pt' }}>{sg.notes}</span>}
+                      </td>
+                      <td style={{ padding: '4pt 3pt' }}>{sg.mobile_phone ?? '—'}</td>
+                      <td style={{ padding: '4pt 3pt' }}>{sg.email ?? '—'}</td>
+                      <td style={{ padding: '4pt 3pt', borderBottom: '0.5pt solid #888', minWidth: '70pt' }}></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ))
+      )}
+    </ManifestPage>
+  );
+}
+
+function formatTime(t: string): string {
+  // PG TIME comes back as "HH:mm:ss" — render as "7:30 PM".
+  const [h, m] = t.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hh = ((h + 11) % 12) + 1;
+  return `${hh}:${String(m).padStart(2, '0')} ${period}`;
 }
 
 /* ----------------------------------------------------------------- */

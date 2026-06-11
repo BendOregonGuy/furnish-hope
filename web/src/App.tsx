@@ -43,7 +43,7 @@ import { EventCheckIn } from './pages/EventCheckIn.tsx';
 import {
   DoorRoster, RunOfShow, SponsorSheet, Nametags,
   TableCards, PlaceCards, SeatingChart, PledgeCards,
-  WalkInForm, StaffBriefing, WillCallLabels,
+  WalkInForm, StaffBriefing, WillCallLabels, VolunteerRoster,
 } from './pages/eventPrints/index.tsx';
 import { EmailAccounts } from './pages/EmailAccounts.tsx';
 import { EmailCompose } from './pages/EmailCompose.tsx';
@@ -205,6 +205,7 @@ function AppShell() {
           <Route path="/events/:id/print/walk-in-form"    element={<WalkInForm />} />
           <Route path="/events/:id/print/staff-briefing"  element={<StaffBriefing />} />
           <Route path="/events/:id/print/will-call-labels" element={<WillCallLabels />} />
+          <Route path="/events/:id/print/volunteer-roster" element={<VolunteerRoster />} />
           <Route path="/events/:id" element={<EventDetail />} />
 
           <Route path="/email/accounts" element={<EmailAccounts />} />

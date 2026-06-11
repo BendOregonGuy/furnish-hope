@@ -399,6 +399,7 @@ function PrintMenu({ eventId }: { eventId: string }) {
   const items: Array<{ path: string; label: string; group?: string }> = [
     { group: 'Day-of',       path: 'door-roster',        label: 'Door check-in roster' },
     { group: 'Day-of',       path: 'run-of-show',        label: 'Run of show' },
+    { group: 'Day-of',       path: 'volunteer-roster',   label: 'Volunteer shift roster' },
     { group: 'Day-of',       path: 'staff-briefing',     label: 'Staff briefing card' },
     { group: 'Day-of',       path: 'walk-in-form',       label: 'Walk-in paper form' },
     { group: 'Sponsors',     path: 'sponsors',           label: 'Sponsor recognition sheet' },

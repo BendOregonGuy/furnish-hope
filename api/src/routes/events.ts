@@ -698,6 +698,84 @@ eventsRouter.post('/:id/attendees/:attendeeId/promote-to-donation', async (req, 
 });
 
 /* ----------------------------------------------------------------- */
+/*  Volunteer roster                                                  */
+/*                                                                    */
+/*  Powers the day-of "who's working" printable. Matches volunteer   */
+/*  shifts by the event's own date — shifts aren't directly FK-      */
+/*  linked to events today (shifts predate event-roles), so we use   */
+/*  same-day match. If the event ever needs multi-day shifts, this   */
+/*  becomes a date range or an explicit event_id on shifts.          */
+/* ----------------------------------------------------------------- */
+
+eventsRouter.get('/:id/volunteer-roster', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+
+    const event = await queryOne<{ event_id: number; event_name: string; event_date: string }>(
+      `SELECT event_id, event_name, event_date FROM tbl_event WHERE event_id = $1`, [id],
+    );
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+
+    const shifts = await query<{
+      shift_id: number;
+      shift_name: string | null;
+      shift_date: string;
+      start_time: string | null;
+      end_time: string | null;
+      capacity_needed: number;
+      notes: string | null;
+      shift_type: string | null;
+      shift_status: string | null;
+    }>(`
+      SELECT
+        s.shift_id, s.shift_name, s.shift_date,
+        s.start_time, s.end_time, s.capacity_needed, s.notes,
+        t.shift_type, ss.shift_status
+      FROM tbl_volunteer_shift s
+      LEFT JOIN lkp_shift_type   t  ON t.shift_type_id   = s.shift_type_id
+      LEFT JOIN lkp_shift_status ss ON ss.shift_status_id = s.shift_status_id
+      WHERE s.shift_date = $1::date
+      ORDER BY s.start_time NULLS LAST, s.shift_name
+    `, [event.event_date]);
+
+    // Pull signups for all matching shifts in one query, then bucket
+    // by shift_id client-side. Cancelled signups are excluded from
+    // the roster (they're not coming).
+    const signups = shifts.length > 0 ? await query<{
+      shift_id: number;
+      signup_id: number;
+      facility_staff_id: number;
+      name: string;
+      email: string | null;
+      mobile_phone: string | null;
+      signup_status: string | null;
+      hours_logged: number | string | null;
+      notes: string | null;
+    }>(`
+      SELECT
+        sg.shift_id, sg.signup_id, sg.facility_staff_id,
+        (c.first_name || ' ' || c.last_name) AS name,
+        c.email, c.mobile_phone,
+        sg.signup_status, sg.hours_logged, sg.notes
+      FROM tbl_volunteer_shift_signup sg
+      JOIN tbl_facility_staff fs ON fs.facility_staff_id = sg.facility_staff_id
+      JOIN tbl_contact        c  ON c.contact_id         = fs.contact_id
+      WHERE sg.shift_id = ANY($1::int[])
+        AND sg.signup_status <> 'cancelled'
+      ORDER BY c.last_name, c.first_name
+    `, [shifts.map(s => s.shift_id)]) : [];
+
+    const roster = shifts.map(s => ({
+      ...s,
+      signups: signups.filter(sg => sg.shift_id === s.shift_id),
+    }));
+
+    res.json({ event, shifts: roster });
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
 /*  Promote a sponsor commitment to a real donation                   */
 /*                                                                    */
 /*  Same pattern as attendee promote, but the sponsor side has both  */
