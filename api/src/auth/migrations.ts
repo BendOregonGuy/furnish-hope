@@ -1857,6 +1857,139 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+
+  // ============================================================
+  // Event roles + capacity (2026-06-11)
+  // ------------------------------------------------------------
+  // Free-text scheduling fields are TEXT (not VARCHAR with cap) —
+  // staff need to paste in their own multi-line run-of-show without
+  // hitting a limit. Host is split into two FK columns rather than
+  // polymorphic: a host is EITHER a contact (staff/volunteer/donor)
+  // OR a corporate organization, never both, never neither (NULL
+  // means "no host set"). Simpler than entity_type+entity_id and
+  // queries don't need a discriminator.
+  // ============================================================
+  {
+    name: 'tbl_event: manager + host + capacity + briefing fields',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_event
+          ADD COLUMN IF NOT EXISTS manager_facility_staff_id INTEGER
+            REFERENCES tbl_facility_staff(facility_staff_id)
+      `);
+      await query(`
+        ALTER TABLE tbl_event
+          ADD COLUMN IF NOT EXISTS host_contact_id INTEGER
+            REFERENCES tbl_contact(contact_id)
+      `);
+      await query(`
+        ALTER TABLE tbl_event
+          ADD COLUMN IF NOT EXISTS host_corporate_id INTEGER
+            REFERENCES tbl_corporate(corporate_id)
+      `);
+      await query(`
+        ALTER TABLE tbl_event
+          ADD COLUMN IF NOT EXISTS max_attendees INTEGER
+      `);
+      await query(`
+        ALTER TABLE tbl_event
+          ADD COLUMN IF NOT EXISTS run_of_show TEXT
+      `);
+      await query(`
+        ALTER TABLE tbl_event
+          ADD COLUMN IF NOT EXISTS staff_briefing TEXT
+      `);
+      // FK indexes for the new columns — every other FK in this
+      // schema is indexed, keep the pattern consistent.
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_event_manager        ON tbl_event(manager_facility_staff_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_event_host_contact   ON tbl_event(host_contact_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_event_host_corporate ON tbl_event(host_corporate_id)`);
+    },
+  },
+
+  // ============================================================
+  // Attendee seating fields (2026-06-11)
+  // ------------------------------------------------------------
+  // table_number + seat_number kept as VARCHAR so events can use
+  // any scheme they want — "Table 12 / Seat A", "Stage / Bridal",
+  // "Rose Room", etc. No need for integer order in a small fundraiser.
+  // ============================================================
+  {
+    name: 'tbl_event_attendee: seating + dietary',
+    async run() {
+      await query(`ALTER TABLE tbl_event_attendee ADD COLUMN IF NOT EXISTS table_number VARCHAR(40)`);
+      await query(`ALTER TABLE tbl_event_attendee ADD COLUMN IF NOT EXISTS seat_number VARCHAR(20)`);
+      await query(`ALTER TABLE tbl_event_attendee ADD COLUMN IF NOT EXISTS dietary_notes VARCHAR(200)`);
+    },
+  },
+
+  // ============================================================
+  // Corporate sponsorships (2026-06-11)
+  // ------------------------------------------------------------
+  // - lkp_sponsor_level: seeded with the most-common nonprofit gala
+  //   tiers (Title, Presenting, Platinum, Gold, Silver, Bronze).
+  //   Admin can rename / add / remove via /admin/lkp_sponsor_level.
+  // - tbl_event_sponsor: join table. Each sponsor row points at
+  //   EITHER a corporate org (typical) OR a contact (rare — an
+  //   individual mega-donor sponsoring the event). CHECK constraint
+  //   enforces XOR. amount_pledged is the commitment; amount_paid
+  //   is what's actually been received; donation_id links to the
+  //   real tbl_donation once promoted (same pattern as attendee
+  //   contributions).
+  // ============================================================
+  {
+    name: 'lkp_sponsor_level + tbl_event_sponsor',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_sponsor_level (
+          sponsor_level_id  SERIAL PRIMARY KEY,
+          sponsor_level     VARCHAR(40) NOT NULL UNIQUE,
+          sort_order        INTEGER NOT NULL DEFAULT 0,
+          is_active         BOOLEAN NOT NULL DEFAULT true,
+          description       VARCHAR(200)
+        )
+      `);
+      const seed: Array<[string, number, string]> = [
+        ['Title',      10, 'Top-tier exclusive naming sponsor'],
+        ['Presenting', 20, 'Co-billed with the event name'],
+        ['Platinum',   30, 'Highest non-naming tier'],
+        ['Gold',       40, 'Mid-high tier'],
+        ['Silver',     50, 'Mid tier'],
+        ['Bronze',     60, 'Entry tier'],
+      ];
+      for (const [name, sort, desc] of seed) {
+        await query(
+          `INSERT INTO lkp_sponsor_level (sponsor_level, sort_order, description)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (sponsor_level) DO NOTHING`,
+          [name, sort, desc],
+        );
+      }
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_event_sponsor (
+          event_sponsor_id   SERIAL PRIMARY KEY,
+          event_id           INTEGER NOT NULL REFERENCES tbl_event(event_id) ON DELETE CASCADE,
+          corporate_id       INTEGER REFERENCES tbl_corporate(corporate_id),
+          contact_id         INTEGER REFERENCES tbl_contact(contact_id),
+          sponsor_level_id   INTEGER NOT NULL REFERENCES lkp_sponsor_level(sponsor_level_id),
+          amount_pledged     NUMERIC(12,2),
+          amount_paid        NUMERIC(12,2),
+          acknowledged       BOOLEAN NOT NULL DEFAULT false,
+          notes              TEXT,
+          donation_id        INTEGER REFERENCES tbl_donation(donation_id) ON DELETE SET NULL,
+          created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          CONSTRAINT chk_event_sponsor_entity
+            CHECK ((corporate_id IS NOT NULL AND contact_id IS NULL)
+                OR (corporate_id IS NULL AND contact_id IS NOT NULL))
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_event_sponsor_event     ON tbl_event_sponsor(event_id, sponsor_level_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_event_sponsor_corporate ON tbl_event_sponsor(corporate_id) WHERE corporate_id IS NOT NULL`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_event_sponsor_contact   ON tbl_event_sponsor(contact_id)   WHERE contact_id IS NOT NULL`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_event_sponsor_donation  ON tbl_event_sponsor(donation_id)  WHERE donation_id IS NOT NULL`);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */
