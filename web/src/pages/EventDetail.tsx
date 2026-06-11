@@ -15,11 +15,15 @@ interface Detail {
     event_attendee_id: number;
     contact_id: number;
     rsvp_status: string | null;
+    rsvp_status_id: number | null;
+    rsvp_status_label: string | null;
     attended: boolean | null;
     amount_contributed: number | string | null;
     ticket_count: number;
     checked_in_at: string | null;
     notes: string | null;
+    donation_id: number | null;
+    donation_receipt_number: string | null;
     name: string;
     email: string | null;
     mobile_phone: string | null;
@@ -42,6 +46,17 @@ export function EventDetail() {
     mutationFn: (attendeeId: number) => apiPost(`/api/events/${id}/check-in/${attendeeId}`, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['event', id] }),
     onError: (err: any) => window.alert(err.message ?? 'Check-in failed'),
+  });
+
+  // Promote an attendee's contribution to a real tbl_donation row,
+  // linked back via donation_id. Idempotent: server rejects if it's
+  // already linked. Sensible defaults (donor auto-created if needed,
+  // donation type = Cash, campaign = event's campaign).
+  const promoteMut = useMutation({
+    mutationFn: (attendeeId: number) =>
+      apiPost<{ donation_id: number }>(`/api/events/${id}/attendees/${attendeeId}/promote-to-donation`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['event', id] }),
+    onError: (err: any) => window.alert(err.message ?? 'Promote failed'),
   });
 
   const deleteMut = useMutation({
@@ -74,6 +89,9 @@ export function EventDetail() {
           <>
             <Link to="/events/new" className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta">
               + New event
+            </Link>
+            <Link to={`/events/${id}/check-in`} className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta">
+              Day-of check-in →
             </Link>
             <Link to={`/events/${id}/edit`} className="btn-primary text-xs py-1.5">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -150,10 +168,28 @@ export function EventDetail() {
                       </div>
                     </div>
                   </td>
-                  <td className="py-2.5 pr-3 text-xs">{a.rsvp_status ?? '—'}</td>
+                  <td className="py-2.5 pr-3 text-xs">{a.rsvp_status_label ?? a.rsvp_status ?? '—'}</td>
                   <td className="py-2.5 pr-3 text-right text-xs">{a.ticket_count}</td>
                   <td className="py-2.5 pr-3 text-right font-display font-medium text-sm">
-                    {a.amount_contributed != null ? formatMoney(a.amount_contributed) : '—'}
+                    <div>{a.amount_contributed != null ? formatMoney(a.amount_contributed) : '—'}</div>
+                    {a.donation_id ? (
+                      <Link
+                        to={`/donations/${a.donation_id}`}
+                        className="text-[10px] text-sage hover:text-terracotta-deep font-sans font-normal"
+                      >
+                        → Donation #{a.donation_id}{a.donation_receipt_number ? ` · ${a.donation_receipt_number}` : ''}
+                      </Link>
+                    ) : Number(a.amount_contributed ?? 0) > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => promoteMut.mutate(a.event_attendee_id)}
+                        disabled={promoteMut.isPending}
+                        className="text-[10px] text-terracotta hover:text-terracotta-deep font-sans font-normal disabled:opacity-50"
+                        title="Promote this contribution to a real donation (receipt-eligible, shows in donor lifetime giving)"
+                      >
+                        Convert to donation →
+                      </button>
+                    ) : null}
                   </td>
                   <td className="py-2.5 pr-3 text-xs">
                     {a.checked_in_at

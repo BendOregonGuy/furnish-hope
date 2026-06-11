@@ -14,6 +14,7 @@ import { FkCreateField, FkSelectWithCreate } from '../components/admin/FkSelectW
 import { AddressQuickCreateModal } from '../components/quickCreate/AddressQuickCreateModal.tsx';
 import { CampaignQuickCreateModal } from '../components/quickCreate/CampaignQuickCreateModal.tsx';
 import { ContactQuickCreateModal } from '../components/quickCreate/ContactQuickCreateModal.tsx';
+import { FkSelect } from '../components/admin/FkSelect.tsx';
 import { FormNavBar } from '../components/forms/FormNavBar.tsx';
 import { Section, FieldGrid, Cell } from '../components/forms/FormSection.tsx';
 import { SubformList, type SubformRow } from '../components/forms/SubformList.tsx';
@@ -48,7 +49,7 @@ const ALL_FIELDS = [...CORE_FIELDS, ...MONEY_FIELDS, ...META_FIELDS];
 interface AttendeeRow extends SubformRow {
   event_attendee_id?: number | null;
   contact_id: number | null;
-  rsvp_status: string | null;
+  rsvp_status_id: number | null;
   attended: boolean | null;
   amount_contributed: number | string | null;
   ticket_count: number;
@@ -106,7 +107,7 @@ export function EventForm() {
     const ats: AttendeeRow[] = (existing.attendees ?? []).map((a: any) => ({
       event_attendee_id: a.event_attendee_id,
       contact_id: a.contact_id,
-      rsvp_status: a.rsvp_status,
+      rsvp_status_id: a.rsvp_status_id ?? null,
       attended: a.attended,
       amount_contributed: a.amount_contributed,
       ticket_count: a.ticket_count ?? 1,
@@ -205,7 +206,7 @@ export function EventForm() {
       attendees: attendees.map(a => ({
         event_attendee_id: a.event_attendee_id ?? null,
         contact_id: Number(a.contact_id),
-        rsvp_status: a.rsvp_status || null,
+        rsvp_status_id: a.rsvp_status_id ?? null,
         attended: a.attended,
         amount_contributed: a.amount_contributed === '' || a.amount_contributed == null ? null : Number(a.amount_contributed),
         ticket_count: a.ticket_count ?? 1,
@@ -306,7 +307,7 @@ export function EventForm() {
             onChange={setAttendees}
             emptyHint="No attendees yet."
             addLabel="+ Add attendee"
-            newRow={() => ({ contact_id: null, rsvp_status: 'Invited', attended: null, amount_contributed: '', ticket_count: 1, notes: '' })}
+            newRow={() => ({ contact_id: null, rsvp_status_id: null, attended: null, amount_contributed: '', ticket_count: 1, notes: '' })}
             headers={
               <div className="grid grid-cols-[1.6fr_140px_80px_140px_1fr] gap-3">
                 <div>Person</div>
@@ -326,17 +327,11 @@ export function EventForm() {
                   newButtonLabel="+ New"
                   renderModal={ctx => <ContactQuickCreateModal {...ctx} requireEmail />}
                 />
-                <select
-                  className="field-input"
-                  value={row.rsvp_status ?? ''}
-                  onChange={e => update({ rsvp_status: e.target.value || null })}
-                >
-                  <option value="">—</option>
-                  <option value="Invited">Invited</option>
-                  <option value="Yes">Yes</option>
-                  <option value="Maybe">Maybe</option>
-                  <option value="No">No</option>
-                </select>
+                <FkSelect
+                  fkTable="lkp_rsvp_status"
+                  value={row.rsvp_status_id}
+                  onChange={v => update({ rsvp_status_id: v })}
+                />
                 <input
                   type="number" min={1}
                   className="field-input"
