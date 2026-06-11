@@ -39,6 +39,7 @@ import { CampaignForm } from './pages/CampaignForm.tsx';
 import { Events } from './pages/Events.tsx';
 import { EventDetail } from './pages/EventDetail.tsx';
 import { EventForm } from './pages/EventForm.tsx';
+import { EventCheckIn } from './pages/EventCheckIn.tsx';
 import { EmailAccounts } from './pages/EmailAccounts.tsx';
 import { EmailCompose } from './pages/EmailCompose.tsx';
 import { EmailTemplates } from './pages/EmailTemplates.tsx';
@@ -187,6 +188,7 @@ function AppShell() {
           <Route path="/events" element={<Events />} />
           <Route path="/events/new" element={<EventForm />} />
           <Route path="/events/:id/edit" element={<EventForm />} />
+          <Route path="/events/:id/check-in" element={<EventCheckIn />} />
           <Route path="/events/:id" element={<EventDetail />} />
 
           <Route path="/email/accounts" element={<EmailAccounts />} />

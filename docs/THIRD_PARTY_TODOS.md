@@ -95,21 +95,19 @@ section so it doesn't get lost.
 
 ---
 
-## Internal feature backlog (next push)
+## Internal feature backlog
 
-### Event attendee workflow upgrades
-- [ ] `lkp_rsvp_status` lookup (seed: Invited, Accepted, Declined, Maybe,
-      No response). Replace hard-coded dropdown in attendee subform.
-- [ ] Manual-RSVP UI on each attendee row (staff updates dropdown as
-      people call / email).
-- [ ] "Convert to donation" button on attendee row for amount_contributed
-      — promotes the contribution to a real tbl_donation linked to the
-      donor + event/campaign.
-- [ ] Dedicated day-of check-in view at `/events/:id/check-in` (tablet
-      optimized — big buttons, fast search, one-tap check-in).
-- [ ] "+ Walk-in" button on the check-in view — creates contact +
-      attendee on the spot. Email optional in this case (typical for
-      walk-ins).
+### Event attendee workflow upgrades — all shipped 2026-06-10
+- [x] `lkp_rsvp_status` lookup (seed: Invited, Accepted, Declined,
+      Maybe, No response). Hard-coded dropdown replaced with FkSelect.
+- [x] Manual-RSVP UI on each attendee row.
+- [x] "Convert to donation" button on attendee row — promotes
+      contribution to a real `tbl_donation`, auto-creates donor if
+      missing, links via `tbl_event_attendee.donation_id`.
+- [x] Dedicated day-of check-in view at `/events/:id/check-in`
+      (tablet-optimized, tap-to-check-in, search filter).
+- [x] "+ Walk-in" button on the check-in view — atomic create of
+      contact + attendee + check-in. Email optional for walk-ins.
 
 (Deferred: emailed invite links that auto-update RSVPs; inbound email
 parsing for RSVPs. Pick up when there's real demand.)
