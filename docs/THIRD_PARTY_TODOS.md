@@ -112,6 +112,69 @@ section so it doesn't get lost.
 (Deferred: emailed invite links that auto-update RSVPs; inbound email
 parsing for RSVPs. Pick up when there's real demand.)
 
+### Event roles + capacity + sponsorships (requested 2026-06-10)
+
+- [ ] **Event Manager** field on `tbl_event`. FK to
+      `tbl_facility_staff` filtered to `is_volunteer = false`. Single
+      value, optional, displayed prominently on event detail.
+      Design note: shipping this is straightforward — schema change
+      + FkSelect on the form.
+
+- [ ] **Event Host** field on `tbl_event`. Trickier: a host can be
+      a staff person, a volunteer, a donor, OR a corporate sponsor.
+      Two options:
+      - **(a)** Polymorphic: `host_entity_type` + `host_entity_id`
+        columns. Frontend picks a type then picks the entity.
+      - **(b)** Single FK to `tbl_contact` (covers staff, volunteer,
+        donor); separate optional FK to `tbl_corporate` for corporate
+        hosts. UI: a single field with a type-toggle.
+      Recommend (b) — simpler, fewer foot-guns, and corporate hosts
+      are a distinct enough flavor to warrant their own slot.
+
+- [ ] **Max Attendees** field on `tbl_event`. `max_attendees INTEGER`
+      NULL by default = no limit. Behavior at the limit:
+      - Server REJECTS attempts to add more attendees (POST to
+        attendees + POST /walk-in both check).
+      - In-app alert to the Event Manager (if set) when the count
+        reaches the limit — leverage the audit log + a new
+        notification surface, OR send an email via the user's
+        configured email account.
+      - "Increase limit" affordance: just an edit on the event
+        form. No separate workflow needed for v1.
+      Open question: should the rejection be a HARD block or a SOFT
+      warning ("You're over the cap — confirm to add anyway")? Soft
+      is more forgiving for last-minute door arrivals. Recommend
+      soft warn for walk-ins, hard block for pre-registration.
+
+- [ ] **Corporate Sponsors for an event** — new feature with three
+      pieces:
+      - **Lookup table** `lkp_sponsor_level` seeded with common
+        nonprofit tiers. Recommend Title, Presenting, Platinum,
+        Gold, Silver, Bronze as defaults — covers most galas and
+        the user can rename/add/remove via the admin UI. (Avoid
+        Diamond — less common in nonprofit world than Platinum.)
+      - **Join table** `tbl_event_sponsor`:
+        - `event_id` FK
+        - `corporate_id` FK to `tbl_corporate` (most common case)
+        - `contact_id` FK to `tbl_contact` (for individual sponsors)
+        - exactly one of the two should be non-null (CHECK constraint)
+        - `sponsor_level_id` FK to `lkp_sponsor_level`
+        - `amount_pledged` NUMERIC(12,2)
+        - `amount_paid` NUMERIC(12,2) — for partial pulls
+        - `acknowledged` BOOLEAN — has thank-you been sent?
+        - `notes` TEXT
+      - **UI**: subform on the event edit page (similar pattern to
+        attendees). Event detail shows a "Sponsors" card grouped by
+        level (Platinum first, Bronze last), with logo placeholders
+        from the corporate record (uploaded via attachments) for the
+        future event-program PDF.
+      Open question: should sponsorships auto-promote to `tbl_donation`
+      the same way attendee contributions do? Probably yes — a
+      sponsorship IS a donation for accounting/QBO purposes. Default
+      to auto-creating donations on save and linking back via
+      `tbl_event_sponsor.donation_id`.
+
+
 ---
 
 ## Workflow notes
