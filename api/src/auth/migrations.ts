@@ -2053,6 +2053,86 @@ const MIGRATIONS: Migration[] = [
       await query(`CREATE INDEX IF NOT EXISTS idx_tbl_event_sponsor_donation  ON tbl_event_sponsor(donation_id)  WHERE donation_id IS NOT NULL`);
     },
   },
+
+  // ============================================================
+  // tbl_volunteer_signup (2026-06-11)
+  // ------------------------------------------------------------
+  // Public volunteer-application form at /volunteer creates one
+  // row here per submission. Status starts at 'pending'; admin
+  // reviews and either approves (creating tbl_contact + tbl_facility_staff
+  // records) or rejects.
+  //
+  // Activity preferences are stored as fixed BOOLEAN columns
+  // rather than a join table — eight canonical categories that
+  // are unlikely to change frequently. If they ever need to be
+  // admin-editable, migrate to a lookup + join.
+  //
+  // Availability uses 7 day-of-week booleans + 3 time-of-day
+  // booleans — the most compact representation for what's
+  // really 21 yes/no choices.
+  // ============================================================
+  {
+    name: 'tbl_volunteer_signup',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_volunteer_signup (
+          signup_id              SERIAL PRIMARY KEY,
+          first_name             VARCHAR(50)  NOT NULL,
+          last_name              VARCHAR(50)  NOT NULL,
+          email                  VARCHAR(120) NOT NULL,
+          mobile_phone           VARCHAR(20)  NOT NULL,
+          city                   VARCHAR(80),
+          state_id               INTEGER REFERENCES lkp_state(state_id),
+          postalcode             VARCHAR(20),
+          date_of_birth          DATE,
+          emergency_contact_name VARCHAR(120),
+          emergency_contact_phone VARCHAR(20),
+          frequency              VARCHAR(20) NOT NULL
+                                   CHECK (frequency IN ('one_time', 'recurring', 'on_call')),
+          start_date             DATE,
+          end_date               DATE,
+          avail_mon BOOLEAN NOT NULL DEFAULT false,
+          avail_tue BOOLEAN NOT NULL DEFAULT false,
+          avail_wed BOOLEAN NOT NULL DEFAULT false,
+          avail_thu BOOLEAN NOT NULL DEFAULT false,
+          avail_fri BOOLEAN NOT NULL DEFAULT false,
+          avail_sat BOOLEAN NOT NULL DEFAULT false,
+          avail_sun BOOLEAN NOT NULL DEFAULT false,
+          time_morning   BOOLEAN NOT NULL DEFAULT false,
+          time_afternoon BOOLEAN NOT NULL DEFAULT false,
+          time_evening   BOOLEAN NOT NULL DEFAULT false,
+          act_pickups     BOOLEAN NOT NULL DEFAULT false,
+          act_deliveries  BOOLEAN NOT NULL DEFAULT false,
+          act_warehouse   BOOLEAN NOT NULL DEFAULT false,
+          act_events      BOOLEAN NOT NULL DEFAULT false,
+          act_admin       BOOLEAN NOT NULL DEFAULT false,
+          act_photography BOOLEAN NOT NULL DEFAULT false,
+          act_trades      BOOLEAN NOT NULL DEFAULT false,
+          act_anywhere    BOOLEAN NOT NULL DEFAULT false,
+          can_lift            VARCHAR(20) NOT NULL
+                                CHECK (can_lift IN ('under_25', '25_50', '50_plus', 'cannot')),
+          has_drivers_license BOOLEAN NOT NULL DEFAULT false,
+          has_vehicle         BOOLEAN NOT NULL DEFAULT false,
+          special_skills      TEXT,
+          heard_from_id        INTEGER REFERENCES lkp_howtheyfoundus(howtheyfoundus_id),
+          why_interested       TEXT,
+          needs_verified_hours BOOLEAN NOT NULL DEFAULT false,
+          agreed_to_waiver  BOOLEAN NOT NULL,
+          agreed_to_emails  BOOLEAN NOT NULL DEFAULT false,
+          status            VARCHAR(20) NOT NULL DEFAULT 'pending'
+                              CHECK (status IN ('pending', 'approved', 'rejected', 'archived')),
+          submitted_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          submitted_ip      VARCHAR(50),
+          reviewed_at       TIMESTAMPTZ,
+          reviewed_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id),
+          review_notes      TEXT,
+          approved_facility_staff_id INTEGER REFERENCES tbl_facility_staff(facility_staff_id)
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_volunteer_signup_status ON tbl_volunteer_signup(status, submitted_at DESC)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_volunteer_signup_email  ON tbl_volunteer_signup(LOWER(email))`);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

@@ -41,6 +41,10 @@ import { attachmentsRouter } from './routes/attachments.js';
 import { reportsRouter } from './routes/reports.js';
 import { shiftTemplatesRouter, holidaysRouter } from './routes/shiftTemplates.js';
 import { manualRouter } from './routes/manual.js';
+import {
+  volunteerSignupPublicRouter,
+  volunteerSignupsAdminRouter,
+} from './routes/volunteerSignup.js';
 import { createSessionMiddleware } from './auth/session.js';
 import { runAuthMigrations } from './auth/migrations.js';
 import { requireUser, requireAdmin, requireStaff } from './auth/middleware.js';
@@ -93,6 +97,18 @@ app.get('/api/health', async (_req, res) => res.json({ ok: true }));
 // definition; the rest handle "no user" themselves.
 app.use('/api/auth', authRouter);
 
+// Public volunteer signup — anyone can hit this without logging in.
+// Mounted BEFORE the requireUser middleware. Honeypot + IP capture
+// + server-side validation guard against abuse.
+app.use('/api/volunteer-signup', volunteerSignupPublicRouter);
+
+// Org-info is intentionally public — name + logo show on the
+// public volunteer-signup form (and other to-be-public surfaces
+// like the waiver-signing letterhead). All operational data is
+// still behind requireUser; only the cosmetic identity bits are
+// exposed here.
+app.use('/api/org-info',   orgInfoRouter);
+
 // Everything below requires a signed-in user.
 app.use('/api', requireUser);
 
@@ -101,13 +117,11 @@ app.use('/api', requireUser);
 // to the generic admin router's /:table catch-all.
 app.use('/api/admin/activity', requireAdmin, activityRouter);
 app.use('/api/admin/settings', requireAdmin, settingsRouter);
+app.use('/api/admin/volunteer-signups', requireAdmin, volunteerSignupsAdminRouter);
 app.use('/api/admin', requireAdmin, adminRouter);
 
-// Org-info (logo, name, address) is shared — staff use it for
-// manifests / receipts; agency caseworkers use it for branding on
-// the trimmed UI. Safe to expose to both roles since it's already
-// "public-ish" data.
-app.use('/api/org-info',   orgInfoRouter);
+// (Org-info is mounted above, BEFORE requireUser, so the public
+// volunteer-signup form can render org name + logo without login.)
 
 // User manual screenshots — readable by anyone logged in (both
 // staff and agency users can view their respective manuals). The

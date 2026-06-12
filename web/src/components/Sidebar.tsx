@@ -45,6 +45,7 @@ const sections: NavSection[] = [
     items: [
       { to: '/volunteers',name: 'Volunteers & Staff',  icon: 'heart' },
       { to: '/shifts',    name: 'Shifts',              icon: 'shift' },
+      { to: '/admin/volunteer-signups', name: 'Volunteer applications', icon: 'list-check', adminOnly: true },
     ],
   },
   {

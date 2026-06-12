@@ -44,6 +44,8 @@ import { EventCheckIn } from './pages/EventCheckIn.tsx';
 import { Help } from './pages/help/index.tsx';
 import { AgencyHelp } from './pages/help/AgencyHelp.tsx';
 import { ManualScreenshots } from './pages/admin/ManualScreenshots.tsx';
+import { VolunteerSignup } from './pages/VolunteerSignup.tsx';
+import { VolunteerSignups, VolunteerSignupDetail } from './pages/admin/VolunteerSignups.tsx';
 import {
   DoorRoster, RunOfShow, SponsorSheet, Nametags,
   TableCards, PlaceCards, SeatingChart, PledgeCards,
@@ -84,6 +86,9 @@ export function App() {
       <ScrollToTop />
       <Routes>
         <Route path="/login" element={<Login />} />
+        {/* Public volunteer signup — no login required. Lives outside
+            both shells so it loads instantly for anonymous visitors. */}
+        <Route path="/volunteer" element={<VolunteerSignup />} />
         {/* Agency-caseworker routes get their own shell (no staff
             sidebar). Wrapped in RequireAuth which redirects to login
             if not signed in. RoleGate inside redirects staff away. */}
@@ -216,6 +221,8 @@ function AppShell() {
 
           <Route path="/help" element={<Help />} />
           <Route path="/admin/manual-screenshots" element={<ManualScreenshots />} />
+          <Route path="/admin/volunteer-signups" element={<VolunteerSignups />} />
+          <Route path="/admin/volunteer-signups/:id" element={<VolunteerSignupDetail />} />
 
           <Route path="/email/accounts" element={<EmailAccounts />} />
           <Route path="/email/compose" element={<EmailCompose />} />
