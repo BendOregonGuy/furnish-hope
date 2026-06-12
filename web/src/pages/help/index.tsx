@@ -268,12 +268,41 @@ export function Help() {
       {/* ============================================================ */}
       <section id="volunteers">
         <h2>Volunteers</h2>
-        <p>Volunteers and staff are stored in the same table — the <code>is_volunteer</code> flag distinguishes them.</p>
+        <p>Volunteers and staff are stored in the same table — the <code>is_volunteer</code> flag distinguishes them. There are two ways a volunteer can enter the system:</p>
+
+        <h3>Public sign-up portal</h3>
+        <p>
+          The org's public URL <code>/volunteer</code> (e.g.{' '}
+          <code>https://hammerhead-app-tk838.ondigitalocean.app/volunteer</code>) opens a
+          self-service application form — no login required. Anyone can fill it out: name,
+          contact info, how often they want to help (one-time / recurring / on-call), what
+          kind of work, days + times available, lifting capacity, driver's license / vehicle,
+          special skills, and a checkbox-signed volunteer agreement.
+        </p>
+        <p>
+          Submissions land in a pending queue at{' '}
+          <code>/admin/volunteer-signups</code> (sidebar → <strong>Network → Volunteer applications</strong>, admin only).
+          Each row shows the applicant's details and lets an admin <strong>Approve</strong> or <strong>Reject</strong>.
+        </p>
+        <ul>
+          <li><strong>Approve</strong> — atomically creates a <code>tbl_contact</code> + <code>tbl_facility_staff</code> record (with <code>is_volunteer = true</code>), linked back to the original application via <code>approved_facility_staff_id</code>. After approval, an "Open volunteer record →" button appears.</li>
+          <li><strong>Reject</strong> — leaves the application in the system with status='rejected' and an optional review-notes field. No staff record is created.</li>
+        </ul>
+        <p>
+          The volunteer agreement / liability release document is at{' '}
+          <code>/volunteer-agreement</code> — public, printable, opens in a new tab from
+          the signup form. The text is a reasonable nonprofit template, but{' '}
+          <strong>your legal counsel should review and adapt it</strong> before relying on it
+          in practice. A prominent banner on the document calls this out.
+        </p>
+
+        <h3>Manual entry by an admin</h3>
         <ol>
-          <li>Sidebar → <strong>Volunteers & Staff</strong> → <strong>+ New Volunteer</strong>.</li>
+          <li>Sidebar → <strong>Network → Volunteers & Staff</strong> → <strong>+ New Volunteer</strong>.</li>
           <li>Fill in contact info, role (driver, intake, admin support), preferred days.</li>
           <li>Save.</li>
         </ol>
+        <p>Use this for in-person walk-ins or when you want to skip the public form.</p>
       </section>
 
       {/* ============================================================ */}
@@ -560,8 +589,16 @@ export function Help() {
         <p>System → <strong>Database Admin</strong> shows every table in the database. Use sparingly — it's the most direct access surface. Most day-to-day work doesn't need this.</p>
         <ScreenshotSlot slug="admin-home" description="The admin landing page with the list of tables grouped by purpose." url="/admin" />
 
-        <h3>Manual screenshots</h3>
-        <p>System → <strong>Manual Screenshots</strong>. The page lists every placeholder in this manual with a description and the URL the screenshot should capture. Upload an image to fill the slot — it appears immediately in the manual.</p>
+        <h3>User Manual + screenshots</h3>
+        <p>
+          You're reading the manual right now. Every page in the app has a small
+          <strong> Help ↗</strong> link in the top-right that opens the manual in a new tab,
+          scrolled to the right section — see <a href="#patterns">Common patterns</a>.
+        </p>
+        <p>
+          The manual has placeholder boxes (light-green dashed borders) where screenshots
+          should go. Admins fill them in at <strong>System → Manual Screenshots</strong>:
+        </p>
         <ol>
           <li>Open the URL from the placeholder row in a new tab.</li>
           <li>Take a screenshot (Windows: <strong>Win+Shift+S</strong>; Mac: <strong>⌘+Shift+4</strong>). Crop to just the relevant area.</li>
@@ -569,6 +606,17 @@ export function Help() {
           <li>Back on the Manual Screenshots page, click <strong>Upload</strong> on that row, pick the file, optionally add a caption, save.</li>
           <li>Reload the manual page to see your screenshot in place.</li>
         </ol>
+        <p>
+          Filter the placeholder list by audience: All / Staff manual / Caseworker manual.
+          The caseworker manual at <code>/agency/help</code> is a shorter version scoped to the agency portal.
+        </p>
+
+        <h3>Volunteer applications review</h3>
+        <p>
+          Sidebar → <strong>Network → Volunteer applications</strong> (admin only). See the{' '}
+          <a href="#volunteers">Volunteers</a> section above for the full flow — TL;DR is that
+          public sign-ups land here for approval, and approval creates a real volunteer record.
+        </p>
 
         <h3>Admin habits — keeping things healthy</h3>
         <ul>

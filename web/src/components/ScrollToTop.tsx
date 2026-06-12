@@ -18,6 +18,11 @@ import { useLocation } from 'react-router-dom';
 export function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => {
+    // Don't override the URL's #anchor target. The Help buttons throughout
+    // the app open the manual in a new tab at /help#section — without this
+    // guard, ScrollToTop fires on initial mount and wipes the browser's
+    // hash-anchor scroll before ManualShell's own scroll-to-anchor can run.
+    if (window.location.hash) return;
     // `instant` because the user didn't ask for smooth scroll — they
     // expect to land at the top, not see the previous content scroll
     // past. Some browsers don't honor `behavior: 'instant'` and default
