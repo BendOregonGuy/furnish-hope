@@ -184,6 +184,7 @@ export function ShiftForm() {
   return (
     <>
       <PageHeader
+        helpSection="shifts"
         title={isNew ? 'New' : title}
         emphasis={isNew ? 'shift' : undefined}
         subtitle={isNew ? 'Schedule a time block for volunteers to sign up.' : `Editing shift #${id}.`}

@@ -30,6 +30,7 @@ export function Pickups() {
   return (
     <>
       <PageHeader
+        helpSection="pickups"
         title="Donation"
         emphasis="pickups"
         subtitle="Furniture pickups scheduled from donor homes. Routes, vehicles, access notes — all in one place."

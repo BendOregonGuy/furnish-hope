@@ -42,6 +42,7 @@ export function Campaigns() {
   return (
     <>
       <PageHeader
+        helpSection="campaigns"
         title="Fundraising"
         emphasis="campaigns"
         subtitle="Drives that group donations, pledges, and events toward a shared goal."

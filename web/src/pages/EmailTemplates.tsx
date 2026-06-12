@@ -50,6 +50,7 @@ export function EmailTemplates() {
   return (
     <>
       <PageHeader
+        helpSection="email"
         title="Email templates"
         emphasis="email"
         subtitle="Save canned messages for thank-yous, pickup confirmations, volunteer welcomes, anything you find yourself retyping."

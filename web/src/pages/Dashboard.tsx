@@ -68,6 +68,7 @@ export function Dashboard() {
   return (
     <>
       <PageHeader
+        helpSection="dashboard"
         title={`${greeting()},`}
         emphasis={firstName}
         subtitle={`${data.metrics.open_requests} provisioning request${data.metrics.open_requests === 1 ? '' : 's'} awaiting review · ${formatMoney(data.giving.ytd_giving)} raised year-to-date.`}

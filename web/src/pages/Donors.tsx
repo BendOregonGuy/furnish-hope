@@ -53,6 +53,7 @@ export function Donors() {
   return (
     <>
       <PageHeader
+        helpSection="donors"
         title="Donors"
         emphasis="& funders"
         subtitle="Everyone who has given (or pledged) to Furnish Hope. Sorted by lifetime giving."

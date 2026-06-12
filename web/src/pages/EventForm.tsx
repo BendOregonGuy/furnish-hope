@@ -383,6 +383,7 @@ export function EventForm() {
   return (
     <>
       <PageHeader
+        helpSection="events"
         title={isNew ? 'New' : title}
         emphasis={isNew ? 'event' : undefined}
         subtitle={isNew ? 'Schedule a fundraiser, awareness event, or volunteer day.' : `Editing event #${id}.`}

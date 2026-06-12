@@ -73,7 +73,7 @@ export function VendorDetail() {
 
   return (
     <>
-      <PageHeader title={displayName} emphasis="vendor" subtitle={v.vendor_type + (v.vendor_specialty ? ` · ${v.vendor_specialty}` : '')} />
+      <PageHeader title={displayName} emphasis="vendor" subtitle={v.vendor_type + (v.vendor_specialty ? ` · ${v.vendor_specialty}` : '')} helpSection="vendors" />
 
       <FormNavBar
         listLabel="vendors" singularLabel="vendor" basePath="/vendors"

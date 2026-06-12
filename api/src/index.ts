@@ -40,6 +40,7 @@ import { mailboxRouter } from './routes/mailbox.js';
 import { attachmentsRouter } from './routes/attachments.js';
 import { reportsRouter } from './routes/reports.js';
 import { shiftTemplatesRouter, holidaysRouter } from './routes/shiftTemplates.js';
+import { manualRouter } from './routes/manual.js';
 import { createSessionMiddleware } from './auth/session.js';
 import { runAuthMigrations } from './auth/migrations.js';
 import { requireUser, requireAdmin, requireStaff } from './auth/middleware.js';
@@ -80,6 +81,8 @@ if (!IS_PROD) {
 app.use('/api/attachments', express.json({ limit: '20mb' }));
 // Logo upload — capped at 2MB in the route handler, parser limit a touch higher.
 app.use('/api/admin/settings/logo', express.json({ limit: '5mb' }));
+// Manual screenshot uploads — base64 of a 2MB image is ~2.7MB; allow some headroom.
+app.use('/api/manual/screenshots', express.json({ limit: '5mb' }));
 app.use(express.json({ limit: '1mb' }));
 app.use(createSessionMiddleware());
 
@@ -105,6 +108,12 @@ app.use('/api/admin', requireAdmin, adminRouter);
 // the trimmed UI. Safe to expose to both roles since it's already
 // "public-ish" data.
 app.use('/api/org-info',   orgInfoRouter);
+
+// User manual screenshots — readable by anyone logged in (both
+// staff and agency users can view their respective manuals). The
+// router enforces requireAdmin on write routes (PUT/DELETE) so
+// only admins can upload / replace / remove images.
+app.use('/api/manual',     manualRouter);
 
 // Agency caseworker routes — STRICTLY scoped to their own agency.
 // All endpoints inside enforce requireAgency at the router level.

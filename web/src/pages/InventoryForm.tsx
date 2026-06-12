@@ -207,6 +207,7 @@ export function InventoryForm() {
   return (
     <>
       <PageHeader
+        helpSection="inventory"
         title={isNew ? 'New' : title}
         emphasis={isNew ? 'inventory item' : undefined}
         subtitle={isNew ? 'Add a new physical item to the warehouse inventory.' : `Editing inventory item #${id}.`}

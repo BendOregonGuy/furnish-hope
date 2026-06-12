@@ -153,7 +153,7 @@ export function VendorForm() {
 
   return (
     <>
-      <PageHeader title={isNew ? 'New vendor' : 'Edit vendor'} emphasis="vendor" />
+      <PageHeader title={isNew ? 'New vendor' : 'Edit vendor'} emphasis="vendor" helpSection="vendors" />
 
       {topError && <div className="mb-4 p-3 bg-terracotta-soft text-terracotta-deep rounded-md text-sm">{topError}</div>}
 

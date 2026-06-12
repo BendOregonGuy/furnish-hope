@@ -32,6 +32,7 @@ export function Deliveries() {
   return (
     <>
       <PageHeader
+        helpSection="deliveries"
         title="Scheduled"
         emphasis="deliveries"
         subtitle="Crews, vehicles, and timing for each home delivery. Sign-off completes the Cycle of Hope."

@@ -164,6 +164,7 @@ export function PledgeForm() {
   return (
     <>
       <PageHeader
+        helpSection="pledges"
         title={isNew ? 'New' : title}
         emphasis={isNew ? 'pledge' : undefined}
         subtitle={isNew ? 'Record a commitment to give.' : `Editing pledge #${id}.`}

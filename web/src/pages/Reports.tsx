@@ -82,6 +82,7 @@ export function Reports() {
   return (
     <>
       <PageHeader
+        helpSection="reports"
         title="Reports"
         emphasis="& insights"
         subtitle="The numbers behind the work — fundraising, operations, community engagement."

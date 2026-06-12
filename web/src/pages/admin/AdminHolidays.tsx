@@ -38,6 +38,7 @@ export function AdminHolidays() {
   return (
     <>
       <PageHeader
+        helpSection="shifts"
         title="Holidays"
         subtitle="Dates that shift-template generation can skip. Federal holidays come pre-seeded; add org-specific closures (retreats, conferences, snow days) here."
         actions={<button onClick={() => setAdding(true)} className="btn-primary">+ New holiday</button>}

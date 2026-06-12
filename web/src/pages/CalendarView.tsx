@@ -95,6 +95,7 @@ export function CalendarView() {
   return (
     <>
       <PageHeader
+        helpSection="calendar"
         title="Operations"
         emphasis="calendar"
         subtitle="Pickups, deliveries, events, and campaigns on one timeline. Click any item to open it."

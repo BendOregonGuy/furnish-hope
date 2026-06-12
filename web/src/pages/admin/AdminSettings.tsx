@@ -192,6 +192,7 @@ export function AdminSettings() {
   return (
     <>
       <PageHeader
+        helpSection="admin"
         title="Application"
         emphasis="settings"
         subtitle="Org info that appears on receipts, fiscal year for accounting, defaults for new records."

@@ -35,6 +35,7 @@ export function Events() {
   return (
     <>
       <PageHeader
+        helpSection="events"
         title="Events"
         emphasis="& fundraisers"
         subtitle="Galas, volunteer days, donor appreciation, awareness events — anything where people show up."

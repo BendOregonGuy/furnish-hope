@@ -125,7 +125,7 @@ export function SignWaiver() {
   if (existing) {
     return (
       <>
-        <PageHeader title="Waiver already signed" emphasis="for this request" />
+        <PageHeader title="Waiver already signed" emphasis="for this request" helpSection="waivers" />
         <div className="card max-w-2xl">
           <div className="p-3 bg-sage-soft text-[#3F4A33] rounded mb-4 text-sm">
             ✓ This waiver was signed by <strong>{existing.typed_legal_name}</strong> on{' '}
@@ -157,7 +157,7 @@ export function SignWaiver() {
 
   return (
     <>
-      <PageHeader title="Sign the furniture waiver" emphasis="recipient consent" />
+      <PageHeader title="Sign the furniture waiver" emphasis="recipient consent" helpSection="waivers" />
 
       <form onSubmit={handleSubmit} className="card max-w-3xl space-y-5">
 

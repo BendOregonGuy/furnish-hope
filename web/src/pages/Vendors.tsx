@@ -61,6 +61,7 @@ export function Vendors() {
   return (
     <>
       <PageHeader
+        helpSection="vendors"
         title="Vendors"
         emphasis="directory"
         subtitle="Suppliers, trades-people, and service providers. Bills + payments stay in QuickBooks; this is operational."

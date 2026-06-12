@@ -48,6 +48,7 @@ export function AgencyShell() {
             <NavTab to="/agency"           current={location.pathname}>Dashboard</NavTab>
             <NavTab to="/agency/referrals" current={location.pathname}>My referrals</NavTab>
             <NavTab to="/agency/referrals/new" current={location.pathname}>+ Refer household</NavTab>
+            <NavTab to="/agency/help"      current={location.pathname}>Help</NavTab>
           </nav>
 
           <div className="flex items-center gap-3 text-sm">

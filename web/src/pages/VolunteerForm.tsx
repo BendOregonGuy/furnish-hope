@@ -266,6 +266,7 @@ export function VolunteerForm() {
   return (
     <>
       <PageHeader
+        helpSection="volunteers"
         title={isNew ? 'New' : (fullName || 'Edit volunteer')}
         emphasis={isNew ? 'volunteer' : undefined}
         subtitle={isNew ? 'Add a new volunteer.' : `Editing volunteer #${id}.`}

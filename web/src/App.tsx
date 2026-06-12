@@ -41,6 +41,9 @@ import { Events } from './pages/Events.tsx';
 import { EventDetail } from './pages/EventDetail.tsx';
 import { EventForm } from './pages/EventForm.tsx';
 import { EventCheckIn } from './pages/EventCheckIn.tsx';
+import { Help } from './pages/help/index.tsx';
+import { AgencyHelp } from './pages/help/AgencyHelp.tsx';
+import { ManualScreenshots } from './pages/admin/ManualScreenshots.tsx';
 import {
   DoorRoster, RunOfShow, SponsorSheet, Nametags,
   TableCards, PlaceCards, SeatingChart, PledgeCards,
@@ -95,6 +98,7 @@ export function App() {
           <Route path="referrals" element={<AgencyReferrals />} />
           <Route path="referrals/new" element={<AgencyReferralForm />} />
           <Route path="referrals/:id" element={<AgencyReferralDetail />} />
+          <Route path="help" element={<AgencyHelp />} />
         </Route>
         {/* Staff / admin — the rest of the app */}
         <Route path="/*" element={
@@ -209,6 +213,9 @@ function AppShell() {
           <Route path="/events/:id/print/will-call-labels" element={<WillCallLabels />} />
           <Route path="/events/:id/print/volunteer-roster" element={<VolunteerRoster />} />
           <Route path="/events/:id" element={<EventDetail />} />
+
+          <Route path="/help" element={<Help />} />
+          <Route path="/admin/manual-screenshots" element={<ManualScreenshots />} />
 
           <Route path="/email/accounts" element={<EmailAccounts />} />
           <Route path="/email/compose" element={<EmailCompose />} />

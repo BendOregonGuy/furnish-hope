@@ -27,6 +27,7 @@ export function Volunteers() {
   return (
     <>
       <PageHeader
+        helpSection="volunteers"
         title="Volunteers"
         emphasis="& staff"
         subtitle="Onboarding status, hours, and skills. Volunteers are the heart of the Cycle of Hope."

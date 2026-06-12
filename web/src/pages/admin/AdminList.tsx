@@ -70,6 +70,7 @@ export function AdminList() {
   return (
     <>
       <PageHeader
+        helpSection="admin"
         title={meta.label}
         subtitle={meta.description}
         actions={

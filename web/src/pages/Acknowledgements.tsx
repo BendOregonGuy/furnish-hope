@@ -85,6 +85,7 @@ export function Acknowledgements() {
   return (
     <>
       <PageHeader
+        helpSection="donations"
         title="Donation"
         emphasis="acknowledgements"
         subtitle="Donations missing a tax-receipt acknowledgement. Send PDFs to everyone selected with one click."

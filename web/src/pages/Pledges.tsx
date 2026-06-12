@@ -49,6 +49,7 @@ export function Pledges() {
   return (
     <>
       <PageHeader
+        helpSection="pledges"
         title="Pledges"
         emphasis="& commitments"
         subtitle="Multi-payment commitments. Track how much has been fulfilled and what's still expected."

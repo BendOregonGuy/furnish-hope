@@ -284,6 +284,7 @@ export function PickupForm() {
   return (
     <>
       <PageHeader
+        helpSection="pickups"
         title={isNew ? 'New' : title}
         emphasis={isNew ? 'pickup' : undefined}
         subtitle={isNew ? 'Schedule a donation pickup.' : `Editing pickup #${id}.`}

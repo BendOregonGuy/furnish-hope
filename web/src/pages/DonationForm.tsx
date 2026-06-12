@@ -489,6 +489,7 @@ export function DonationForm() {
   return (
     <>
       <PageHeader
+        helpSection="donations"
         title={isNew ? 'New' : title}
         emphasis={isNew ? 'donation' : undefined}
         subtitle={isNew ? 'Record a financial gift.' : `Editing donation #${id}.`}

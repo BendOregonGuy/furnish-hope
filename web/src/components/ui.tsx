@@ -1,15 +1,23 @@
 import { ReactNode } from 'react';
+import { HelpLink } from './HelpLink.tsx';
 
 export function PageHeader({
   title,
   emphasis,
   subtitle,
   actions,
+  helpSection,
+  helpAudience,
 }: {
   title: string;
   emphasis?: string;
   subtitle?: string;
   actions?: ReactNode;
+  /** If set, a "Help ↗" link appears in the actions area, opening
+   *  the user manual at /help#<helpSection> in a new tab. */
+  helpSection?: string;
+  /** 'staff' (default) for the main app, 'agency' for caseworker pages. */
+  helpAudience?: 'staff' | 'agency';
 }) {
   return (
     <div className="flex justify-between items-end mb-7 pb-5 border-b border-hairline">
@@ -20,7 +28,12 @@ export function PageHeader({
         </h1>
         {subtitle && <p className="text-sm text-ink-soft mt-1 max-w-xl">{subtitle}</p>}
       </div>
-      {actions && <div className="flex gap-2">{actions}</div>}
+      {(actions || helpSection) && (
+        <div className="flex gap-2">
+          {actions}
+          {helpSection && <HelpLink section={helpSection} audience={helpAudience} />}
+        </div>
+      )}
     </div>
   );
 }

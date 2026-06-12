@@ -1969,6 +1969,37 @@ const MIGRATIONS: Migration[] = [
     },
   },
 
+  // ============================================================
+  // tbl_manual_screenshot (2026-06-11)
+  // ------------------------------------------------------------
+  // Stores images uploaded by admins to fill the screenshot slots
+  // in the in-app User Manual. Same pattern as tbl_org_branding:
+  // image data inline as BYTEA, single row per slug (the slot
+  // identifier referenced from the manual content). Audience
+  // distinguishes the staff manual from the agency caseworker one.
+  // Caption is admin-editable text shown beneath the image.
+  // ============================================================
+  {
+    name: 'tbl_manual_screenshot',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_manual_screenshot (
+          slug              VARCHAR(80)  PRIMARY KEY,
+          audience          VARCHAR(20)  NOT NULL DEFAULT 'staff'
+                              CHECK (audience IN ('staff', 'agency')),
+          caption           VARCHAR(300),
+          image_data        BYTEA        NOT NULL,
+          content_type      VARCHAR(80)  NOT NULL,
+          filename          VARCHAR(200),
+          byte_size         INTEGER      NOT NULL,
+          uploaded_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          uploaded_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id)
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_manual_screenshot_audience ON tbl_manual_screenshot(audience)`);
+    },
+  },
+
   {
     name: 'lkp_sponsor_level + tbl_event_sponsor',
     async run() {

@@ -170,6 +170,7 @@ export function CampaignForm() {
   return (
     <>
       <PageHeader
+        helpSection="campaigns"
         title={isNew ? 'New' : title}
         emphasis={isNew ? 'campaign' : undefined}
         subtitle={isNew ? 'Create a new fundraising drive.' : `Editing campaign #${id}.`}

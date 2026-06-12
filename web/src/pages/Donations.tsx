@@ -61,6 +61,7 @@ export function Donations() {
   return (
     <>
       <PageHeader
+        helpSection="donations"
         title="Financial"
         emphasis="donations"
         subtitle="Cash, check, credit card, stock, and other monetary gifts. Track designations, pledges, and acknowledgements."

@@ -43,6 +43,7 @@ export function AdminAttachmentStorage() {
   return (
     <>
       <PageHeader
+        helpSection="attachments"
         title="Attachment"
         emphasis="storage"
         subtitle="Where document attachments live, how much they're using, and what's available for future migration to hosted storage."

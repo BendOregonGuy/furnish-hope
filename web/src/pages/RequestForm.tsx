@@ -228,6 +228,7 @@ export function RequestForm() {
   return (
     <>
       <PageHeader
+        helpSection="requests"
         title={isNew ? 'New' : `Edit request #${id}`}
         emphasis={isNew ? 'provisioning request' : undefined}
         subtitle={isNew ? 'Open a new request on behalf of a client.' : `Editing provisioning request #${id}.`}

@@ -39,6 +39,7 @@ export function Inventory() {
   return (
     <>
       <PageHeader
+        helpSection="inventory"
         title="Warehouse"
         emphasis="inventory"
         subtitle="Items on hand across all facilities. Reserve, match to requests, track condition."

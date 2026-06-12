@@ -25,6 +25,7 @@ export function Clients() {
   return (
     <>
       <PageHeader
+        helpSection="clients"
         title="All"
         emphasis="clients"
         subtitle="Households we're currently serving or have served through the Cycle of Hope."

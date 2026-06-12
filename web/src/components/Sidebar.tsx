@@ -61,11 +61,13 @@ const sections: NavSection[] = [
   {
     label: 'System',
     items: [
+      { to: '/help',             name: 'User Manual',    icon: 'book' },
       { to: '/admin/settings',   name: 'Settings',       icon: 'gear',     adminOnly: true },
       { to: '/admin/quickbooks', name: 'QuickBooks',     icon: 'sync',     adminOnly: true },
       { to: '/admin/shift-templates', name: 'Shift templates', icon: 'shift', adminOnly: true },
       { to: '/admin/holidays',   name: 'Holidays',       icon: 'calendar', adminOnly: true },
       { to: '/admin/attachment-storage', name: 'Attachment storage', icon: 'database', adminOnly: true },
+      { to: '/admin/manual-screenshots', name: 'Manual screenshots', icon: 'book', adminOnly: true },
       { to: '/admin/activity',   name: 'Activity log',   icon: 'activity', adminOnly: true },
       { to: '/admin',            name: 'Database Admin', icon: 'database', adminOnly: true },
     ],
@@ -98,6 +100,7 @@ function Icon({ name }: { name: string }) {
     case 'schedule':   return <svg {...common}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg>;
     case 'shift':      return <svg {...common}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
     case 'chart':      return <svg {...common}><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>;
+    case 'book':       return <svg {...common}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>;
     default: return null;
   }
 }

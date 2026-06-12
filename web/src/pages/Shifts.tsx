@@ -45,6 +45,7 @@ export function Shifts() {
   return (
     <>
       <PageHeader
+        helpSection="shifts"
         title="Volunteer"
         emphasis="shifts"
         subtitle="Scheduled time blocks volunteers and staff sign up for. Pickup crew, warehouse, events, outreach."

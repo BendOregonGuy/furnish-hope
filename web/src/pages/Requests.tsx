@@ -22,6 +22,7 @@ export function Requests() {
   return (
     <>
       <PageHeader
+        helpSection="requests"
         title="Provisioning"
         emphasis="requests"
         subtitle="Each request represents one household's needs. Match items, schedule delivery, complete the cycle."

@@ -335,6 +335,7 @@ export function DeliveryForm() {
   return (
     <>
       <PageHeader
+        helpSection="deliveries"
         title={isNew ? 'New' : title}
         emphasis={isNew ? 'delivery' : undefined}
         subtitle={isNew ? 'Schedule a delivery to a client.' : `Editing delivery #${id}.`}

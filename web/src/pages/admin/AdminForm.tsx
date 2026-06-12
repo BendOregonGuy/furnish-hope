@@ -285,6 +285,7 @@ export function AdminForm() {
   return (
     <>
       <PageHeader
+        helpSection="admin"
         title={isNew ? `New ${meta.singular}` : `Edit ${meta.singular}`}
         subtitle={
           isNew
