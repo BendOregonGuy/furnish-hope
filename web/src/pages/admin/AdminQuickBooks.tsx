@@ -74,7 +74,7 @@ export function AdminQuickBooks() {
   return (
     <>
       <PageHeader
-        helpSection="qbo"
+        helpSection="admin-qbo"
         title="QuickBooks"
         emphasis="integration"
         subtitle="Sync donations to QuickBooks Online as sales receipts. One-time mapping per fund; then donations sync on-demand or automatically."

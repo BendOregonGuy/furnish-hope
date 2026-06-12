@@ -124,7 +124,7 @@ export function Help() {
       <section id="donors">
         <h2>Donors</h2>
         <p>The Donors section is the heart of fundraising work. A <strong>donor</strong> is anyone who gives — a person, couple, family, business, foundation, or anonymous source.</p>
-        <h3>Adding a donor</h3>
+        <h3 id="donors-adding">Adding a donor</h3>
         <ol>
           <li>Sidebar → <strong>Donors</strong> → <strong>+ New Donor</strong>.</li>
           <li>Pick the <strong>donor type</strong> (Individual, Couple, Family, Business, Foundation, Anonymous).</li>
@@ -132,7 +132,7 @@ export function Help() {
           <li>Click <strong>Save</strong>.</li>
         </ol>
         <p>Anywhere else in the app where you pick a donor from a dropdown, you'll see <strong>+ New</strong> beside it — click to create a donor inline without leaving the form.</p>
-        <h3>The donor detail page</h3>
+        <h3 id="donors-detail">The donor detail page</h3>
         <p>Each donor's page collects everything in one place:</p>
         <ul>
           <li><strong>Lifetime giving</strong> — total, count, average, first and last gift.</li>
@@ -152,7 +152,7 @@ export function Help() {
       <section id="donations">
         <h2>Donations</h2>
         <p>When someone gives money or items, you record it as a donation. Every donation has a donor.</p>
-        <h3>Recording a donation</h3>
+        <h3 id="donations-recording">Recording a donation</h3>
         <ol>
           <li>Sidebar → <strong>Donations</strong> → <strong>+ New Donation</strong>.</li>
           <li>Pick the <strong>donor</strong> (or click <strong>+ New</strong> to add inline).</li>
@@ -163,13 +163,13 @@ export function Help() {
           <li>Click <strong>Save</strong>.</li>
         </ol>
         <ScreenshotSlot slug="donation-form" description="The new donation form with all main fields visible." url="/donations/new" />
-        <h3>Sending a receipt</h3>
+        <h3 id="donations-receipt">Sending a receipt</h3>
         <p>On the donation's detail page, click <strong>Send Receipt</strong>. A PDF acknowledgement is generated using your org's name, address, EIN, and the donation details, then attached to an email and sent from your connected account. The email is logged automatically on the donor's record.</p>
         <ScreenshotSlot slug="send-receipt-button" description="The donation detail page with the Send Receipt button visible." url="/donations" />
         <div className="callout tip">
           <strong>💡 Bulk receipts</strong> — use <strong>Donations → Acknowledgements</strong> to send receipts for many donations at once.
         </div>
-        <h3>Sync to QuickBooks</h3>
+        <h3 id="donations-sync">Sync to QuickBooks</h3>
         <p>If QuickBooks is connected, each donation creates a Sales Receipt in QBO automatically. See <a href="#qbo">QuickBooks sync</a> for details.</p>
       </section>
 
@@ -177,7 +177,7 @@ export function Help() {
       <section id="pledges">
         <h2>Pledges</h2>
         <p>A <strong>pledge</strong> is a future commitment. When the donor pays toward it, you record a donation and link it to the pledge — the system tracks fulfillment percentage automatically.</p>
-        <h3>Recording a pledge</h3>
+        <h3 id="pledges-recording">Recording a pledge</h3>
         <ol>
           <li>Sidebar → <strong>Pledges</strong> → <strong>+ New Pledge</strong>.</li>
           <li>Pick the <strong>donor</strong>, <strong>fund</strong>, <strong>amount</strong>, and target date.</li>
@@ -190,7 +190,7 @@ export function Help() {
       <section id="clients">
         <h2>Clients (households)</h2>
         <p>A <strong>client</strong> is a household receiving furniture. Clients are deliberately kept separate from donors — different table, different list. Client information is <strong>sensitive</strong>: addresses, family composition, agency referrals.</p>
-        <h3>Adding a client</h3>
+        <h3 id="clients-adding">Adding a client</h3>
         <ol>
           <li>Sidebar → <strong>Clients</strong> → <strong>+ New Client</strong>.</li>
           <li>Fill in head-of-household, address, family size, <strong>referring agency</strong>.</li>
@@ -270,7 +270,7 @@ export function Help() {
         <h2>Volunteers</h2>
         <p>Volunteers and staff are stored in the same table — the <code>is_volunteer</code> flag distinguishes them. There are two ways a volunteer can enter the system:</p>
 
-        <h3>Public sign-up portal</h3>
+        <h3 id="volunteers-public">Public sign-up portal</h3>
         <p>
           The org's public URL <code>/volunteer</code> (e.g.{' '}
           <code>https://hammerhead-app-tk838.ondigitalocean.app/volunteer</code>) opens a
@@ -296,7 +296,7 @@ export function Help() {
           in practice. A prominent banner on the document calls this out.
         </p>
 
-        <h3>Manual entry by an admin</h3>
+        <h3 id="volunteers-manual">Manual entry by an admin</h3>
         <ol>
           <li>Sidebar → <strong>Network → Volunteers & Staff</strong> → <strong>+ New Volunteer</strong>.</li>
           <li>Fill in contact info, role (driver, intake, admin support), preferred days.</li>
@@ -309,10 +309,10 @@ export function Help() {
       <section id="shifts">
         <h2>Shifts</h2>
         <p>A <strong>shift</strong> is a single block of volunteer time — e.g., "Saturday 9am-noon, driver shift." Volunteers sign up for individual shifts.</p>
-        <h3>Shift templates</h3>
+        <h3 id="shifts-templates">Shift templates</h3>
         <p>For recurring patterns ("every Mon/Wed/Fri morning"), use shift templates. A template says "every Mon/Wed/Fri 9am–noon we need a driver." Click <strong>Generate</strong> and the system creates real shifts for the next 30 days, skipping holidays automatically.</p>
         <ScreenshotSlot slug="shift-template" description="The shift template form with day-of-week toggle buttons." url="/admin/shift-templates" />
-        <h3>Recording volunteer hours</h3>
+        <h3 id="shifts-hours">Recording volunteer hours</h3>
         <p>Each signup has an "hours logged" field. After the shift, record actual hours. Feeds into lifetime hours + the Reports page.</p>
       </section>
 
@@ -516,13 +516,13 @@ export function Help() {
       <section id="qbo">
         <h2>QuickBooks sync</h2>
         <p>If QuickBooks Online is connected, donations sync automatically.</p>
-        <h3>What syncs</h3>
+        <h3 id="qbo-what-syncs">What syncs</h3>
         <ul>
           <li>Every saved donation → corresponding <strong>Sales Receipt</strong> in QuickBooks.</li>
           <li>Each fund maps to a QuickBooks <strong>Income Account</strong> (admin-configured).</li>
           <li>Each donor maps to a QuickBooks <strong>Customer</strong>.</li>
         </ul>
-        <h3>Sync status indicator</h3>
+        <h3 id="qbo-sync-status">Sync status indicator</h3>
         <p>On any donation's detail page, a small Sync Status indicator shows:</p>
         <ul>
           <li><strong>✓ Synced</strong> — successfully recorded in QBO.</li>
@@ -572,7 +572,7 @@ export function Help() {
         <h2>Admin guide</h2>
         <p>This section is for users marked <strong>Admin</strong>. The System group in the sidebar holds everything only admins can change.</p>
 
-        <h3>User accounts</h3>
+        <h3 id="admin-users">User accounts</h3>
         <p>Admin → <strong>Database Admin</strong> → <code>tbl_user_account</code>:</p>
         <ul>
           <li><strong>+ New</strong> to create a user. Pick a username (typically their email), set is_active = true. The first save shows a one-time temporary password — copy it and pass it to them.</li>
@@ -580,33 +580,33 @@ export function Help() {
           <li>To reset a password, edit the user and click Reset password.</li>
         </ul>
 
-        <h3>Activity log</h3>
+        <h3 id="admin-activity">Activity log</h3>
         <p>System → <strong>Activity log</strong>. Filter by user, date, table, or action. Click any entry to see before / after values.</p>
         <ScreenshotSlot slug="audit-log" description="The audit log filtered for one user, showing recent changes." url="/admin/activity" />
 
-        <h3>Lookup tables</h3>
+        <h3 id="admin-lookups">Lookup tables</h3>
         <p>Tables starting with <code>lkp_</code> hold dropdown values throughout the app. Edit them at <code>/admin/&lt;table&gt;</code>. New entries appear in dropdowns immediately. Don't delete a lookup row that's in use — the app blocks it. Mark inactive instead if the table has an is_active flag.</p>
 
-        <h3>Shift templates + holidays</h3>
+        <h3 id="admin-shifts">Shift templates + holidays</h3>
         <p>System → <strong>Shift templates</strong> for recurring shift patterns. System → <strong>Holidays</strong> seeds federal holidays; add custom ones or remove ones that don't apply.</p>
         <ScreenshotSlot slug="shift-templates-list" description="The shift templates admin list." url="/admin/shift-templates" />
 
-        <h3>Settings</h3>
+        <h3 id="admin-settings">Settings</h3>
         <p>System → <strong>Settings</strong>: legal name, EIN, address (used on receipts). Receipt numbering: starting number, prefix. Logo upload for PDF receipts.</p>
         <ScreenshotSlot slug="org-settings" description="The Settings page with all fields filled in." url="/admin/settings" />
 
-        <h3>QuickBooks setup</h3>
+        <h3 id="admin-qbo">QuickBooks setup</h3>
         <p>System → <strong>QuickBooks</strong> → <strong>Connect</strong>. Sign in with a QBO admin account, authorize. Then map each fund to a QBO income account.</p>
         <ScreenshotSlot slug="qbo-mappings" description="The QuickBooks fund mapping page." url="/admin/quickbooks" />
 
-        <h3>Storage settings</h3>
+        <h3 id="admin-storage">Storage settings</h3>
         <p>System → <strong>Attachment storage</strong>. Default is in-database (pg_blob). For high-volume orgs, switch to DigitalOcean Spaces / AWS S3 / Google Drive — then click <strong>Migrate existing files</strong> to move them.</p>
 
-        <h3>Database admin</h3>
+        <h3 id="admin-database">Database admin</h3>
         <p>System → <strong>Database Admin</strong> shows every table in the database. Use sparingly — it's the most direct access surface. Most day-to-day work doesn't need this.</p>
         <ScreenshotSlot slug="admin-home" description="The admin landing page with the list of tables grouped by purpose." url="/admin" />
 
-        <h3>User Manual + screenshots</h3>
+        <h3 id="admin-manual">User Manual + screenshots</h3>
         <p>
           You're reading the manual right now. Every page in the app has a small
           <strong> Help ↗</strong> link in the top-right that opens the manual in a new tab,
@@ -628,7 +628,7 @@ export function Help() {
           The caseworker manual at <code>/agency/help</code> is a shorter version scoped to the agency portal.
         </p>
 
-        <h3>Volunteer applications review</h3>
+        <h3 id="admin-volunteer-signups">Volunteer applications review</h3>
         <p>
           Sidebar → <strong>Network → Volunteer applications</strong> (admin only). See the{' '}
           <a href="#volunteers">Volunteers</a> section above for the full flow — TL;DR is that

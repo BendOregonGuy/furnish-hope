@@ -67,7 +67,7 @@ export function ManualScreenshots() {
       <PageHeader
         title="Manual screenshots"
         subtitle={`Upload an image for each placeholder slot in the User Manual. Filled: ${filledSlots} / ${totalSlots}.`}
-        actions={<HelpLink section="admin" />}
+        actions={<HelpLink section="admin-manual" />}
       />
 
       <div className="mb-5 flex items-center gap-2">

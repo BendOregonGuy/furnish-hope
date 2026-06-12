@@ -270,7 +270,7 @@ export function ClientForm() {
   return (
     <>
       <PageHeader
-        helpSection="clients"
+        helpSection="clients-adding"
         title={isNew ? 'New' : (fullName || 'Edit')}
         emphasis={isNew ? 'client' : undefined}
         subtitle={isNew ? 'Add a new client (household) to the system.' : `Editing client #${id}.`}

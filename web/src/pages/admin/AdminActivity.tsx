@@ -74,7 +74,7 @@ export function AdminActivity() {
   return (
     <>
       <PageHeader
-        helpSection="admin"
+        helpSection="admin-activity"
         title="Activity"
         emphasis="log"
         subtitle="Every create / update / delete across the system. Filter by who, when, and what."

@@ -51,7 +51,7 @@ export function VolunteerSignups() {
       <PageHeader
         title="Volunteer applications"
         subtitle="Submissions from the public volunteer form. Approve to create a real volunteer record."
-        actions={<HelpLink section="volunteers" />}
+        actions={<HelpLink section="admin-volunteer-signups" />}
       />
 
       <div className="mb-5 flex items-center gap-2 flex-wrap">
@@ -233,7 +233,7 @@ export function VolunteerSignupDetail() {
         actions={
           <>
             <Link to="/admin/volunteer-signups" className="btn-ghost text-xs">← Back</Link>
-            <HelpLink section="volunteers" />
+            <HelpLink section="admin-volunteer-signups" />
           </>
         }
       />

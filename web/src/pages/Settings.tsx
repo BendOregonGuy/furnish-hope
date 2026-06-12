@@ -120,7 +120,7 @@ export function Settings() {
   return (
     <>
       <PageHeader
-        helpSection="patterns"
+        helpSection="profile"
         title="Account"
         emphasis="settings"
         subtitle={`Signed in as ${user?.display_name ?? user?.username}.`}

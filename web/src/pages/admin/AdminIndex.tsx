@@ -17,7 +17,7 @@ export function AdminIndex() {
   return (
     <>
       <PageHeader
-        helpSection="admin"
+        helpSection="admin-database"
         title="Database"
         emphasis="admin"
         subtitle="Browse, add, edit, and remove records across every table. Be careful — changes are immediate."

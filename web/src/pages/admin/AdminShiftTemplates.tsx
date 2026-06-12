@@ -52,7 +52,7 @@ export function AdminShiftTemplates() {
   return (
     <>
       <PageHeader
-        helpSection="shifts"
+        helpSection="admin-shifts"
         title="Shift"
         emphasis="templates"
         subtitle='Recurring shift patterns. Define once, "Generate" to create the actual shifts for any date range. Skips federal holidays by default.'
