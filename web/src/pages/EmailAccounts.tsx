@@ -111,7 +111,7 @@ export function EmailAccounts() {
   return (
     <>
       <PageHeader
-        helpSection="email"
+        helpSection="email-accounts"
         title="Email"
         emphasis="accounts"
         subtitle="Connect your inboxes so the app can send receipts, acknowledgements, and campaign emails through them."

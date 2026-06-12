@@ -18,15 +18,39 @@ interface Props {
   audience?: 'staff' | 'agency';
 }
 
+/**
+ * The single tab name we use for every Help click. Browsers will
+ * reuse the tab with this name on subsequent clicks instead of
+ * spawning a fresh one each time, AND any in-page #anchor change
+ * triggers ManualShell's hashchange listener to re-scroll.
+ */
+const MANUAL_TAB_NAME = 'furnish-hope-manual';
+
 export function HelpLink({ section, audience = 'staff' }: Props) {
   const base = audience === 'agency' ? '/agency/help' : '/help';
   const href = `${base}#${section}`;
+
+  function handleClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    // Let modifier-clicks fall through to the browser default
+    // (cmd-click / ctrl-click to open in a real new tab).
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    // window.open with a name reuses any existing tab with that
+    // name; otherwise it opens a new one. Calling focus() pulls the
+    // tab to the front so the user actually sees the new section.
+    const win = window.open(href, MANUAL_TAB_NAME);
+    if (win) {
+      try { win.focus(); } catch { /* some browsers block focus() — silent fail is fine */ }
+    }
+  }
+
   return (
     <a
       href={href}
-      target="_blank"
+      target={MANUAL_TAB_NAME}
       rel="noopener noreferrer"
-      title="Open the section of the User Manual for this page (opens in a new tab)"
+      onClick={handleClick}
+      title="Open the User Manual at the section for this page (reuses one tab)"
       className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta inline-flex items-center gap-1"
     >
       Help

@@ -117,7 +117,7 @@ export function EmailCompose() {
   return (
     <>
       <PageHeader
-        helpSection="email"
+        helpSection="email-compose"
         title="Compose"
         emphasis="email"
         subtitle="Send through one of your connected accounts."

@@ -89,7 +89,7 @@ export function Mailbox() {
   return (
     <>
       <PageHeader
-        helpSection="email"
+        helpSection="email-mailbox"
         title="Mailbox"
         emphasis="email"
         subtitle="Your sent and received messages across every connected email account. Reply inline; compose from Email → Compose."

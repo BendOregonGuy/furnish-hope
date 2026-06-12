@@ -423,32 +423,49 @@ export function Help() {
         <h2>Email & mailbox</h2>
         <p>The mailbox lets you read and reply to email from inside the app. Every message you send or receive is automatically logged on the relevant donor / client / volunteer record. <strong>You see only your own email</strong> — never another staff member's.</p>
 
-        <h3>Connecting your account</h3>
-        <ol>
-          <li>Sidebar → <strong>Email → Accounts</strong>.</li>
-          <li><strong>+ Add Account</strong>.</li>
-          <li>Pick a provider preset (Gmail, Outlook, Yahoo, Custom IMAP) or sign in with Google / Microsoft OAuth (if your admin has configured those).</li>
-          <li>For password auth, paste an <strong>app-specific password</strong> (not your normal login — see Admin guide).</li>
-          <li>Click <strong>Test connection</strong>, then <strong>Save</strong>.</li>
-        </ol>
+        <section id="email-accounts">
+          <h3>Connecting your account</h3>
+          <ol>
+            <li>Sidebar → <strong>Email → Accounts</strong>.</li>
+            <li><strong>+ Add Account</strong>.</li>
+            <li>Pick a provider preset (Gmail, Outlook, Yahoo, Custom IMAP) or sign in with Google / Microsoft OAuth (if your admin has configured those).</li>
+            <li>For password auth, paste an <strong>app-specific password</strong> (not your normal login — see Admin guide).</li>
+            <li>Click <strong>Test connection</strong>, then <strong>Save</strong>.</li>
+          </ol>
+        </section>
 
-        <h3>Composing email</h3>
-        <p>On the Compose form, the To / Cc / Bcc fields support two complementary inputs:</p>
-        <ul>
-          <li><strong>Ghost-text autocomplete</strong> — start typing and the best-matching contact's email appears in muted text after the cursor. Press <strong>Tab</strong> or <strong>Enter</strong> to accept; arrow keys cycle alternates.</li>
-          <li><strong>"+ Contact" picker</strong> — click the button next to each field to open a browse-by-type list (Staff, Volunteer, Donor, Client, Agency, Vendor, Attendee).</li>
-        </ul>
-        <p>Templates: click <strong>⚡ Apply template ▾</strong> by the Subject to insert pre-canned messages. Manage templates at <strong>Email → Templates</strong>.</p>
+        <section id="email-compose">
+          <h3>Composing email</h3>
+          <p>On the Compose form, the To / Cc / Bcc fields support two complementary inputs:</p>
+          <ul>
+            <li><strong>Ghost-text autocomplete</strong> — start typing and the best-matching contact's email appears in muted text after the cursor. Press <strong>Tab</strong> or <strong>Enter</strong> to accept; arrow keys cycle alternates.</li>
+            <li><strong>"+ Contact" picker</strong> — click the button next to each field to open a browse-by-type list (Staff, Volunteer, Donor, Client, Agency, Vendor, Attendee).</li>
+          </ul>
+          <p>Templates: click <strong>⚡ Apply template ▾</strong> by the Subject to insert pre-canned messages. Manage templates at <strong>Email → Templates</strong>.</p>
+        </section>
 
-        <h3>Reading mail (Mailbox)</h3>
-        <ol>
-          <li>Sidebar → <strong>Mailbox</strong>.</li>
-          <li><strong>Sync now</strong> pulls the latest messages.</li>
-          <li>Click any message to expand. Replies are inline at the bottom.</li>
-          <li>Unread messages have a colored dot; opening one marks it read automatically.</li>
-          <li>Messages are grouped into <strong>threads</strong> — Gmail-style conversation view.</li>
-        </ol>
-        <ScreenshotSlot slug="mailbox" description="The mailbox with unread messages visible and one expanded." url="/email/mailbox" />
+        <section id="email-templates">
+          <h3>Email templates</h3>
+          <p>Pre-canned messages you can apply on the Compose / Reply forms. Useful for thank-you notes, pickup confirmations, scheduling reminders, etc.</p>
+          <ol>
+            <li>Sidebar → <strong>Email → Templates</strong>.</li>
+            <li><strong>+ New template</strong>: give it a name + subject + body.</li>
+            <li>Templates are scoped to YOUR account — other staff see only their own.</li>
+            <li>Body supports placeholder substitution (e.g., <code>{'{{first_name}}'}</code>) — see the templates page for the full list.</li>
+          </ol>
+        </section>
+
+        <section id="email-mailbox">
+          <h3>Reading mail (Mailbox)</h3>
+          <ol>
+            <li>Sidebar → <strong>Mailbox</strong>.</li>
+            <li><strong>Sync now</strong> pulls the latest messages.</li>
+            <li>Click any message to expand. Replies are inline at the bottom.</li>
+            <li>Unread messages have a colored dot; opening one marks it read automatically.</li>
+            <li>Messages are grouped into <strong>threads</strong> — Gmail-style conversation view.</li>
+          </ol>
+          <ScreenshotSlot slug="mailbox" description="The mailbox with unread messages visible and one expanded." url="/email/mailbox" />
+        </section>
       </section>
 
       {/* ============================================================ */}

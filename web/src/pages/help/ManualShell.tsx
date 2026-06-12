@@ -55,18 +55,42 @@ export function ManualShell({
     return () => observer.disconnect();
   }, [toc]);
 
-  // On initial mount, if the URL has a hash, scroll to it. Browsers
-  // handle this natively on first page load but not on client-side
-  // route changes — we cover both paths the same way.
+  // Scroll to the URL's hash anchor. Three cases to handle:
+  //
+  //   1. First mount of the manual page (fresh tab) — React has
+  //      just rendered, the section element may or may not exist
+  //      in the DOM yet. A single setTimeout(50) loses the race
+  //      on slow renders. We retry up to ~500ms.
+  //
+  //   2. Hash changes within the SAME loaded page — the user
+  //      clicked another Help button from the main app, the
+  //      manual tab was reused (target="furnish-hope-manual"),
+  //      and the URL hash flipped. React doesn't re-mount; we
+  //      have to listen to `hashchange` explicitly.
+  //
+  //   3. Clicking a TOC entry inside the manual itself — same
+  //      as #2; the anchor link bumps the URL hash and we
+  //      re-scroll.
   useEffect(() => {
-    if (window.location.hash) {
-      const el = document.getElementById(window.location.hash.slice(1));
-      if (el) {
-        // Small delay so the DOM has finished laying out and our
-        // scroll-margin styles apply.
-        setTimeout(() => el.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'start' }), 50);
-      }
+    function scrollToHash() {
+      if (!window.location.hash) return;
+      const id = window.location.hash.slice(1);
+      let attempts = 0;
+      const tryScroll = () => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'start' });
+          return;
+        }
+        if (attempts++ < 10) {
+          setTimeout(tryScroll, 50);  // up to ~500ms total
+        }
+      };
+      tryScroll();
     }
+    scrollToHash();
+    window.addEventListener('hashchange', scrollToHash);
+    return () => window.removeEventListener('hashchange', scrollToHash);
   }, []);
 
   return (
