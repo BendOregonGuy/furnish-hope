@@ -34,6 +34,7 @@ interface Props {
 export function ScreenshotSlot({ slug, description, url, audience = 'staff' }: Props) {
   const [missing, setMissing] = useState(false);
   const [caption, setCaption] = useState<string | null>(null);
+  const [captionFetched, setCaptionFetched] = useState(false);
   const src = `/api/manual/screenshots/${slug}/image`;
 
   if (missing) {
@@ -68,18 +69,21 @@ export function ScreenshotSlot({ slug, description, url, audience = 'staff' }: P
         src={src}
         alt={description}
         onError={() => setMissing(true)}
-        onLoad={async e => {
-          // Pull the caption from the list endpoint lazily. Cheap —
-          // just metadata — and only runs once when the image loads.
-          if (caption !== null) return;
+        onLoad={async () => {
+          // Pull the caption from the list endpoint exactly once per
+          // mounted slot, ever. Without the captionFetched guard
+          // every <img> onLoad — including re-fires after image
+          // cache restoration on re-render — would re-fetch the
+          // ENTIRE list endpoint. With many slots on the page that
+          // becomes N x list-fetches per render.
+          if (captionFetched) return;
+          setCaptionFetched(true);
           try {
             const r = await fetch('/api/manual/screenshots', { credentials: 'include' });
             if (!r.ok) return;
             const rows = await r.json();
             const row = rows.find((x: any) => x.slug === slug);
             if (row?.caption) setCaption(row.caption);
-            // Touch e to satisfy unused-param lint without changing behavior.
-            void e;
           } catch { /* leave caption blank */ }
         }}
         className="border border-hairline-strong rounded-lg max-w-full block"

@@ -664,6 +664,11 @@ eventsRouter.post('/:id/attendees/:attendeeId/promote-to-donation', async (req, 
          ORDER BY (LOWER(donation_type) = 'monetary') DESC, donation_type_id ASC
          LIMIT 1
       `);
+      // tbl_donation.donation_type_id is NOT NULL — explicit error is
+      // friendlier than the raw 23502 Postgres would throw downstream.
+      if (!donationType) {
+        throw withStatus(500, 'lkp_donation_type is empty — admin must seed at least one donation type before promoting contributions');
+      }
       const paymentMethod = await tx.queryOne<{ payment_method_id: number }>(`
         SELECT payment_method_id FROM lkp_payment_method
          ORDER BY (LOWER(payment_method) IN ('cash','check')) DESC, payment_method_id ASC
@@ -913,6 +918,9 @@ eventsRouter.post('/:id/sponsors/:sponsorId/promote-to-donation', async (req, re
         SELECT donation_type_id FROM lkp_donation_type
          ORDER BY (LOWER(donation_type) = 'monetary') DESC, donation_type_id ASC LIMIT 1
       `);
+      if (!donationType) {
+        throw withStatus(500, 'lkp_donation_type is empty — admin must seed at least one donation type before promoting sponsorships');
+      }
       const paymentMethod = await tx.queryOne<{ payment_method_id: number }>(`
         SELECT payment_method_id FROM lkp_payment_method
          ORDER BY (LOWER(payment_method) IN ('check','cash')) DESC, payment_method_id ASC LIMIT 1

@@ -323,6 +323,48 @@ galas — bring them in for the gala-prep push.
 
 ---
 
+## Smoke-test deferred items (2026-06-11)
+
+Pre-production audit surfaced these; they're real but lower-impact
+or bigger refactors. Not blockers for go-live.
+
+- [ ] **Bcrypt cost 10 → 12.** Bump and add rehash-on-successful-login flow.
+- [ ] **401 mid-form preservation.** Currently any session expiry wipes the
+      user's form. Add `?from=<path>` to login + sessionStorage drafts.
+- [ ] **Per-FK ON DELETE policy.** Decide RESTRICT vs CASCADE vs SET NULL
+      for every FK and translate the resulting 23503 errors to friendly
+      "cannot delete because N records reference it" messages.
+- [ ] **Lookup `is_active` filter audit.** Several routes SELECT from
+      `lkp_*` tables without filtering `WHERE is_active = true`. Inactive
+      values still appear in dropdowns after admins deactivate them.
+- [ ] **Transactional wrappers** on `pickups.ts` and `inventory.ts`
+      POST/DELETE — currently mutate then audit outside a transaction.
+- [ ] **Shift signup capacity race** — multiple volunteers can sign up
+      past `capacity_needed`. Add `FOR UPDATE` or trigger.
+- [ ] **Unique index on `tbl_donor.contact_id`** to prevent the
+      promote-to-donation race from creating duplicate donors.
+- [ ] **Initial admin password to stdout** in migrations.ts. Replace
+      with `INITIAL_ADMIN_PASSWORD` env var.
+- [ ] **Re-dump `db/schema_current.sql`** — it's missing the last
+      ~10 migrations.
+- [ ] **PG error detail leaking** through the generic 500 handler in
+      `index.ts`. In prod, replace raw `err.message` with "Internal
+      error" and log the detail server-side only.
+- [ ] **CSP** — `helmet.contentSecurityPolicy` is disabled with a
+      comment about "static-host level"; nothing actually sets one.
+- [ ] **Audit `tbl_donation.receipt_number` assignment** —
+      `donations.ts:407` mutates without `auditUpdate`.
+- [ ] **Manual `audience` filter** on the GET routes — agency users can
+      currently read staff-manual screenshot metadata.
+- [ ] **ManualScreenshots `captionMut` dead code** — remove or implement
+      the caption-only PATCH endpoint.
+- [ ] **EventForm attendee notes / dietary** double-write bug — typing
+      in `notes` while `dietary_notes` is set silently loses the
+      dietary value.
+- [ ] **Modal focus trap** — keyboard tab leaks behind overlays.
+
+---
+
 ## Done
 
 (empty — move items here as they're completed)

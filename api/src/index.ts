@@ -213,12 +213,51 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   res.status(code).json({ error: err.message ?? 'Internal error' });
 });
 
+// Crash-safe error handlers — log instead of letting the process die.
+// Without these, any unhandled async rejection (e.g. an await chain that
+// throws inside a setTimeout, an unhandled DB pool error) takes down the
+// whole container and DO has to restart it. With them we at least get
+// a log line + the container keeps serving the next request.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+});
+
+// Graceful shutdown — DO sends SIGTERM on every deploy. Without this
+// in-flight requests are cut mid-response and the pg pool clients are
+// abruptly closed. Drain both cleanly with a 10-second cap.
+function setupGracefulShutdown(server: import('http').Server) {
+  const shutdown = (signal: string) => {
+    console.log(`[shutdown] ${signal} received, draining...`);
+    const force = setTimeout(() => {
+      console.error('[shutdown] drain timed out after 10s, forcing exit');
+      process.exit(1);
+    }, 10_000);
+    server.close(async () => {
+      try {
+        const { pool } = await import('./db/pool.js');
+        await pool.end();
+      } catch (e) {
+        console.error('[shutdown] pool close failed:', e);
+      } finally {
+        clearTimeout(force);
+        process.exit(0);
+      }
+    });
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
+}
+
 // Run migrations BEFORE listening so the first request lands on a ready DB.
 runAuthMigrations()
   .then(() => {
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`Furnish Hope API listening on http://localhost:${PORT} (${NODE_ENV})`);
     });
+    setupGracefulShutdown(server);
   })
   .catch((err) => {
     console.error('Auth migrations failed — aborting startup:', err);

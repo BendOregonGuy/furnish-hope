@@ -31,6 +31,13 @@ export function FkSelect({
   // show the previous label even while the user types something new.
   const [selectedLabel, setSelectedLabel] = useState<string | undefined>(initialLabel);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Search-sequence counter — protects against out-of-order responses
+  // overwriting fresher results. If the user types "Jo" then "John",
+  // the slower "Jo" response can land AFTER "John" and replace good
+  // matches with stale ones. By bumping a counter on each fetch and
+  // discarding responses whose counter is stale, the latest input
+  // always wins.
+  const searchSeq = useRef(0);
 
   // Fetch the label for the current value if we don't already have one
   // (e.g. on first mount when only the id is known).
@@ -48,14 +55,23 @@ export function FkSelect({
     return () => { cancelled = true; };
   }, [value, fkTable, selectedLabel]);
 
-  // Debounced search.
+  // Debounced search. Bumps searchSeq for each fetch and discards
+  // responses whose seq is stale — protects against out-of-order
+  // network responses overwriting fresher data.
   useEffect(() => {
     if (!open) return;
     const handle = setTimeout(() => {
+      const mySeq = ++searchSeq.current;
       setLoading(true);
       apiGet<FkOption[]>(`/api/admin/fk-options/${fkTable}`, { search, limit: '50' })
-        .then(opts => { setOptions(opts); setLoading(false); })
-        .catch(() => { setOptions([]); setLoading(false); });
+        .then(opts => {
+          if (mySeq !== searchSeq.current) return;
+          setOptions(opts); setLoading(false);
+        })
+        .catch(() => {
+          if (mySeq !== searchSeq.current) return;
+          setOptions([]); setLoading(false);
+        });
     }, 150);
     return () => clearTimeout(handle);
   }, [search, open, fkTable]);

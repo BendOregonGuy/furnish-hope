@@ -11,11 +11,24 @@
  */
 
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { query, queryOne, withTransaction } from '../db/pool.js';
 import { auditCreate, auditUpdate } from '../auth/audit.js';
 
 export const volunteerSignupPublicRouter = Router();
 export const volunteerSignupsAdminRouter = Router();
+
+// Public endpoint is a DOS / spam target. 5 submissions per IP per
+// 15 minutes is plenty for any legitimate human while making bulk
+// abuse expensive.
+const publicSignupLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many submissions from this IP. Please try again in a few minutes.' },
+});
+volunteerSignupPublicRouter.use(publicSignupLimiter);
 
 interface SignupBody {
   // honeypot — bots fill it, humans don't see it
@@ -63,7 +76,10 @@ interface SignupBody {
 
 volunteerSignupPublicRouter.post('/', async (req, res, next) => {
   try {
-    const body = req.body as SignupBody;
+    // Guard: an Express POST with no body (or missing Content-Type)
+    // makes req.body undefined; without this, body.foo throws and the
+    // generic 500 handler leaks a stack trace.
+    const body = (req.body ?? {}) as SignupBody;
 
     // Honeypot: if any value at all is present in `website`, silently
     // drop the submission with a 200 so bots don't learn we're filtering.
@@ -91,11 +107,19 @@ volunteerSignupPublicRouter.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Invalid can_lift' });
     }
 
-    // Best-effort email format check. Browsers already validate via
-    // type="email", but enforce server-side too.
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email.trim())) {
+    // Tighter email format check — disallow control chars, header
+    // injection vectors, and unreasonable lengths. RFC 5321 caps the
+    // local part at 64 and the whole address at 254; our column is
+    // VARCHAR(120) so cap at 120.
+    const emailTrimmed = body.email.trim();
+    if (emailTrimmed.length > 120
+        || !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(emailTrimmed)) {
       return res.status(400).json({ error: 'Invalid email' });
     }
+
+    // Caps on free-text fields to prevent DB bloat from spam.
+    if ((body.why_interested ?? '').length > 2000)  return res.status(400).json({ error: 'why_interested exceeds 2000 chars' });
+    if ((body.special_skills ?? '').length > 1000)  return res.status(400).json({ error: 'special_skills exceeds 1000 chars' });
 
     const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim()
               || req.socket.remoteAddress
@@ -215,8 +239,13 @@ volunteerSignupsAdminRouter.post('/:id/approve', async (req, res, next) => {
     const { review_notes } = (req.body ?? {}) as { review_notes?: string };
 
     const result = await withTransaction(async (tx) => {
+      // FOR UPDATE locks the row for the duration of the transaction.
+      // Without this, two admins double-clicking Approve at the same
+      // time both see status='pending', both create contact + staff
+      // pairs, and only one wins the final UPDATE — leaving an orphan
+      // contact + staff record behind.
       const s = await tx.queryOne<any>(
-        `SELECT * FROM tbl_volunteer_signup WHERE signup_id = $1`, [id],
+        `SELECT * FROM tbl_volunteer_signup WHERE signup_id = $1 FOR UPDATE`, [id],
       );
       if (!s) throw withStatus(404, 'Signup not found');
       if (s.status === 'approved') {
@@ -231,10 +260,14 @@ volunteerSignupsAdminRouter.post('/:id/approve', async (req, res, next) => {
       `);
       if (!ct) throw withStatus(500, 'lkp_contact_type is empty — admin must seed it before approving signups');
 
-      const contact = await tx.queryOne<{ contact_id: number }>(`
+      // RETURNING * so the audit log captures the full inserted row
+      // (audit storage is keyed off the second arg). Without this the
+      // audit entry's new_value is just `{contact_id: N}` — useless
+      // for after-the-fact lookups.
+      const contact = await tx.queryOne<Record<string, any>>(`
         INSERT INTO tbl_contact (contact_type_id, first_name, last_name, email, mobile_phone)
         VALUES ($1, $2, $3, $4, $5)
-        RETURNING contact_id
+        RETURNING *
       `, [ct.contact_type_id, s.first_name, s.last_name, s.email, s.mobile_phone]);
 
       // tbl_facility_staff requires corp_facility_id (NOT NULL).
@@ -247,11 +280,11 @@ volunteerSignupsAdminRouter.post('/:id/approve', async (req, res, next) => {
         throw withStatus(500, 'No corporate facility exists — admin must create one before approving volunteer signups');
       }
 
-      const fs = await tx.queryOne<{ facility_staff_id: number }>(`
+      const fs = await tx.queryOne<Record<string, any>>(`
         INSERT INTO tbl_facility_staff
           (contact_id, corp_facility_id, is_volunteer, hire_date, description)
         VALUES ($1, $2, true, CURRENT_DATE, $3)
-        RETURNING facility_staff_id
+        RETURNING *
       `, [
         contact!.contact_id,
         facility.corp_facility_id,

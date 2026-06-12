@@ -81,9 +81,32 @@ export async function auditDelete(
 }
 
 /** Writes one row per CHANGED field. Fields whose value didn't change are
- *  skipped. Drops these audit columns from comparison: never-meaningful
- *  fields like password_hash are masked to '***'. */
-const MASKED_FIELDS = new Set(['password_hash']);
+ *  skipped. Mask not just secrets but also sensitive PII that doesn't
+ *  belong duplicated into long-retained audit rows — the actual values
+ *  stay in their canonical tables; the audit log shows '***' so admins
+ *  can still see THAT a field changed without re-exposing its value. */
+const MASKED_FIELDS = new Set([
+  // Auth + secrets
+  'password_hash',
+  'temporary_password',
+  // OAuth / IMAP / SMTP tokens (already encrypted at rest, but no
+  // reason to mirror them to audit storage)
+  'oauth_access_token_encrypted',
+  'oauth_refresh_token_encrypted',
+  'imap_password_encrypted',
+  'smtp_password_encrypted',
+  'access_token', 'refresh_token',
+  // Sensitive PII
+  'date_of_birth',
+  'birth_date',
+  'tax_id',
+  'fed_tax_id',
+  'signature_image',
+  // Binary blobs — useless and wasteful to capture
+  'image_data',
+  'logo_data',
+  'content',  // tbl_email_attachment.content (BYTEA)
+]);
 
 export async function auditUpdate(
   req: Request,

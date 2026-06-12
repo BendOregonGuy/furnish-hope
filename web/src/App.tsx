@@ -1,6 +1,7 @@
 import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar.tsx';
 import { ScrollToTop } from './components/ScrollToTop.tsx';
+import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { RequireAuth, RequireAdmin } from './components/RequireAuth.tsx';
 import { AuthProvider, useAuth } from './lib/auth.tsx';
 import { Login } from './pages/Login.tsx';
@@ -97,7 +98,9 @@ export function App() {
         <Route path="/agency/*" element={
           <RequireAuth>
             <RoleGate allow="agency">
-              <AgencyShell />
+              <ErrorBoundary label="agency-shell">
+                <AgencyShell />
+              </ErrorBoundary>
             </RoleGate>
           </RequireAuth>
         }>
@@ -111,7 +114,9 @@ export function App() {
         <Route path="/*" element={
           <RequireAuth>
             <RoleGate allow="staff">
-              <AppShell />
+              <ErrorBoundary label="app-shell">
+                <AppShell />
+              </ErrorBoundary>
             </RoleGate>
           </RequireAuth>
         } />

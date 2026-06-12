@@ -20,8 +20,23 @@ const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
 export function createSessionMiddleware() {
   const PgStore = connectPgSimple(session);
 
-  const secret = process.env.SESSION_SECRET || generateRuntimeSecret();
-  if (!process.env.SESSION_SECRET) {
+  const envSecret = process.env.SESSION_SECRET;
+  const isProd = process.env.NODE_ENV === 'production';
+
+  // In prod, refuse to start without a real SESSION_SECRET. Common
+  // mistake: leaving the literal placeholder from .do/app.yaml.
+  if (isProd) {
+    if (!envSecret || envSecret === 'REPLACE_ME_BEFORE_FIRST_DEPLOY' || envSecret.length < 32) {
+      throw new Error(
+        '[auth] SESSION_SECRET is missing, set to the placeholder, or too short ' +
+        '(must be >= 32 chars). Generate one with `node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"` ' +
+        'and set it as a SECRET env var in the DigitalOcean app config.',
+      );
+    }
+  }
+
+  const secret = envSecret || generateRuntimeSecret();
+  if (!envSecret) {
     console.warn(
       '[auth] SESSION_SECRET not set — using an in-memory secret. Sessions ' +
       'will NOT survive an API restart. Set SESSION_SECRET in your environment.',

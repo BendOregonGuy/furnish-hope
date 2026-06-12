@@ -140,8 +140,11 @@ export function ManualShell({
         {subtitle && <p className="text-sm text-ink-soft mt-1 max-w-2xl">{subtitle}</p>}
       </div>
 
-      <div className="grid gap-7" style={{ gridTemplateColumns: '220px 1fr' }}>
-        <nav className="text-sm" style={{ position: 'sticky', top: '16px', alignSelf: 'start', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' }}>
+      {/* Two-column at md+, single column on mobile so the TOC doesn't
+          eat half the screen. Tailwind's `md:grid-cols-[220px_1fr]`
+          generates a media-query — no inline style needed. */}
+      <div className="grid gap-7 grid-cols-1 md:grid-cols-[220px_1fr]">
+        <nav className="text-sm md:sticky md:top-4 md:self-start md:max-h-[calc(100vh-32px)] md:overflow-y-auto">
           <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mb-2">
             Table of contents
           </div>
