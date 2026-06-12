@@ -338,8 +338,21 @@ export function VolunteerSignup() {
           </Section>
 
           <Section title="Agreements" required>
-            <CheckRow checked={agreedWaiver} onClick={() => setAgreedWaiver(!agreedWaiver)}
-              label="I agree to the volunteer agreement and liability release" required />
+            <div className="flex items-start gap-2">
+              <div className="flex-1">
+                <CheckRow checked={agreedWaiver} onClick={() => setAgreedWaiver(!agreedWaiver)}
+                  label="I agree to the volunteer agreement and liability release" required />
+              </div>
+              <a
+                href="/volunteer-agreement"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-terracotta hover:text-terracotta-deep border border-hairline-strong px-3 py-2 rounded-md hover:border-terracotta whitespace-nowrap mt-0.5"
+                title="Open the full agreement in a new tab — your form data stays put"
+              >
+                Read full agreement ↗
+              </a>
+            </div>
             <CheckRow checked={agreedEmails} onClick={() => setAgreedEmails(!agreedEmails)}
               label={`I'm OK with ${orgName} emailing me about scheduling and updates`} />
           </Section>

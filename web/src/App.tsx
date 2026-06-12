@@ -45,6 +45,7 @@ import { Help } from './pages/help/index.tsx';
 import { AgencyHelp } from './pages/help/AgencyHelp.tsx';
 import { ManualScreenshots } from './pages/admin/ManualScreenshots.tsx';
 import { VolunteerSignup } from './pages/VolunteerSignup.tsx';
+import { VolunteerAgreement } from './pages/VolunteerAgreement.tsx';
 import { VolunteerSignups, VolunteerSignupDetail } from './pages/admin/VolunteerSignups.tsx';
 import {
   DoorRoster, RunOfShow, SponsorSheet, Nametags,
@@ -89,6 +90,7 @@ export function App() {
         {/* Public volunteer signup — no login required. Lives outside
             both shells so it loads instantly for anonymous visitors. */}
         <Route path="/volunteer" element={<VolunteerSignup />} />
+        <Route path="/volunteer-agreement" element={<VolunteerAgreement />} />
         {/* Agency-caseworker routes get their own shell (no staff
             sidebar). Wrapped in RequireAuth which redirects to login
             if not signed in. RoleGate inside redirects staff away. */}
