@@ -2399,6 +2399,17 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
+    // Bump description from VARCHAR(200) -> VARCHAR(500) so newer
+    // setting rows can carry a more helpful explanation. Existing
+    // shorter values pass through unchanged. Must run BEFORE the
+    // issue_reporter_visible_to_all insert, which previously
+    // exceeded the 200-char cap and aborted startup.
+    name: 'tbl_app_setting.description -> VARCHAR(500)',
+    async run() {
+      await query(`ALTER TABLE tbl_app_setting ALTER COLUMN description TYPE VARCHAR(500)`);
+    },
+  },
+  {
     name: 'tbl_app_setting: issue_reporter_visible_to_all',
     async run() {
       await query(`
@@ -2408,7 +2419,7 @@ const MIGRATIONS: Migration[] = [
       `, [
         'issue_reporter_visible_to_all',
         'false',
-        'When true ("true"), the "Report issue" button appears in every PageHeader for every signed-in staff user, not just admins. Helpful during the initial rollout when you want every user to be able to flag problems. Set back to "false" to restrict to admins once things stabilize.',
+        'When set to "true", the Report Issue button appears in every page header for every signed-in staff user, not just admins. Useful during the initial rollout. Set back to "false" later to restrict reporting to admins.',
       ]);
     },
   },
