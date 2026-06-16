@@ -284,6 +284,14 @@ export function DeliveryForm() {
     if (hasVehicle && !vehicle.delivery_vehicle_type_id) {
       errs._veh = 'Pick a vehicle type or remove the vehicle.';
     }
+    // Container-pickup deliveries need a lock code + at least one container.
+    // The fields hide for other fulfillment methods, so only check when the
+    // user actually chose Container pickup.
+    if (containerPickupId && values.fulfillment_method_id === containerPickupId) {
+      if (!values.lock_code?.trim()) errs.lock_code = 'A lock code is required for container pickup.';
+      const usableContainers = containers.filter(c => c.storage_location_id != null);
+      if (usableContainers.length === 0) errs._containers = 'Assign at least one container or lockbox.';
+    }
     setErrors(errs);
     if (Object.keys(errs).length > 0) {
       setTopError('Please fix the highlighted fields.');
@@ -296,6 +304,8 @@ export function DeliveryForm() {
     }
     setTopError(null);
 
+    const isContainerPickup = containerPickupId != null && values.fulfillment_method_id === containerPickupId;
+
     const body = {
       client_provisioning_request_id: Number(values.client_provisioning_request_id),
       facility_staff_id:              Number(values.facility_staff_id),
@@ -307,12 +317,17 @@ export function DeliveryForm() {
       gate_code:                      values.gate_code || null,
       notes:                          values.notes || null,
       fulfillment_method_id:          values.fulfillment_method_id ? Number(values.fulfillment_method_id) : null,
-      pickup_deadline:                values.pickup_deadline || null,
-      lock_code:                      values.lock_code?.trim() || null,
-      containers: containers.map(ct => ({
-        client_delivery_container_id: ct.client_delivery_container_id ?? null,
-        storage_location_id: ct.storage_location_id ? Number(ct.storage_location_id) : null,
-      })).filter(ct => ct.storage_location_id != null),
+      // Only persist container-pickup data when the method actually is
+      // Container pickup. Switching from Container pickup to Walkout
+      // mid-edit would otherwise leave a stale lock_code on the row.
+      pickup_deadline:                isContainerPickup ? (values.pickup_deadline || null) : null,
+      lock_code:                      isContainerPickup ? (values.lock_code?.trim() || null) : null,
+      containers: isContainerPickup
+        ? containers.map(ct => ({
+            client_delivery_container_id: ct.client_delivery_container_id ?? null,
+            storage_location_id: ct.storage_location_id ? Number(ct.storage_location_id) : null,
+          })).filter(ct => ct.storage_location_id != null)
+        : [],
       crew: crew.map(c => ({
         delivery_staff_id: c.delivery_staff_id ?? null,
         facility_staff_id: Number(c.facility_staff_id),
@@ -459,6 +474,7 @@ export function DeliveryForm() {
                     placeholder="e.g. 4731"
                     maxLength={40}
                   />
+                  {errors.lock_code && <div className="text-[11px] text-terracotta-deep mt-1 font-medium">{errors.lock_code}</div>}
                   <div className="text-[11px] text-ink-faint mt-1">
                     Shared across all containers on this pickup. Don't reuse codes between clients.
                   </div>
@@ -477,6 +493,9 @@ export function DeliveryForm() {
                     className="text-[11px] text-terracotta hover:text-terracotta-deep border border-hairline-strong px-2 py-1 rounded hover:border-terracotta"
                   >+ Add container</button>
                 </div>
+                {errors._containers && (
+                  <div className="text-[11px] text-terracotta-deep mb-2 font-medium">{errors._containers}</div>
+                )}
                 {containers.length === 0 ? (
                   <div className="text-center text-ink-faint py-4 text-sm border border-dashed border-hairline rounded">
                     No containers assigned yet. Add at least one.

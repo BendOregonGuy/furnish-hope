@@ -12,6 +12,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../../lib/api.ts';
 import { useAuth } from '../../lib/auth.tsx';
+import { BroadcastBanner } from '../../components/BroadcastBanner.tsx';
 
 interface OrgInfo {
   org_name: string;
@@ -64,6 +65,7 @@ export function AgencyShell() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-7">
+        <BroadcastBanner />
         <Outlet />
       </main>
     </div>
