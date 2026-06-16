@@ -21,6 +21,9 @@ import { InventoryForm } from './pages/InventoryForm.tsx';
 import { Deliveries } from './pages/Deliveries.tsx';
 import { DeliveryDetail } from './pages/DeliveryDetail.tsx';
 import { DeliveryForm } from './pages/DeliveryForm.tsx';
+import { Visits } from './pages/Visits.tsx';
+import { VisitForm } from './pages/VisitForm.tsx';
+import { VisitDetail } from './pages/VisitDetail.tsx';
 import { Pickups } from './pages/Pickups.tsx';
 import { PickupDetail } from './pages/PickupDetail.tsx';
 import { PickupForm } from './pages/PickupForm.tsx';
@@ -177,6 +180,11 @@ function AppShell() {
           <Route path="/deliveries/:id/edit" element={<DeliveryForm />} />
           <Route path="/deliveries/:id/manifest" element={<DeliveryManifest />} />
           <Route path="/deliveries/:id" element={<DeliveryDetail />} />
+
+          <Route path="/visits" element={<Visits />} />
+          <Route path="/visits/new" element={<VisitForm />} />
+          <Route path="/visits/:id/edit" element={<VisitForm />} />
+          <Route path="/visits/:id" element={<VisitDetail />} />
 
           <Route path="/pickups" element={<Pickups />} />
           <Route path="/pickups/new" element={<PickupForm />} />

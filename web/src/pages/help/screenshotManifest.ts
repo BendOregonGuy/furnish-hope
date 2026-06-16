@@ -43,6 +43,10 @@ export const SCREENSHOT_MANIFEST: ScreenshotMeta[] = [
 
   { slug: 'pickup-manifest',   audience: 'staff',  group: 'Operations',      url: '/pickups',
     description: 'A printed pickup manifest sample with QR code for directions.' },
+  { slug: 'visits-list',       audience: 'staff',  group: 'Operations',      url: '/visits',
+    description: 'The Visits list page with date and status filters.' },
+  { slug: 'container-pickup-panel', audience: 'staff', group: 'Operations',  url: '/deliveries',
+    description: 'A delivery detail page in container-pickup mode, with the lock code, deadline, container list, and Send code button visible.' },
   { slug: 'inventory-list',    audience: 'staff',  group: 'Operations',      url: '/inventory',
     description: 'The inventory list with status filters at the top.' },
 

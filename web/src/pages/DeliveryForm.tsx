@@ -38,6 +38,10 @@ const NOTES_FIELDS: ColumnMeta[] = [
   { name: 'notes',     label: 'Notes',     type: 'textarea', required: false, isPk: false, isFk: false },
 ];
 
+const FULFILLMENT_FIELDS: ColumnMeta[] = [
+  { name: 'fulfillment_method_id', label: 'Fulfillment method', type: 'fk', required: false, isPk: false, isFk: true, fkTable: 'lkp_fulfillment_method', helpText: 'How the client receives their furniture: home delivery, walkout at the visit, or container pickup.' },
+];
+
 const VEHICLE_FIELDS: ColumnMeta[] = [
   { name: 'delivery_vehicle_type_id', label: 'Vehicle type',   type: 'fk',    required: true,  isPk: false, isFk: true, fkTable: 'lkp_delivery_vehicle_type' },
   { name: 'vehicle_id',               label: 'Company vehicle', type: 'fk',   required: false, isPk: false, isFk: true, fkTable: 'tbl_vehicle', helpText: 'Use either a company vehicle OR a rental — not both.' },
@@ -67,11 +71,26 @@ interface VehicleState {
   fuel_cost: number | string | null;
 }
 
+interface ContainerRow extends SubformRow {
+  client_delivery_container_id?: number | null;
+  storage_location_id: number | null;
+}
+
+interface ContainerOption {
+  storage_location_id: number;
+  location_code: string;
+  container_type: string | null;
+  description: string | null;
+  corp_facility_id: number | null;
+  facility_name: string | null;
+}
+
 interface DeliveryDetailResponse {
   delivery: any;
   crew: any[];
   items: any[];
   receipt: any | null;
+  containers: any[];
   prevId: number | null;
   nextId: number | null;
 }
@@ -88,6 +107,28 @@ export function DeliveryForm() {
     enabled: !isNew,
   });
 
+  // Fulfillment methods — fetched once so we can identify the
+  // "Container pickup" id (and only then show the container subform).
+  const { data: fulfillmentMethods } = useQuery<Array<{ id: number; label: string }>>({
+    queryKey: ['fk-options', 'lkp_fulfillment_method'],
+    queryFn: () => apiGet('/api/admin/fk-options/lkp_fulfillment_method', { limit: '50' }),
+  });
+  const containerPickupId = fulfillmentMethods?.find(m => m.label === 'Container pickup')?.id ?? null;
+
+  // Available containers + lockboxes for the picker — loaded only when
+  // the user actually opens the container subform.
+  const { data: containerOptions } = useQuery<ContainerOption[]>({
+    queryKey: ['delivery-container-options'],
+    queryFn: () => apiGet('/api/deliveries/container-options'),
+  });
+
+  // Default pickup deadline — admin can edit the underlying setting
+  // at /admin/settings (the row is named container_pickup_default_deadline_days).
+  // Reading the setting per-form would require admin scope on /api/admin/settings,
+  // so we hard-code the well-known default and let admins change the DB row
+  // when they want a different number to surface to staff.
+  const defaultDeadlineDays = 30;
+
   const [values, setValues] = useState<Record<string, any>>(() => blankFormState());
   const [initial, setInitial] = useState<Record<string, any>>(() => blankFormState());
   const [crew, setCrew] = useState<CrewRow[]>([]);
@@ -98,6 +139,8 @@ export function DeliveryForm() {
   const [initialHasVehicle, setInitialHasVehicle] = useState(false);
   const [vehicle, setVehicle] = useState<VehicleState>(blankVehicle());
   const [initialVehicle, setInitialVehicle] = useState<VehicleState>(blankVehicle());
+  const [containers, setContainers] = useState<ContainerRow[]>([]);
+  const [initialContainers, setInitialContainers] = useState<ContainerRow[]>([]);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [topError, setTopError] = useState<string | null>(null);
@@ -114,6 +157,7 @@ export function DeliveryForm() {
       setItems([]); setInitialItems([]);
       setHasVehicle(false); setInitialHasVehicle(false);
       setVehicle(blankVehicle()); setInitialVehicle(blankVehicle());
+      setContainers([]); setInitialContainers([]);
       return;
     }
     if (!existing) return;
@@ -128,7 +172,14 @@ export function DeliveryForm() {
       time_delivery_complete:         d.time_delivery_complete ?? '',
       gate_code:                      d.gate_code ?? '',
       notes:                          d.notes ?? '',
+      fulfillment_method_id:          d.fulfillment_method_id ?? null,
+      pickup_deadline:                dateOnly(d.pickup_deadline),
+      lock_code:                      d.lock_code ?? '',
     };
+    const containerRows: ContainerRow[] = (existing.containers ?? []).map((ct: any) => ({
+      client_delivery_container_id: ct.client_delivery_container_id,
+      storage_location_id: ct.storage_location_id,
+    }));
     const crewRows: CrewRow[] = existing.crew.map(c => ({
       delivery_staff_id: c.delivery_staff_id,
       facility_staff_id: c.facility_staff_id,
@@ -153,11 +204,12 @@ export function DeliveryForm() {
     const hv = !!d.delivery_vehicle_id;
     setHasVehicle(hv); setInitialHasVehicle(hv);
     setVehicle(veh); setInitialVehicle(veh);
+    setContainers(containerRows); setInitialContainers(containerRows);
   }, [existing, isNew]);
 
   const { isDirty, safeNavigate } = useUnsavedChanges({
-    values: { ...values, _crew: crew, _items: items, _veh: vehicle },
-    initialValues: { ...initial, _crew: initialCrew, _items: initialItems, _veh: initialVehicle },
+    values: { ...values, _crew: crew, _items: items, _veh: vehicle, _containers: containers },
+    initialValues: { ...initial, _crew: initialCrew, _items: initialItems, _veh: initialVehicle, _containers: initialContainers },
     extraDirtyCheck: hasVehicle !== initialHasVehicle,
   });
 
@@ -167,6 +219,7 @@ export function DeliveryForm() {
       queryClient.invalidateQueries({ queryKey: ['deliveries'] });
       setInitial(values); setInitialCrew(crew); setInitialItems(items);
       setInitialHasVehicle(hasVehicle); setInitialVehicle(vehicle);
+      setInitialContainers(containers);
       navigate(`/deliveries/${data.delivery_id}`);
     },
     onError: (err: any) => setTopError(err.message ?? 'Save failed'),
@@ -179,6 +232,7 @@ export function DeliveryForm() {
       queryClient.invalidateQueries({ queryKey: ['delivery', id] });
       setInitial(values); setInitialCrew(crew); setInitialItems(items);
       setInitialHasVehicle(hasVehicle); setInitialVehicle(vehicle);
+      setInitialContainers(containers);
       setTopError(null); setSavedFlash(true);
       if (savedFlashTimer.current) window.clearTimeout(savedFlashTimer.current);
       savedFlashTimer.current = window.setTimeout(() => setSavedFlash(false), 2200);
@@ -192,6 +246,7 @@ export function DeliveryForm() {
       queryClient.invalidateQueries({ queryKey: ['deliveries'] });
       setInitial(values); setInitialCrew(crew); setInitialItems(items);
       setInitialHasVehicle(hasVehicle); setInitialVehicle(vehicle);
+      setInitialContainers(containers);
       navigate('/deliveries');
     },
     onError: (err: any) => setTopError(err.message ?? 'Delete failed'),
@@ -251,6 +306,13 @@ export function DeliveryForm() {
       time_delivery_complete:         values.time_delivery_complete || null,
       gate_code:                      values.gate_code || null,
       notes:                          values.notes || null,
+      fulfillment_method_id:          values.fulfillment_method_id ? Number(values.fulfillment_method_id) : null,
+      pickup_deadline:                values.pickup_deadline || null,
+      lock_code:                      values.lock_code?.trim() || null,
+      containers: containers.map(ct => ({
+        client_delivery_container_id: ct.client_delivery_container_id ?? null,
+        storage_location_id: ct.storage_location_id ? Number(ct.storage_location_id) : null,
+      })).filter(ct => ct.storage_location_id != null),
       crew: crew.map(c => ({
         delivery_staff_id: c.delivery_staff_id ?? null,
         facility_staff_id: Number(c.facility_staff_id),
@@ -356,6 +418,109 @@ export function DeliveryForm() {
 
         <Section title="Schedule" hint="Arrival window and actual completion.">
           <FieldGrid>{TIME_FIELDS.map(renderField)}</FieldGrid>
+        </Section>
+
+        <Section
+          title="Fulfillment"
+          hint="How the client receives their furniture. For container pickup, set the lock code, deadline, and which container(s)."
+        >
+          <FieldGrid>{FULFILLMENT_FIELDS.map(renderField)}</FieldGrid>
+
+          {containerPickupId && values.fulfillment_method_id === containerPickupId && (
+            <div className="mt-4 space-y-4 pt-4 border-t border-hairline">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="field-label">Pickup deadline</label>
+                  <input
+                    type="date"
+                    className="field-input"
+                    value={values.pickup_deadline ?? ''}
+                    onChange={e => setField('pickup_deadline', e.target.value)}
+                    placeholder={`Defaults to ${defaultDeadlineDays} days out`}
+                  />
+                  <div className="text-[11px] text-ink-faint mt-1">
+                    Default is {defaultDeadlineDays} days from today. After this date, staff should follow up.
+                  </div>
+                  {!values.pickup_deadline && (
+                    <button
+                      type="button"
+                      onClick={() => setField('pickup_deadline', addDays(todayIso(), defaultDeadlineDays))}
+                      className="text-[11px] text-terracotta hover:text-terracotta-deep mt-1"
+                    >Apply default ({defaultDeadlineDays} days)</button>
+                  )}
+                </div>
+                <div>
+                  <label className="field-label">Lock code <span className="text-terracotta">*</span></label>
+                  <input
+                    type="text"
+                    className="field-input font-mono"
+                    value={values.lock_code ?? ''}
+                    onChange={e => setField('lock_code', e.target.value)}
+                    placeholder="e.g. 4731"
+                    maxLength={40}
+                  />
+                  <div className="text-[11px] text-ink-faint mt-1">
+                    Shared across all containers on this pickup. Don't reuse codes between clients.
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-baseline justify-between mb-2">
+                  <div>
+                    <div className="text-sm font-medium">Containers & lockboxes</div>
+                    <div className="text-[11px] text-ink-faint">Default is one container — add more if the items span multiple.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setContainers(prev => [...prev, { storage_location_id: null }])}
+                    className="text-[11px] text-terracotta hover:text-terracotta-deep border border-hairline-strong px-2 py-1 rounded hover:border-terracotta"
+                  >+ Add container</button>
+                </div>
+                {containers.length === 0 ? (
+                  <div className="text-center text-ink-faint py-4 text-sm border border-dashed border-hairline rounded">
+                    No containers assigned yet. Add at least one.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {containers.map((row, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <select
+                          value={row.storage_location_id ?? ''}
+                          onChange={e => {
+                            const v = e.target.value ? Number(e.target.value) : null;
+                            setContainers(prev => prev.map((r, i) => i === idx ? { ...r, storage_location_id: v } : r));
+                          }}
+                          className="field-input flex-1"
+                        >
+                          <option value="">— Pick a container —</option>
+                          {(containerOptions ?? []).map(opt => (
+                            <option key={opt.storage_location_id} value={opt.storage_location_id}>
+                              {opt.location_code}
+                              {opt.container_type && ` (${opt.container_type})`}
+                              {opt.facility_name && ` — ${opt.facility_name}`}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setContainers(prev => prev.filter((_, i) => i !== idx))}
+                          className="text-xs text-ink-faint hover:text-terracotta-deep px-2"
+                          title="Remove this container"
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {containerOptions && containerOptions.length === 0 && (
+                  <div className="text-[11px] text-terracotta-deep mt-2">
+                    No containers or lockboxes are flagged yet. An admin can flag storage locations
+                    at <code>/admin/lkp_storage_location</code> by setting "is_container_or_lockbox" to true.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </Section>
 
         <Section title="Notes" hint="Gate codes, special instructions.">
@@ -493,6 +658,9 @@ function blankFormState(): Record<string, any> {
     delivery_date: '',
     time_arrival_earliest: '', time_arrival_latest: '', time_delivery_complete: '',
     gate_code: '', notes: '',
+    fulfillment_method_id: null,
+    pickup_deadline: '',
+    lock_code: '',
   };
 }
 
@@ -505,6 +673,13 @@ function blankVehicle(): VehicleState {
 
 function todayIso(): string {
   const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function addDays(iso: string, days: number): string {
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() + days);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }

@@ -2133,6 +2133,205 @@ const MIGRATIONS: Migration[] = [
       await query(`CREATE INDEX IF NOT EXISTS idx_tbl_volunteer_signup_email  ON tbl_volunteer_signup(LOWER(email))`);
     },
   },
+
+  // ============================================================
+  // Client visits + delivery fulfillment methods (2026-06-15)
+  // ------------------------------------------------------------
+  // Visits: a scheduled in-person, phone, Zoom, or email session
+  // where the client chooses their furniture from the showroom or
+  // catalog. Soft requirement before a delivery — clients can
+  // skip the visit step entirely if staff makes choices on their
+  // behalf, but the typical flow is referral → visit → delivery.
+  //
+  // Fulfillment method goes on the delivery (not the visit) since
+  // the client may decide at the visit to take the furniture home
+  // immediately (walkout), have it delivered to their home, or
+  // pick it up later from a locked container.
+  // ============================================================
+  {
+    name: 'lkp_visit_mode',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_visit_mode (
+          visit_mode_id  SERIAL PRIMARY KEY,
+          visit_mode     VARCHAR(40) NOT NULL UNIQUE,
+          sort_order     INTEGER NOT NULL DEFAULT 0,
+          is_active      BOOLEAN NOT NULL DEFAULT true,
+          description    VARCHAR(200)
+        )
+      `);
+      const seed: Array<[string, number, string]> = [
+        ['In-person', 10, 'Client visits the showroom in person to pick out furniture.'],
+        ['Phone',     20, 'Staff calls the client and walks them through choices verbally.'],
+        ['Zoom',      30, 'Live video call — staff shares the showroom or catalog on screen.'],
+        ['Email',     40, 'Asynchronous — staff sends a catalog, client replies with choices.'],
+      ];
+      for (const [name, sort, desc] of seed) {
+        await query(
+          `INSERT INTO lkp_visit_mode (visit_mode, sort_order, description)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (visit_mode) DO NOTHING`,
+          [name, sort, desc],
+        );
+      }
+    },
+  },
+  {
+    name: 'lkp_visit_status',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_visit_status (
+          visit_status_id  SERIAL PRIMARY KEY,
+          visit_status     VARCHAR(40) NOT NULL UNIQUE,
+          sort_order       INTEGER NOT NULL DEFAULT 0,
+          is_active        BOOLEAN NOT NULL DEFAULT true,
+          description      VARCHAR(200)
+        )
+      `);
+      const seed: Array<[string, number, string]> = [
+        ['Scheduled', 10, 'Visit booked but not yet held.'],
+        ['Completed', 20, 'Visit happened; client made selections.'],
+        ['No show',   30, 'Client did not show up and did not reschedule.'],
+        ['Cancelled', 40, 'Visit was cancelled before it happened.'],
+      ];
+      for (const [name, sort, desc] of seed) {
+        await query(
+          `INSERT INTO lkp_visit_status (visit_status, sort_order, description)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (visit_status) DO NOTHING`,
+          [name, sort, desc],
+        );
+      }
+    },
+  },
+  {
+    name: 'tbl_client_visit',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_client_visit (
+          client_visit_id   SERIAL PRIMARY KEY,
+          client_id         INTEGER NOT NULL REFERENCES tbl_client(client_id) ON DELETE CASCADE,
+          visit_date        DATE NOT NULL,
+          start_time        TIME,
+          end_time          TIME,
+          visit_mode_id     INTEGER NOT NULL REFERENCES lkp_visit_mode(visit_mode_id),
+          visit_status_id   INTEGER NOT NULL REFERENCES lkp_visit_status(visit_status_id),
+          -- Staff member hosting the visit (showroom guide, caller, etc).
+          host_facility_staff_id INTEGER REFERENCES tbl_facility_staff(facility_staff_id),
+          -- Showroom / warehouse where the visit happens (NULL for phone/email).
+          corp_facility_id  INTEGER REFERENCES tbl_corp_facility(corp_facility_id),
+          -- The provisioning request the visit serves (NULL until a request exists).
+          client_provisioning_request_id INTEGER REFERENCES tbl_client_provisioning_request(client_provisioning_request_id) ON DELETE SET NULL,
+          notes             TEXT,
+          created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id),
+          updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_client_visit_client_date ON tbl_client_visit(client_id, visit_date DESC)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_client_visit_status     ON tbl_client_visit(visit_status_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_client_visit_date       ON tbl_client_visit(visit_date)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_client_visit_request    ON tbl_client_visit(client_provisioning_request_id) WHERE client_provisioning_request_id IS NOT NULL`);
+    },
+  },
+  {
+    name: 'lkp_fulfillment_method',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_fulfillment_method (
+          fulfillment_method_id  SERIAL PRIMARY KEY,
+          fulfillment_method     VARCHAR(40) NOT NULL UNIQUE,
+          sort_order             INTEGER NOT NULL DEFAULT 0,
+          is_active              BOOLEAN NOT NULL DEFAULT true,
+          description            VARCHAR(200)
+        )
+      `);
+      const seed: Array<[string, number, string]> = [
+        ['Home delivery',    10, "Furnish Hope crew delivers the furniture to the client's home."],
+        ['Walkout',          20, 'Client takes the furniture home from the showroom at the time of the visit.'],
+        ['Container pickup', 30, 'Furniture is locked in a container or lockbox; client picks up later using a shared lock code.'],
+      ];
+      for (const [name, sort, desc] of seed) {
+        await query(
+          `INSERT INTO lkp_fulfillment_method (fulfillment_method, sort_order, description)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (fulfillment_method) DO NOTHING`,
+          [name, sort, desc],
+        );
+      }
+    },
+  },
+  {
+    name: 'tbl_client_deliveries: fulfillment + container pickup columns',
+    async run() {
+      // Add fulfillment_method, pickup_deadline (only meaningful for
+      // container pickups), lock_code (shared across containers), and
+      // notification audit fields (when/how/where the code was sent).
+      // All nullable so the existing rows back-fill cleanly.
+      await query(`
+        ALTER TABLE tbl_client_deliveries
+          ADD COLUMN IF NOT EXISTS fulfillment_method_id INTEGER REFERENCES lkp_fulfillment_method(fulfillment_method_id),
+          ADD COLUMN IF NOT EXISTS pickup_deadline       DATE,
+          ADD COLUMN IF NOT EXISTS lock_code             VARCHAR(40),
+          ADD COLUMN IF NOT EXISTS pickup_code_sent_at   TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS pickup_code_sent_via  VARCHAR(20),
+          ADD COLUMN IF NOT EXISTS pickup_code_sent_to   VARCHAR(255)
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_client_deliveries_fulfillment_method ON tbl_client_deliveries(fulfillment_method_id) WHERE fulfillment_method_id IS NOT NULL`);
+    },
+  },
+  {
+    name: 'lkp_storage_location: container + lockbox flags',
+    async run() {
+      // is_container_or_lockbox filters the pickup-location dropdown
+      // so internal warehouse bays don't appear. container_type lets
+      // staff distinguish a small lockbox from a full shipping container.
+      await query(`
+        ALTER TABLE lkp_storage_location
+          ADD COLUMN IF NOT EXISTS is_container_or_lockbox BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS container_type          VARCHAR(20),
+          ADD COLUMN IF NOT EXISTS is_active               BOOLEAN NOT NULL DEFAULT true
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_lkp_storage_location_container ON lkp_storage_location(is_container_or_lockbox) WHERE is_container_or_lockbox = true`);
+    },
+  },
+  {
+    name: 'tbl_client_delivery_container',
+    async run() {
+      // Junction: a single delivery's container pickup can occupy
+      // multiple containers/lockboxes. The shared lock_code lives on
+      // tbl_client_deliveries (one code per pickup, not per container).
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_client_delivery_container (
+          client_delivery_container_id SERIAL PRIMARY KEY,
+          client_deliveries_id INTEGER NOT NULL REFERENCES tbl_client_deliveries(client_deliveries_id) ON DELETE CASCADE,
+          storage_location_id  INTEGER NOT NULL REFERENCES lkp_storage_location(storage_location_id),
+          notes                VARCHAR(200),
+          created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      // A given container can only be assigned once per delivery.
+      await query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_client_delivery_container_unique
+          ON tbl_client_delivery_container(client_deliveries_id, storage_location_id)
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_client_delivery_container_storage ON tbl_client_delivery_container(storage_location_id)`);
+    },
+  },
+  {
+    name: 'tbl_app_setting: container_pickup_default_deadline_days',
+    async run() {
+      await query(`
+        INSERT INTO tbl_app_setting (setting_key, setting_value, description)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (setting_key) DO NOTHING
+      `, [
+        'container_pickup_default_deadline_days',
+        '30',
+        'Default number of days a client has to pick up furniture from a locked container before staff follows up. Adjustable.',
+      ]);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

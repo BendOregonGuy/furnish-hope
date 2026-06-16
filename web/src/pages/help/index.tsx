@@ -20,7 +20,12 @@ const TOC: TocEntry[] = [
   { id: 'requests', label: 'Provisioning requests' },
   { id: 'waivers', label: 'Furniture waivers' },
   { id: 'pickups', label: 'Pickups' },
-  { id: 'deliveries', label: 'Deliveries' },
+  { id: 'visits', label: 'Visits' },
+  { id: 'deliveries', label: 'Deliveries', children: [
+    { id: 'deliveries-home',     label: 'Home delivery' },
+    { id: 'deliveries-walkout',  label: 'Walkout' },
+    { id: 'deliveries-container', label: 'Container pickup' },
+  ]},
   { id: 'inventory', label: 'Inventory' },
   { id: 'volunteers', label: 'Volunteers' },
   { id: 'shifts', label: 'Shifts' },
@@ -236,6 +241,44 @@ export function Help() {
       </section>
 
       {/* ============================================================ */}
+      <section id="visits">
+        <h2>Visits</h2>
+        <p>
+          Once a client has been referred (or self-presented) and has a
+          provisioning request open, a <strong>visit</strong> is the
+          scheduled moment where they pick out their furniture. Visits are
+          a soft requirement — most clients have one, but staff can also
+          make choices on the client's behalf if a visit isn't practical.
+        </p>
+        <p>There are four <strong>modes</strong>:</p>
+        <ul>
+          <li><strong>In-person</strong> — client comes to the showroom or warehouse and walks the floor with a staff host.</li>
+          <li><strong>Phone</strong> — staff calls the client and reads off available options.</li>
+          <li><strong>Zoom</strong> — live video call where staff shows the showroom or catalog on screen.</li>
+          <li><strong>Email</strong> — asynchronous; staff sends photos/a catalog, the client replies with picks.</li>
+        </ul>
+        <p>To schedule a visit:</p>
+        <ol>
+          <li>Open the client's detail page (Sidebar → <strong>Clients → Clients</strong> → click the name).</li>
+          <li>In the <strong>Visits</strong> card at the top, click <strong>+ Schedule visit</strong>.</li>
+          <li>The form pre-fills the client. Pick a date, time window, mode, status, host (the staff member running the visit), and a location (only required for in-person).</li>
+          <li>Optionally link the visit to the provisioning request it serves.</li>
+          <li>Save.</li>
+        </ol>
+        <p>
+          Scheduled and completed visits also appear on the <strong>Calendar</strong>
+          (Sidebar → Operations → Calendar) in their own copper color, separate from pickups
+          and deliveries.
+        </p>
+        <p>
+          Sidebar → <strong>Clients → Visits</strong> shows every visit across all clients,
+          filterable by date range and status. A client's visit history is also visible on
+          their detail page (most recent eight, with a link to the full list).
+        </p>
+        <ScreenshotSlot slug="visits-list" description="The visits list with date and status filters." url="/visits" />
+      </section>
+
+      {/* ============================================================ */}
       <section id="deliveries">
         <h2>Deliveries</h2>
         <p>When you've fulfilled a household's request, schedule a <strong>delivery</strong>.</p>
@@ -244,10 +287,64 @@ export function Help() {
           <li>Pick the <strong>client</strong>.</li>
           <li>Pick the <strong>request</strong> this delivery fulfills (recommended — links the loop closed).</li>
           <li>Pick the delivery date, vehicle, driver.</li>
+          <li>Pick a <strong>fulfillment method</strong> — see the three options below.</li>
           <li>Add items from inventory, or list them in the description. Use <strong>Copy items from request</strong> to pre-fill.</li>
           <li>Save.</li>
         </ol>
         <p>The manifest is the same shape as the pickup version — printable, signature line, QR code, items listed.</p>
+
+        <h3 id="deliveries-home">Home delivery</h3>
+        <p>
+          The default. Furnish Hope's crew drives the furniture to the client's
+          home address on the scheduled date. Use the <strong>Vehicle</strong>
+          and <strong>Crew</strong> sections of the form to assign a truck and the
+          people going on the run. Print the manifest before the crew rolls out.
+        </p>
+
+        <h3 id="deliveries-walkout">Walkout</h3>
+        <p>
+          When the client is at the showroom for an in-person visit and decides
+          to take their selections home immediately, set the fulfillment method
+          to <strong>Walkout</strong>. No crew, no vehicle, no follow-up — staff
+          just walks the items out with the client and the delivery is closed.
+          Use the receipt sign-off button to capture their acknowledgement that
+          the items left in their possession.
+        </p>
+
+        <h3 id="deliveries-container">Container pickup</h3>
+        <p>
+          When items can't go home with the client at visit time and a home
+          delivery isn't booked, the items are locked into one of Furnish Hope's
+          shipping containers (or smaller lockboxes) at the warehouse, and the
+          client picks them up later during yard hours. To use this method:
+        </p>
+        <ol>
+          <li>On the delivery form, set <strong>Fulfillment method</strong> to <strong>Container pickup</strong>. New fields appear below.</li>
+          <li>Type the <strong>lock code</strong> from the physical lock you're using. Shared across all containers on this pickup; don't reuse codes between clients.</li>
+          <li>Set a <strong>pickup deadline</strong>. The default is 30 days; admins can change the default at <code>/admin/settings</code> (key: <code>container_pickup_default_deadline_days</code>).</li>
+          <li>Add at least one <strong>container or lockbox</strong>. The dropdown is filtered to storage locations that have been flagged <code>is_container_or_lockbox</code> in <code>/admin/lkp_storage_location</code>. Add more rows if the items span multiple containers.</li>
+          <li>Save.</li>
+        </ol>
+        <p>
+          Once the delivery is saved with a lock code, the detail page shows a
+          <strong> Container pickup</strong> panel with the code, the deadline,
+          and a <strong>Send code to client</strong> button. Clicking it opens a
+          modal where you record that you shared the code with the client by
+          email, phone, or SMS — Furnish Hope doesn't send the message itself in
+          v1, so share the code yourself first (using your normal email, phone
+          call, or text), then click <strong>Record sent</strong> to stamp the
+          audit trail.
+        </p>
+        <div className="callout tip">
+          <strong>Admin: adding containers to the picker.</strong> When Furnish
+          Hope acquires a new container or lockbox, an admin goes to
+          <code> /admin/lkp_storage_location</code>, opens that row, sets
+          <code> is_container_or_lockbox</code> to true, fills in
+          <code> container_type</code> (e.g. <code>container</code> or
+          <code> lockbox</code>), and saves. It immediately appears in the
+          pickup dropdown on the delivery form.
+        </div>
+        <ScreenshotSlot slug="container-pickup-panel" description="The Container pickup panel on a delivery detail page, showing lock code, deadline, and Send code button." url="/deliveries" />
       </section>
 
       {/* ============================================================ */}

@@ -41,6 +41,7 @@ import { attachmentsRouter } from './routes/attachments.js';
 import { reportsRouter } from './routes/reports.js';
 import { shiftTemplatesRouter, holidaysRouter } from './routes/shiftTemplates.js';
 import { manualRouter } from './routes/manual.js';
+import { visitsRouter } from './routes/visits.js';
 import {
   volunteerSignupPublicRouter,
   volunteerSignupsAdminRouter,
@@ -144,6 +145,7 @@ app.use('/api/requests',   requireStaff, requestsRouter);
 app.use('/api/waivers',    requireStaff, waiversRouter);
 app.use('/api/inventory',  requireStaff, inventoryRouter);
 app.use('/api/deliveries', requireStaff, deliveriesRouter);
+app.use('/api/visits',     requireStaff, visitsRouter);
 app.use('/api/pickups',    requireStaff, pickupsRouter);
 app.use('/api/volunteers', requireStaff, volunteersRouter);
 app.use('/api/lookups',    requireStaff, lookupsRouter);

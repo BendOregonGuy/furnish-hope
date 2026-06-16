@@ -30,6 +30,11 @@ interface VehicleAssignment {
   fuel_cost?: number | null;
 }
 
+interface ContainerAssignment {
+  client_delivery_container_id?: number | null;
+  storage_location_id: number;
+}
+
 interface DeliveryWritePayload {
   client_provisioning_request_id: number;
   facility_staff_id: number;
@@ -40,9 +45,16 @@ interface DeliveryWritePayload {
   time_delivery_complete?: string | null;
   notes?: string | null;
   gate_code?: string | null;
+  // Fulfillment method — Home delivery / Walkout / Container pickup.
+  // Optional during edit so existing rows from before this column existed
+  // still load and save cleanly.
+  fulfillment_method_id?: number | null;
+  pickup_deadline?: string | null;
+  lock_code?: string | null;
   crew: CrewMember[];
   items: DeliveryItem[];
   vehicle: VehicleAssignment | null;
+  containers?: ContainerAssignment[];
 }
 
 /* ----------------------------------------------------------------- */
@@ -75,12 +87,17 @@ deliveriesRouter.get('/', async (req, res, next) => {
         d.time_arrival_earliest,
         d.time_arrival_latest,
         d.time_delivery_complete,
+        d.fulfillment_method_id,
+        d.pickup_deadline,
+        d.pickup_code_sent_at,
         s.delivery_status,
+        fm.fulfillment_method,
         c.client_id,
         contact.first_name || ' ' || contact.last_name AS client_name,
         addr.address,
         city.city,
         (SELECT COUNT(*)::int FROM tbl_delivery_items di WHERE di.client_deliveries_id = d.client_deliveries_id) AS item_count,
+        (SELECT COUNT(*)::int FROM tbl_client_delivery_container cdc WHERE cdc.client_deliveries_id = d.client_deliveries_id) AS container_count,
         lead.first_name || ' ' || lead.last_name AS team_lead,
         v.vehicle_license,
         EXISTS (SELECT 1 FROM tbl_delivery_receipt rec WHERE rec.client_deliveries_id = d.client_deliveries_id) AS has_receipt
@@ -95,11 +112,40 @@ deliveriesRouter.get('/', async (req, res, next) => {
       LEFT JOIN tbl_contact lead ON lead.contact_id = lead_fs.contact_id
       LEFT JOIN tbl_delivery_vehicle dv ON dv.client_deliveries_id = d.client_deliveries_id
       LEFT JOIN tbl_vehicle v ON v.vehicle_id = dv.vehicle_id
+      LEFT JOIN lkp_fulfillment_method fm ON fm.fulfillment_method_id = d.fulfillment_method_id
       ${whereSql}
       ORDER BY d.delivery_date DESC, d.time_arrival_earliest
       LIMIT 100
     `, params);
 
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  Container picker options                                          */
+/*  Returns containers + lockboxes (lkp_storage_location flagged      */
+/*  is_container_or_lockbox=true) with their facility for display.    */
+/*  Declared BEFORE the /:id route so "container-options" doesn't     */
+/*  get parsed as a numeric id.                                       */
+/* ----------------------------------------------------------------- */
+
+deliveriesRouter.get('/container-options', async (_req, res, next) => {
+  try {
+    const rows = await query(`
+      SELECT
+        sl.storage_location_id,
+        sl.location_code,
+        sl.container_type,
+        sl.description,
+        sl.corp_facility_id,
+        cf.facility_name
+      FROM lkp_storage_location sl
+      LEFT JOIN tbl_corp_facility cf ON cf.corp_facility_id = sl.corp_facility_id
+      WHERE sl.is_container_or_lockbox = true
+        AND COALESCE(sl.is_active, true) = true
+      ORDER BY cf.facility_name NULLS LAST, sl.container_type NULLS LAST, sl.location_code
+    `);
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -126,6 +172,13 @@ deliveriesRouter.get('/:id', async (req, res, next) => {
         d.time_delivery_complete,
         d.gate_code,
         d.notes,
+        d.fulfillment_method_id,
+        d.pickup_deadline,
+        d.lock_code,
+        d.pickup_code_sent_at,
+        d.pickup_code_sent_via,
+        d.pickup_code_sent_to,
+        fm.fulfillment_method,
         s.delivery_status,
         c.client_id,
         contact.first_name || ' ' || contact.last_name AS client_name,
@@ -173,6 +226,7 @@ deliveriesRouter.get('/:id', async (req, res, next) => {
       LEFT JOIN tbl_address fac_addr ON fac_addr.address_id = fac.address_id
       LEFT JOIN lkp_city fac_city ON fac_city.city_id = fac_addr.city_id
       LEFT JOIN lkp_state fac_st ON fac_st.state_id = fac_addr.state_id
+      LEFT JOIN lkp_fulfillment_method fm ON fm.fulfillment_method_id = d.fulfillment_method_id
       WHERE d.client_deliveries_id = $1
     `, [id]);
 
@@ -225,6 +279,22 @@ deliveriesRouter.get('/:id', async (req, res, next) => {
       WHERE client_deliveries_id = $1
     `, [id]);
 
+    const containers = await query(`
+      SELECT
+        cdc.client_delivery_container_id,
+        cdc.storage_location_id,
+        cdc.notes,
+        sl.location_code,
+        sl.container_type,
+        sl.description AS location_description,
+        cf.facility_name
+      FROM tbl_client_delivery_container cdc
+      JOIN lkp_storage_location sl ON sl.storage_location_id = cdc.storage_location_id
+      LEFT JOIN tbl_corp_facility cf ON cf.corp_facility_id = sl.corp_facility_id
+      WHERE cdc.client_deliveries_id = $1
+      ORDER BY cdc.client_delivery_container_id
+    `, [id]);
+
     const cur = await queryOne<{ delivery_date: string }>(
       `SELECT delivery_date FROM tbl_client_deliveries WHERE client_deliveries_id = $1`, [id],
     );
@@ -239,7 +309,7 @@ deliveriesRouter.get('/:id', async (req, res, next) => {
        ORDER BY delivery_date DESC, client_deliveries_id DESC LIMIT 1
     `, [cur?.delivery_date, id]);
 
-    res.json({ delivery, crew, items, receipt, prevId: prev?.id ?? null, nextId: next?.id ?? null });
+    res.json({ delivery, crew, items, receipt, containers, prevId: prev?.id ?? null, nextId: next?.id ?? null });
   } catch (err) { next(err); }
 });
 
@@ -258,13 +328,14 @@ deliveriesRouter.post('/', async (req, res, next) => {
         INSERT INTO tbl_client_deliveries
           (client_provisioning_request_id, facility_staff_id, delivery_status_id,
            delivery_date, time_arrival_earliest, time_arrival_latest, time_delivery_complete,
-           notes, gate_code)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           notes, gate_code, fulfillment_method_id, pickup_deadline, lock_code)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING *
       `, [
         body.client_provisioning_request_id, body.facility_staff_id, body.delivery_status_id,
         body.delivery_date, body.time_arrival_earliest ?? null, body.time_arrival_latest ?? null,
         body.time_delivery_complete ?? null, body.notes ?? null, body.gate_code ?? null,
+        body.fulfillment_method_id ?? null, body.pickup_deadline ?? null, body.lock_code?.trim() || null,
       ]);
       const delId = d!.client_deliveries_id;
 
@@ -289,6 +360,14 @@ deliveriesRouter.post('/', async (req, res, next) => {
         `, [delId, body.vehicle.delivery_vehicle_type_id, body.vehicle.vehicle_id ?? null,
             body.vehicle.rental_agency_id ?? null, body.vehicle.mileage_start ?? null,
             body.vehicle.mileage_end ?? null, body.vehicle.fuel_cost ?? null]);
+      }
+      for (const ct of body.containers ?? []) {
+        if (!ct.storage_location_id) continue;
+        await tx.query(`
+          INSERT INTO tbl_client_delivery_container (client_deliveries_id, storage_location_id)
+          VALUES ($1, $2)
+          ON CONFLICT (client_deliveries_id, storage_location_id) DO NOTHING
+        `, [delId, ct.storage_location_id]);
       }
       await auditCreate(req, 'tbl_client_deliveries', delId, d!, tx);
       return delId;
@@ -320,15 +399,51 @@ deliveriesRouter.put('/:id', async (req, res, next) => {
         UPDATE tbl_client_deliveries
            SET client_provisioning_request_id = $1, facility_staff_id = $2, delivery_status_id = $3,
                delivery_date = $4, time_arrival_earliest = $5, time_arrival_latest = $6,
-               time_delivery_complete = $7, notes = $8, gate_code = $9
-         WHERE client_deliveries_id = $10
+               time_delivery_complete = $7, notes = $8, gate_code = $9,
+               fulfillment_method_id = $10, pickup_deadline = $11, lock_code = $12
+         WHERE client_deliveries_id = $13
          RETURNING *
       `, [
         body.client_provisioning_request_id, body.facility_staff_id, body.delivery_status_id,
         body.delivery_date, body.time_arrival_earliest ?? null, body.time_arrival_latest ?? null,
-        body.time_delivery_complete ?? null, body.notes ?? null, body.gate_code ?? null, id,
+        body.time_delivery_complete ?? null, body.notes ?? null, body.gate_code ?? null,
+        body.fulfillment_method_id ?? null, body.pickup_deadline ?? null, body.lock_code?.trim() || null,
+        id,
       ]);
       if (after) await auditUpdate(req, 'tbl_client_deliveries', id, before, after, tx);
+
+      // Diff containers — replace incoming list, removing rows no longer present.
+      const incomingContainerIds = new Set(
+        (body.containers ?? []).map(c => c.client_delivery_container_id).filter(Boolean) as number[],
+      );
+      const existingContainers = await tx.query<{ client_delivery_container_id: number }>(
+        `SELECT client_delivery_container_id FROM tbl_client_delivery_container WHERE client_deliveries_id = $1`,
+        [id],
+      );
+      for (const ec of existingContainers) {
+        if (!incomingContainerIds.has(ec.client_delivery_container_id)) {
+          await tx.query(
+            `DELETE FROM tbl_client_delivery_container WHERE client_delivery_container_id = $1`,
+            [ec.client_delivery_container_id],
+          );
+        }
+      }
+      for (const ct of body.containers ?? []) {
+        if (!ct.storage_location_id) continue;
+        if (ct.client_delivery_container_id) {
+          await tx.query(`
+            UPDATE tbl_client_delivery_container
+               SET storage_location_id = $1
+             WHERE client_delivery_container_id = $2
+          `, [ct.storage_location_id, ct.client_delivery_container_id]);
+        } else {
+          await tx.query(`
+            INSERT INTO tbl_client_delivery_container (client_deliveries_id, storage_location_id)
+            VALUES ($1, $2)
+            ON CONFLICT (client_deliveries_id, storage_location_id) DO NOTHING
+          `, [id, ct.storage_location_id]);
+        }
+      }
 
       // Diff crew
       const incomingCrewIds = new Set((body.crew ?? []).map(c => c.delivery_staff_id).filter(Boolean) as number[]);
@@ -437,6 +552,44 @@ deliveriesRouter.delete('/:id', async (req, res, next) => {
 
     res.status(204).end();
   } catch (err) { next(translatePgError(err)); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  Send container pickup code                                        */
+/*  Records that staff notified the client with the shared lock code  */
+/*  (via email or phone). For v1 we don't actually call Twilio — we   */
+/*  just stamp the audit fields so there's a record of "code shared". */
+/* ----------------------------------------------------------------- */
+
+deliveriesRouter.post('/:id/send-pickup-code', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+    const { via, sent_to } = (req.body ?? {}) as { via?: string; sent_to?: string };
+    if (!via || !['email', 'phone', 'sms'].includes(via)) {
+      return res.status(400).json({ error: 'via must be one of: email, phone, sms' });
+    }
+    if (!sent_to || typeof sent_to !== 'string' || sent_to.trim().length === 0) {
+      return res.status(400).json({ error: 'sent_to is required (email address or phone number)' });
+    }
+    await withTransaction(async (tx) => {
+      const before = await tx.queryOne<Record<string, any>>(
+        `SELECT * FROM tbl_client_deliveries WHERE client_deliveries_id = $1`, [id],
+      );
+      if (!before) throw withStatus(404, 'Delivery not found');
+      if (!before.lock_code) throw withStatus(400, 'No lock code set on this delivery yet.');
+      const after = await tx.queryOne<Record<string, any>>(`
+        UPDATE tbl_client_deliveries
+           SET pickup_code_sent_at  = NOW(),
+               pickup_code_sent_via = $1,
+               pickup_code_sent_to  = $2
+         WHERE client_deliveries_id = $3
+         RETURNING *
+      `, [via, sent_to.trim(), id]);
+      if (after) await auditUpdate(req, 'tbl_client_deliveries', id, before, after, tx);
+    });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 /* ----------------------------------------------------------------- */

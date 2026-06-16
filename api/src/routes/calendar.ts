@@ -35,10 +35,12 @@ const DEFAULT_SHIFT_START    = '08:00:00';
 const DEFAULT_SHIFT_END      = '12:00:00';
 const DEFAULT_SERVICE_START  = '09:00:00';
 const DEFAULT_SERVICE_END    = '11:00:00';
+const DEFAULT_VISIT_START    = '10:00:00';
+const DEFAULT_VISIT_END      = '11:00:00';
 
 interface CalendarItem {
   id: string;
-  type: 'pickup' | 'delivery' | 'event' | 'campaign' | 'shift' | 'vendor_service';
+  type: 'pickup' | 'delivery' | 'event' | 'campaign' | 'shift' | 'vendor_service' | 'visit';
   title: string;
   start: string;
   end: string | null;
@@ -191,6 +193,32 @@ calendarRouter.get('/', async (req, res, next) => {
       ORDER BY s.service_date, s.start_time
     `, [from, to]);
 
+    /* ---------- client visits ---------- */
+    // Scheduled-or-completed visits where a client picks their furniture.
+    // Cancelled visits are hidden by default — they're noise on the calendar.
+    const visits = await query<{
+      id: number; title: string; date: string;
+      start_time: string | null; end_time: string | null;
+      visit_mode: string; visit_status: string;
+    }>(`
+      SELECT
+        v.client_visit_id AS id,
+        contact.first_name || ' ' || contact.last_name AS title,
+        v.visit_date::text AS date,
+        v.start_time::text AS start_time,
+        v.end_time::text   AS end_time,
+        vm.visit_mode,
+        vs.visit_status
+      FROM tbl_client_visit v
+      JOIN tbl_client c ON c.client_id = v.client_id
+      JOIN tbl_contact contact ON contact.contact_id = c.contact_id
+      JOIN lkp_visit_mode vm   ON vm.visit_mode_id   = v.visit_mode_id
+      JOIN lkp_visit_status vs ON vs.visit_status_id = v.visit_status_id
+      WHERE v.visit_date BETWEEN $1::date AND $2::date
+        AND vs.visit_status IN ('Scheduled', 'Completed')
+      ORDER BY v.visit_date, v.start_time
+    `, [from, to]);
+
     /* ---------- campaigns (multi-day banners) ---------- */
     // Campaigns can span months; surface any campaign whose range
     // intersects the requested window.
@@ -286,6 +314,20 @@ calendarRouter.get('/', async (req, res, next) => {
         url: `/vendors/${s.vendor_id}`,
         color: '#5E708E', // muted blue — distinct from existing palette
         meta: { status: s.status, location: where, service_id: s.id },
+      });
+    }
+
+    for (const v of visits) {
+      items.push({
+        id: `visit:${v.id}`,
+        type: 'visit',
+        title: `Visit · ${v.title} (${v.visit_mode})`,
+        start: combine(v.date, v.start_time, DEFAULT_VISIT_START),
+        end:   combine(v.date, v.end_time,   DEFAULT_VISIT_END),
+        allDay: false,
+        url: `/visits/${v.id}`,
+        color: '#A5644E', // warm copper — distinct from delivery sage and pickup terracotta
+        meta: { mode: v.visit_mode, status: v.visit_status },
       });
     }
 

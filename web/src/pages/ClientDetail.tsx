@@ -18,6 +18,15 @@ type ClientDetailData = {
   nextId: number | null;
 };
 
+interface ClientVisitRow {
+  client_visit_id: number;
+  visit_date: string;
+  visit_mode: string;
+  visit_status: string;
+  host_name: string | null;
+  facility_name: string | null;
+}
+
 export function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -26,6 +35,12 @@ export function ClientDetail() {
   const { data, isLoading, error } = useQuery<ClientDetailData>({
     queryKey: ['client', id],
     queryFn: () => apiGet(`/api/clients/${id}`),
+  });
+
+  const { data: visits } = useQuery<ClientVisitRow[]>({
+    queryKey: ['client-visits', id],
+    queryFn: () => apiGet(`/api/visits`, { client_id: id }),
+    enabled: !!id,
   });
 
   const deleteMut = useMutation({
@@ -105,6 +120,44 @@ export function ClientDetail() {
         <div className="space-y-4">
           {/* Email widget — your messages with this client */}
           <EmailWidget email={c.email ?? null} displayName={fullName} />
+
+          <div className="card">
+            <div className="card-head">
+              <h3 className="font-display font-medium text-[17px] m-0">Visits</h3>
+              <Link
+                to={`/visits/new?client_id=${c.client_id}`}
+                className="btn-primary text-xs py-1.5"
+              >+ Schedule visit</Link>
+            </div>
+            {!visits || visits.length === 0 ? (
+              <div className="text-center text-ink-faint py-6 text-sm">No visits scheduled.</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="text-left text-[11px] tracking-widest uppercase text-ink-faint font-medium pb-2">Date</th>
+                    <th className="text-left text-[11px] tracking-widest uppercase text-ink-faint font-medium pb-2">Mode</th>
+                    <th className="text-left text-[11px] tracking-widest uppercase text-ink-faint font-medium pb-2">Host</th>
+                    <th className="text-left text-[11px] tracking-widest uppercase text-ink-faint font-medium pb-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visits.slice(0, 8).map(v => (
+                    <tr key={v.client_visit_id} className="border-t border-hairline hover:bg-terracotta/[0.025]">
+                      <td className="py-2 pr-3">
+                        <Link to={`/visits/${v.client_visit_id}`} className="text-terracotta font-medium text-xs">
+                          {formatShortDate(v.visit_date)}
+                        </Link>
+                      </td>
+                      <td className="py-2 pr-3 text-xs text-ink-soft">{v.visit_mode}</td>
+                      <td className="py-2 pr-3 text-xs text-ink-soft">{v.host_name ?? '—'}</td>
+                      <td className="py-2 text-xs"><StatusPill status={v.visit_status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
 
           <div className="card">
           <div className="card-head">

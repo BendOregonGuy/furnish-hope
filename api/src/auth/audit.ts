@@ -102,6 +102,10 @@ const MASKED_FIELDS = new Set([
   'tax_id',
   'fed_tax_id',
   'signature_image',
+  // Container pickup codes — operational secret that lets the client
+  // open the lock; masking keeps it out of audit storage even though
+  // staff entered it themselves.
+  'lock_code',
   // Binary blobs — useless and wasteful to capture
   'image_data',
   'logo_data',

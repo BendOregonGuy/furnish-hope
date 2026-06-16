@@ -11,6 +11,15 @@ type Detail = {
   crew: Array<any>;
   items: Array<any>;
   receipt: any | null;
+  containers: Array<{
+    client_delivery_container_id: number;
+    storage_location_id: number;
+    location_code: string;
+    container_type: string | null;
+    location_description: string | null;
+    facility_name: string | null;
+    notes: string | null;
+  }>;
   prevId: number | null;
   nextId: number | null;
 };
@@ -43,6 +52,21 @@ export function DeliveryDetail() {
   const [photoRelease, setPhotoRelease] = useState(false);
   const [notes, setNotes] = useState('');
 
+  const [showSendCode, setShowSendCode] = useState(false);
+  const [sendVia, setSendVia] = useState<'email' | 'phone' | 'sms'>('email');
+  const [sendTo, setSendTo] = useState('');
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  const sendCodeMut = useMutation({
+    mutationFn: () => apiPost(`/api/deliveries/${id}/send-pickup-code`, { via: sendVia, sent_to: sendTo.trim() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['delivery', id] });
+      setShowSendCode(false);
+      setSendError(null);
+    },
+    onError: (e: any) => setSendError(e.message ?? 'Failed to record the notification.'),
+  });
+
   const signoff = useMutation({
     mutationFn: () => apiPost(`/api/deliveries/${id}/receipt`, {
       all_items_received: allReceived,
@@ -62,7 +86,8 @@ export function DeliveryDetail() {
   if (error) return <ErrorBox error={error} />;
   if (!data) return null;
 
-  const { delivery: d, crew, items, receipt } = data;
+  const { delivery: d, crew, items, receipt, containers } = data;
+  const isContainerPickup = d.fulfillment_method === 'Container pickup';
   const totalValue = items.reduce((sum, i) => sum + Number(i.donation_value_in ?? 0), 0);
   const isDelivered = d.delivery_status === 'Delivered' || !!receipt;
 
@@ -102,9 +127,10 @@ export function DeliveryDetail() {
       <div className="flex gap-5 p-5 bg-cream border border-hairline rounded-[10px] mb-6">
         <Avatar name={d.client_name} size="lg" />
         <div className="flex-1">
-          <div className="flex items-baseline gap-3.5 mb-1">
+          <div className="flex items-baseline gap-3.5 mb-1 flex-wrap">
             <div className="font-display text-2xl font-medium">{d.client_name}</div>
             <StatusPill status={d.delivery_status} />
+            {d.fulfillment_method && <span className="pill pill-terra">{d.fulfillment_method}</span>}
             <span className="text-xs text-ink-faint">Delivery #{d.delivery_id}</span>
           </div>
           <div className="flex gap-4 text-sm text-ink-soft flex-wrap">
@@ -121,6 +147,63 @@ export function DeliveryDetail() {
           )}
         </div>
       </div>
+
+      {isContainerPickup && (
+        <div className="card mb-6 bg-cream/40 border-terracotta-soft/40">
+          <div className="card-head" style={{ marginBottom: 8, paddingBottom: 6 }}>
+            <h3 className="font-display font-medium text-base m-0">Container pickup</h3>
+            <span className="text-[10px] uppercase tracking-widest text-ink-faint font-medium">{d.fulfillment_method}</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mb-0.5">Lock code</div>
+              <div className="font-mono text-lg font-medium text-ink">{d.lock_code ?? <span className="text-ink-faint italic text-sm">— not set —</span>}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mb-0.5">Deadline</div>
+              <div className="text-sm">{d.pickup_deadline ? formatLongDate(d.pickup_deadline) : <span className="text-ink-faint italic">— not set —</span>}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mb-0.5">Code sent</div>
+              {d.pickup_code_sent_at ? (
+                <div className="text-sm">
+                  <span className="text-sage-deep font-medium">✓ {formatLongDate(d.pickup_code_sent_at)}</span>
+                  <div className="text-[11px] text-ink-faint">via {d.pickup_code_sent_via} to {d.pickup_code_sent_to}</div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSendTo(d.client_email ?? d.client_phone ?? '');
+                    setSendVia('email');
+                    setShowSendCode(true);
+                  }}
+                  className="btn-primary text-xs py-1.5"
+                  disabled={!d.lock_code}
+                  title={!d.lock_code ? 'Set the lock code first' : ''}
+                >Send code to client</button>
+              )}
+            </div>
+          </div>
+
+          {containers && containers.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-hairline">
+              <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mb-2">
+                Containers & lockboxes ({containers.length})
+              </div>
+              <div className="space-y-1.5">
+                {containers.map(ct => (
+                  <div key={ct.client_delivery_container_id} className="flex items-center gap-3 text-sm">
+                    <span className="font-mono text-ink">{ct.location_code}</span>
+                    {ct.container_type && <span className="pill pill-terra">{ct.container_type}</span>}
+                    {ct.facility_name && <span className="text-xs text-ink-soft">@ {ct.facility_name}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {!isDelivered && (
         <div className="mb-6 flex justify-end">
@@ -271,6 +354,58 @@ export function DeliveryDetail() {
       <div className="mt-5">
         <AttachmentsWidget entityType="delivery" entityId={Number(id)} title="Documents (signed manifest, delivery photos)" />
       </div>
+
+      {/* Send pickup code modal */}
+      {showSendCode && (
+        <div className="fixed inset-0 bg-ink/40 flex items-center justify-center p-6 z-50" onClick={() => setShowSendCode(false)}>
+          <div className="bg-paper rounded-[10px] max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-display font-medium text-xl mb-1">Send pickup code</h3>
+            <p className="text-sm text-ink-soft mb-4">
+              Record that you shared lock code <span className="font-mono font-medium text-ink">{d.lock_code}</span> with {d.client_name}.
+              The app does not send the email or SMS itself — share the code yourself, then click "Record sent" so the audit trail captures it.
+            </p>
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="field-label">Method</label>
+                <div className="flex gap-2 text-xs">
+                  {(['email', 'phone', 'sms'] as const).map(opt => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setSendVia(opt)}
+                      className={`px-3 py-1.5 rounded border ${sendVia === opt ? 'border-terracotta bg-terracotta text-paper font-medium' : 'border-hairline-strong hover:border-terracotta'}`}
+                    >{opt === 'sms' ? 'SMS / text' : opt[0].toUpperCase() + opt.slice(1)}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="field-label">Sent to</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  value={sendTo}
+                  onChange={e => setSendTo(e.target.value)}
+                  placeholder={sendVia === 'email' ? 'client@example.com' : '(541) 555-1234'}
+                />
+              </div>
+            </div>
+
+            {sendError && (
+              <div className="mb-3 text-sm text-terracotta-deep bg-terracotta-soft p-2 rounded-md">{sendError}</div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost" onClick={() => setShowSendCode(false)} disabled={sendCodeMut.isPending}>Cancel</button>
+              <button
+                className="btn-primary"
+                onClick={() => sendCodeMut.mutate()}
+                disabled={sendCodeMut.isPending || !sendTo.trim()}
+              >{sendCodeMut.isPending ? 'Saving…' : 'Record sent'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
