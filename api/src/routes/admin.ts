@@ -8,6 +8,9 @@
 
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pool, query, queryOne } from '../db/pool.js';
 import { getSchema, getTable, refreshSchema } from '../admin/schema.js';
 import { sortedGroups } from '../admin/introspect.js';
@@ -43,6 +46,34 @@ adminRouter.get('/schema', async (_req, res, next) => {
 adminRouter.post('/_refresh', (_req, res) => {
   refreshSchema();
   res.json({ ok: true });
+});
+
+/**
+ * GET /api/admin/erd — serve the pre-generated entity-relationship PDF.
+ * Regenerate by running `python scripts/generate_erd_pdf.py` against a
+ * Postgres database whose schema matches what we want to document.
+ * Declared BEFORE the /:table catchall so "erd" isn't parsed as a
+ * table name.
+ */
+adminRouter.get('/erd', (_req, res, next) => {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    // From api/dist/routes/admin.js -> repo_root/docs/FurnishHopeERD.pdf
+    // (and api/src/routes -> repo_root/docs in dev).
+    // Both dev (api/src/routes/admin.ts) and prod build
+    // (api/dist/routes/admin.js) are nested 3 levels under the repo root.
+    const candidate = path.resolve(here, '..', '..', '..', 'docs', 'FurnishHopeERD.pdf');
+    const found = fs.existsSync(candidate) ? candidate : null;
+    if (!found) {
+      return res.status(404).json({
+        error: 'ERD PDF not found. Regenerate with: python scripts/generate_erd_pdf.py',
+      });
+    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="FurnishHopeERD.pdf"');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    fs.createReadStream(found).pipe(res);
+  } catch (err) { next(err); }
 });
 
 /**

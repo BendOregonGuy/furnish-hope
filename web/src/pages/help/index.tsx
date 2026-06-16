@@ -773,6 +773,15 @@ export function Help() {
 
         <h3 id="admin-database">Database admin</h3>
         <p>System → <strong>Database Admin</strong> shows every table in the database. Use sparingly — it's the most direct access surface. Most day-to-day work doesn't need this.</p>
+        <p>
+          The <strong>View ERD (PDF)</strong> button in the top-right of the
+          Database Admin landing page opens a multi-page entity-relationship
+          diagram — every table organized by theme (Clients, Donations,
+          Inventory, etc.), with primary keys, foreign keys, and the arrows
+          between related tables. Useful as a reference when adding fields
+          or planning bulk edits. Regenerate from a fresh schema by running
+          <code>python scripts/generate_erd_pdf.py</code> against the dev DB.
+        </p>
         <ScreenshotSlot slug="admin-home" description="The admin landing page with the list of tables grouped by purpose." url="/admin" />
 
         <h3 id="admin-manual">User Manual + screenshots</h3>
