@@ -30,7 +30,10 @@ const FIELDS: ColumnMeta[] = [
   { name: 'visit_status_id',        label: 'Status',          type: 'fk',   required: true,  isPk: false, isFk: true, fkTable: 'lkp_visit_status' },
   { name: 'host_facility_staff_id', label: 'Host (staff)',    type: 'fk',   required: false, isPk: false, isFk: true, fkTable: 'tbl_facility_staff', helpText: 'Who is hosting the showroom tour or the call.' },
   { name: 'corp_facility_id',       label: 'Location',        type: 'fk',   required: false, isPk: false, isFk: true, fkTable: 'tbl_corp_facility', helpText: 'Showroom or warehouse where an in-person visit happens.' },
-  { name: 'client_provisioning_request_id', label: 'Linked request', type: 'fk', required: false, isPk: false, isFk: true, fkTable: 'tbl_client_provisioning_request', helpText: 'Optional — link this visit to the provisioning request it serves.' },
+  // Linked request is rendered with a custom client-scoped picker, not the
+  // generic FkSelect — it must be filtered to the chosen client. Kept out of
+  // FIELDS so renderField() doesn't draw it; the dedicated picker is inlined
+  // into the form JSX after the other fields.
   { name: 'notes',                  label: 'Notes',           type: 'textarea', required: false, isPk: false, isFk: false },
 ];
 
@@ -111,7 +114,16 @@ export function VisitForm() {
   const { isDirty, safeNavigate } = useUnsavedChanges({ values, initialValues: initial });
 
   function setField(name: string, v: any) {
-    setValues(prev => ({ ...prev, [name]: v }));
+    setValues(prev => {
+      const next = { ...prev, [name]: v };
+      // If the client changed, the previously-linked request belongs to
+      // a different household — clear it so the form doesn't carry a
+      // stale (now-invalid) cross-client link into the submit body.
+      if (name === 'client_id' && prev.client_id !== v) {
+        next.client_provisioning_request_id = null;
+      }
+      return next;
+    });
     if (submitAttempted) {
       setErrors(prev => {
         const next = { ...prev };
@@ -120,6 +132,19 @@ export function VisitForm() {
       });
     }
   }
+
+  // Provisioning requests scoped to the chosen client. Re-fetches whenever
+  // client_id changes. Disabled with a hint when no client is picked yet.
+  const { data: clientRequests, isFetching: loadingRequests } = useQuery<Array<{
+    request_id: number;
+    request_at: string;
+    client_request_note: string | null;
+    item_count: number;
+  }>>({
+    queryKey: ['requests-by-client', values.client_id],
+    queryFn: () => apiGet('/api/requests', { client_id: String(values.client_id) }),
+    enabled: !!values.client_id,
+  });
 
   const createMut = useMutation({
     mutationFn: (body: any) => apiPost<{ client_visit_id: number }>('/api/visits', body),
@@ -230,6 +255,41 @@ export function VisitForm() {
       <form onSubmit={handleSubmit} className="space-y-5 max-w-3xl">
         <Section title="Visit" hint="Who, when, and how the client will pick their furniture.">
           <FieldGrid>{FIELDS.map(renderField)}</FieldGrid>
+
+          {/* Linked request — filtered to the chosen client. Lives outside the
+              field map so it can react to client_id changes. */}
+          <div className="mt-3">
+            <label className="field-label">Linked request</label>
+            {!values.client_id ? (
+              <div className="field-input bg-cream/40 text-ink-faint italic">
+                Pick a client first to see their requests.
+              </div>
+            ) : loadingRequests && !clientRequests ? (
+              <div className="field-input text-ink-faint italic">Loading requests…</div>
+            ) : !clientRequests || clientRequests.length === 0 ? (
+              <div className="field-input bg-cream/40 text-ink-faint italic">
+                This client has no provisioning requests yet.
+              </div>
+            ) : (
+              <select
+                className="field-input"
+                value={values.client_provisioning_request_id ?? ''}
+                onChange={e => setField('client_provisioning_request_id', e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">— None —</option>
+                {clientRequests.map(r => (
+                  <option key={r.request_id} value={r.request_id}>
+                    #{r.request_id} · {new Date(r.request_at).toLocaleDateString()}
+                    {r.client_request_note ? ` · ${r.client_request_note.slice(0, 60)}` : ''}
+                    {` · ${r.item_count} item${r.item_count === 1 ? '' : 's'}`}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="text-[11px] text-ink-faint mt-1">
+              Optional — link this visit to the provisioning request it serves.
+            </div>
+          </div>
         </Section>
 
         <div className="card flex items-center justify-between gap-3">

@@ -30,9 +30,16 @@ interface RequestWritePayload {
 /*  List                                                              */
 /* ----------------------------------------------------------------- */
 
-/** GET /api/requests — list */
-requestsRouter.get('/', async (_req, res, next) => {
+/** GET /api/requests — list, optionally filtered to one client */
+requestsRouter.get('/', async (req, res, next) => {
   try {
+    const params: any[] = [];
+    let where = '';
+    const clientId = req.query.client_id ? Number(req.query.client_id) : null;
+    if (clientId && Number.isInteger(clientId) && clientId > 0) {
+      params.push(clientId);
+      where = `WHERE r.client_id = $${params.length}`;
+    }
     const rows = await query(`
       SELECT
         r.client_provisioning_request_id AS request_id,
@@ -46,8 +53,9 @@ requestsRouter.get('/', async (_req, res, next) => {
       JOIN tbl_client c ON c.client_id = r.client_id
       JOIN tbl_contact contact ON contact.contact_id = c.contact_id
       JOIN lkp_client_type ct ON ct.client_type_id = c.client_type_id
+      ${where}
       ORDER BY r.request_at DESC
-    `);
+    `, params);
     res.json(rows);
   } catch (err) { next(err); }
 });
