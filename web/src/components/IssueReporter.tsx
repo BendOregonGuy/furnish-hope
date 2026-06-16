@@ -10,9 +10,9 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import html2canvas from 'html2canvas';
-import { apiPost } from '../lib/api.ts';
+import { apiGet, apiPost } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
 
 type Severity = 'low' | 'medium' | 'high' | 'critical';
@@ -20,14 +20,25 @@ type Severity = 'low' | 'medium' | 'high' | 'critical';
 export function IssueReporterButton() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  if (!user?.is_admin) return null;
+  // Admin always sees the button. For non-admin staff users we ask the
+  // server whether the app-wide "open to everyone" setting is on. The
+  // query is keyed by user role so a role change re-fetches.
+  const { data: vis } = useQuery<{ visible_to_all: boolean; can_report: boolean }>({
+    queryKey: ['issue-reporter-visibility'],
+    queryFn: () => apiGet('/api/issues/visibility'),
+    enabled: !!user && user.role === 'staff' && !user.is_admin,
+    refetchInterval: 5 * 60_000, // setting can change at runtime; pick up within 5 min
+    refetchOnWindowFocus: true,
+  });
+  const canReport = !!user?.is_admin || !!vis?.can_report;
+  if (!canReport) return null;
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
         className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta inline-flex items-center gap-1.5"
-        title="Report a problem with this page (admin only)"
+        title="Report a problem with this page"
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="10" />

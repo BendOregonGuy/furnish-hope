@@ -2399,6 +2399,20 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
+    name: 'tbl_app_setting: issue_reporter_visible_to_all',
+    async run() {
+      await query(`
+        INSERT INTO tbl_app_setting (setting_key, setting_value, description)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (setting_key) DO NOTHING
+      `, [
+        'issue_reporter_visible_to_all',
+        'false',
+        'When true ("true"), the "Report issue" button appears in every PageHeader for every signed-in staff user, not just admins. Helpful during the initial rollout when you want every user to be able to flag problems. Set back to "false" to restrict to admins once things stabilize.',
+      ]);
+    },
+  },
+  {
     name: 'tbl_app_broadcast + tbl_app_broadcast_dismissal',
     async run() {
       await query(`

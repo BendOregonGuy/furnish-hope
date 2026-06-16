@@ -175,15 +175,20 @@ app.use('/api/holidays',        requireAdmin, holidaysRouter);
 app.use('/api/quickbooks', requireAdmin, quickbooksRouter);
 
 // Issue tracker + broadcasts.
-// - POST /api/issues is admin (anyone with admin can file an issue).
+// - POST /api/issues is staff-level; the handler itself enforces
+//   is_admin || (app_setting issue_reporter_visible_to_all = true) so
+//   admins can choose to open issue reporting to everyone during rollout.
+// - GET /api/issues/visibility is staff-level so the React Query can
+//   decide whether to render the Report-issue button.
 // - All OTHER /api/issues endpoints are developer-only (triage tools).
 // - /api/broadcasts/active + /:id/dismiss are user-level so the banner
 //   shows to every signed-in user; the rest gate on requireDeveloper
 //   inside the router.
 app.use('/api/issues', (req, res, next) => {
-  if (req.method === 'POST' && (req.path === '/' || req.path === '')) {
-    return requireAdmin(req, res, next);
-  }
+  const isOpenToStaff =
+    (req.method === 'POST' && (req.path === '/' || req.path === '')) ||
+    (req.method === 'GET' && req.path === '/visibility');
+  if (isOpenToStaff) return requireStaff(req, res, next);
   return requireDeveloper(req, res, next);
 }, issuesRouter);
 app.use('/api/broadcasts', broadcastsRouter);

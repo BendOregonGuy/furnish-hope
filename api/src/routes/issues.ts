@@ -48,12 +48,44 @@ interface UpdatePayload {
 const VALID_STATUSES = ['open', 'investigating', 'resolved', 'closed'] as const;
 const VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'] as const;
 
+/** Returns true if the app-wide setting opens the Report Issue button to
+ *  non-admin staff. Missing/unset is treated as false. */
+async function isOpenToEveryone(): Promise<boolean> {
+  const row = await queryOne<{ setting_value: string }>(
+    `SELECT setting_value FROM tbl_app_setting WHERE setting_key = 'issue_reporter_visible_to_all'`,
+  );
+  return row?.setting_value === 'true';
+}
+
 /* ----------------------------------------------------------------- */
-/*  Create (admin)                                                    */
+/*  Visibility — any signed-in staff user can ask "should I see the   */
+/*  Report issue button?". Reply is { visible_to_all, can_report }.   */
+/*  Declared BEFORE /:id so "visibility" isn't parsed as a numeric id.*/
+/* ----------------------------------------------------------------- */
+
+issuesRouter.get('/visibility', async (req, res, next) => {
+  try {
+    const visibleToAll = await isOpenToEveryone();
+    res.json({
+      visible_to_all: visibleToAll,
+      can_report: !!req.user?.is_admin || visibleToAll,
+    });
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  Create — admin always, or any staff if the setting is enabled.    */
 /* ----------------------------------------------------------------- */
 
 issuesRouter.post('/', async (req, res, next) => {
   try {
+    // Authorization: admin OR (issue_reporter_visible_to_all = true).
+    if (!req.user?.is_admin) {
+      const open = await isOpenToEveryone();
+      if (!open) {
+        return res.status(403).json({ error: 'Only admins can file an issue. Ask an admin to flip "issue_reporter_visible_to_all" in App Settings to open this to everyone.' });
+      }
+    }
     const body = (req.body ?? {}) as CreatePayload;
     const errs: string[] = [];
     if (!body.title?.trim()) errs.push('title required');
