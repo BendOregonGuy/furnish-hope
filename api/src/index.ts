@@ -42,13 +42,15 @@ import { reportsRouter } from './routes/reports.js';
 import { shiftTemplatesRouter, holidaysRouter } from './routes/shiftTemplates.js';
 import { manualRouter } from './routes/manual.js';
 import { visitsRouter } from './routes/visits.js';
+import { issuesRouter } from './routes/issues.js';
+import { broadcastsRouter } from './routes/broadcasts.js';
 import {
   volunteerSignupPublicRouter,
   volunteerSignupsAdminRouter,
 } from './routes/volunteerSignup.js';
 import { createSessionMiddleware } from './auth/session.js';
 import { runAuthMigrations } from './auth/migrations.js';
-import { requireUser, requireAdmin, requireStaff } from './auth/middleware.js';
+import { requireUser, requireAdmin, requireStaff, requireDeveloper } from './auth/middleware.js';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
@@ -88,6 +90,8 @@ app.use('/api/attachments', express.json({ limit: '20mb' }));
 app.use('/api/admin/settings/logo', express.json({ limit: '5mb' }));
 // Manual screenshot uploads — base64 of a 2MB image is ~2.7MB; allow some headroom.
 app.use('/api/manual/screenshots', express.json({ limit: '5mb' }));
+// Issue reporter — base64 screenshot can be ~8MB on a large display.
+app.use('/api/issues', express.json({ limit: '15mb' }));
 app.use(express.json({ limit: '1mb' }));
 app.use(createSessionMiddleware());
 
@@ -169,6 +173,20 @@ app.use('/api/shift-templates', requireAdmin, shiftTemplatesRouter);
 app.use('/api/holidays',        requireAdmin, holidaysRouter);
 // QuickBooks integration — admin-only because accounting touches the books.
 app.use('/api/quickbooks', requireAdmin, quickbooksRouter);
+
+// Issue tracker + broadcasts.
+// - POST /api/issues is admin (anyone with admin can file an issue).
+// - All OTHER /api/issues endpoints are developer-only (triage tools).
+// - /api/broadcasts/active + /:id/dismiss are user-level so the banner
+//   shows to every signed-in user; the rest gate on requireDeveloper
+//   inside the router.
+app.use('/api/issues', (req, res, next) => {
+  if (req.method === 'POST' && (req.path === '/' || req.path === '')) {
+    return requireAdmin(req, res, next);
+  }
+  return requireDeveloper(req, res, next);
+}, issuesRouter);
+app.use('/api/broadcasts', broadcastsRouter);
 
 // 404 for unmatched /api routes (before the static-file fallback so a typo
 // like /api/clientx returns JSON, not the HTML index).

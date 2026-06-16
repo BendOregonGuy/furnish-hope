@@ -2332,6 +2332,100 @@ const MIGRATIONS: Migration[] = [
       ]);
     },
   },
+
+  // ============================================================
+  // In-app issue tracker (2026-06-15)
+  // ------------------------------------------------------------
+  // Admin users can file an issue from any page via the "Report
+  // issue" button in the PageHeader. Issues capture a screenshot
+  // (PNG, taken by html2canvas client-side) plus the page URL,
+  // viewport size, user agent, and a short narrative — what the
+  // reporter expected vs. what actually happened, severity, and
+  // free-text repro steps.
+  //
+  // Developers (a new is_developer flag on tbl_user_account)
+  // triage at /dev/issues — investigating → resolved → closed —
+  // and can broadcast a banner asking users to save + refresh
+  // after a deploy.
+  // ============================================================
+  {
+    name: 'tbl_user_account.is_developer',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_user_account
+          ADD COLUMN IF NOT EXISTS is_developer BOOLEAN NOT NULL DEFAULT false
+      `);
+      // Partial index for the developer-list lookup.
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_user_account_developer
+          ON tbl_user_account (is_developer)
+          WHERE is_developer = true
+      `);
+    },
+  },
+  {
+    name: 'tbl_app_issue',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_app_issue (
+          issue_id            SERIAL PRIMARY KEY,
+          title               VARCHAR(200) NOT NULL,
+          description         TEXT NOT NULL,
+          severity            VARCHAR(20) NOT NULL DEFAULT 'medium'
+                                CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+          status              VARCHAR(20) NOT NULL DEFAULT 'open'
+                                CHECK (status IN ('open', 'investigating', 'resolved', 'closed')),
+          page_url            TEXT,
+          page_title          VARCHAR(200),
+          user_agent          TEXT,
+          viewport_width      INTEGER,
+          viewport_height     INTEGER,
+          steps_to_reproduce  TEXT,
+          expected_behavior   TEXT,
+          actual_behavior     TEXT,
+          screenshot_data     BYTEA,
+          screenshot_content_type VARCHAR(80),
+          reporter_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id) ON DELETE SET NULL,
+          assignee_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id) ON DELETE SET NULL,
+          resolution_notes    TEXT,
+          resolved_at         TIMESTAMPTZ,
+          created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_app_issue_status   ON tbl_app_issue (status, created_at DESC)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_app_issue_reporter ON tbl_app_issue (reporter_user_account_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_app_issue_assignee ON tbl_app_issue (assignee_user_account_id) WHERE assignee_user_account_id IS NOT NULL`);
+    },
+  },
+  {
+    name: 'tbl_app_broadcast + tbl_app_broadcast_dismissal',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_app_broadcast (
+          broadcast_id      SERIAL PRIMARY KEY,
+          message           TEXT NOT NULL,
+          kind              VARCHAR(20) NOT NULL DEFAULT 'info'
+                              CHECK (kind IN ('info', 'refresh_required', 'warning')),
+          related_issue_id  INTEGER REFERENCES tbl_app_issue(issue_id) ON DELETE SET NULL,
+          is_active         BOOLEAN NOT NULL DEFAULT true,
+          created_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id) ON DELETE SET NULL,
+          created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          expires_at        TIMESTAMPTZ
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_tbl_app_broadcast_active ON tbl_app_broadcast (is_active, created_at DESC) WHERE is_active = true`);
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_app_broadcast_dismissal (
+          broadcast_id      INTEGER NOT NULL REFERENCES tbl_app_broadcast(broadcast_id) ON DELETE CASCADE,
+          user_account_id   INTEGER NOT NULL REFERENCES tbl_user_account(user_account_id) ON DELETE CASCADE,
+          dismissed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (broadcast_id, user_account_id)
+        )
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

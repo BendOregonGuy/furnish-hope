@@ -2,7 +2,8 @@ import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar.tsx';
 import { ScrollToTop } from './components/ScrollToTop.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
-import { RequireAuth, RequireAdmin } from './components/RequireAuth.tsx';
+import { BroadcastBanner } from './components/BroadcastBanner.tsx';
+import { RequireAuth, RequireAdmin, RequireDeveloper } from './components/RequireAuth.tsx';
 import { AuthProvider, useAuth } from './lib/auth.tsx';
 import { Login } from './pages/Login.tsx';
 import { Settings } from './pages/Settings.tsx';
@@ -51,6 +52,9 @@ import { ManualScreenshots } from './pages/admin/ManualScreenshots.tsx';
 import { VolunteerSignup } from './pages/VolunteerSignup.tsx';
 import { VolunteerAgreement } from './pages/VolunteerAgreement.tsx';
 import { VolunteerSignups, VolunteerSignupDetail } from './pages/admin/VolunteerSignups.tsx';
+import { DevIssues } from './pages/dev/DevIssues.tsx';
+import { DevIssueDetail } from './pages/dev/DevIssueDetail.tsx';
+import { DevBroadcasts, DevBroadcastForm } from './pages/dev/DevBroadcasts.tsx';
 import {
   DoorRoster, RunOfShow, SponsorSheet, Nametags,
   TableCards, PlaceCards, SeatingChart, PledgeCards,
@@ -147,6 +151,7 @@ function AppShell() {
     <div className="grid min-h-screen" style={{ gridTemplateColumns: '232px 1fr' }}>
       <Sidebar />
       <main className="bg-paper px-9 py-7 overflow-x-hidden">
+        <BroadcastBanner />
         <Breadcrumbs />
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -247,6 +252,14 @@ function AppShell() {
           <Route path="/vendors/:id" element={<VendorDetail />} />
           <Route path="/vendors/:id/edit" element={<VendorForm />} />
           <Route path="/email/mailbox" element={<Mailbox />} />
+
+          {/* Developer console — visible only to users flagged is_developer
+              (in addition to is_admin). Used to triage in-app issue reports
+              and to send broadcast banners. */}
+          <Route path="/dev/issues" element={<RequireDeveloper><DevIssues /></RequireDeveloper>} />
+          <Route path="/dev/issues/:id" element={<RequireDeveloper><DevIssueDetail /></RequireDeveloper>} />
+          <Route path="/dev/broadcasts" element={<RequireDeveloper><DevBroadcasts /></RequireDeveloper>} />
+          <Route path="/dev/broadcasts/new" element={<RequireDeveloper><DevBroadcastForm /></RequireDeveloper>} />
 
           {/* Admin section is admin-only. The RequireAdmin wrapper renders
               a friendly "admins only" screen for non-admin users. */}

@@ -23,6 +23,14 @@ export function RequireAdmin({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+export function RequireDeveloper({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <Loading />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!user.is_admin || !user.is_developer) return <ForbiddenScreen />;
+  return <>{children}</>;
+}
+
 function ForbiddenScreen() {
   return (
     <div className="p-10 max-w-lg mx-auto">

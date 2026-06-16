@@ -17,6 +17,7 @@ export interface CurrentUser {
   user_account_id: number;
   username: string;
   is_admin: boolean;
+  is_developer: boolean;
   is_active: boolean;
   facility_staff_id: number | null;
   agency_contact_id: number | null;

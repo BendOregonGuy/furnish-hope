@@ -110,6 +110,7 @@ const MASKED_FIELDS = new Set([
   'image_data',
   'logo_data',
   'content',  // tbl_email_attachment.content (BYTEA)
+  'screenshot_data',  // tbl_app_issue.screenshot_data (BYTEA)
 ]);
 
 export async function auditUpdate(

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth.tsx';
 import { apiGet, initials } from '../lib/api.ts';
 
-interface NavItem { to: string; name: string; icon: string; adminOnly?: boolean; }
+interface NavItem { to: string; name: string; icon: string; adminOnly?: boolean; developerOnly?: boolean; }
 interface NavSection { label: string; items: NavItem[]; }
 
 const sections: NavSection[] = [
@@ -74,6 +74,13 @@ const sections: NavSection[] = [
       { to: '/admin',            name: 'Database Admin', icon: 'database', adminOnly: true },
     ],
   },
+  {
+    label: 'Developer',
+    items: [
+      { to: '/dev/issues',     name: 'Reported issues', icon: 'activity', developerOnly: true },
+      { to: '/dev/broadcasts', name: 'Broadcasts',      icon: 'mail',     developerOnly: true },
+    ],
+  },
 ];
 
 function Icon({ name }: { name: string }) {
@@ -132,9 +139,13 @@ export function Sidebar() {
       </div>
 
       {sections.map(section => {
-        // Filter out admin-only items for non-admins. Whole sections that
-        // end up empty are skipped entirely.
-        const items = section.items.filter(i => !i.adminOnly || user?.is_admin);
+        // Filter out admin-only / developer-only items as appropriate.
+        // Whole sections that end up empty are skipped entirely.
+        const items = section.items.filter(i => {
+          if (i.adminOnly && !user?.is_admin) return false;
+          if (i.developerOnly && !(user?.is_admin && user?.is_developer)) return false;
+          return true;
+        });
         if (items.length === 0) return null;
         return (
           <div key={section.label} className="pt-4 pb-1">

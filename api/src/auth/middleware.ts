@@ -17,6 +17,7 @@ export interface CurrentUser {
   user_account_id: number;
   username: string;
   is_admin: boolean;
+  is_developer: boolean;
   is_active: boolean;
   facility_staff_id: number | null;
   agency_contact_id: number | null;
@@ -76,6 +77,20 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   next();
 }
 
+/** Developer — must be both admin AND is_developer. Used for issue
+ *  triage + the broadcast-to-all-users endpoints. Run AFTER requireUser. */
+export function requireDeveloper(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user) {
+    res.status(401).json({ error: 'Not signed in' });
+    return;
+  }
+  if (!req.user.is_admin || !req.user.is_developer) {
+    res.status(403).json({ error: 'Developer access required.' });
+    return;
+  }
+  next();
+}
+
 /** Reject agency-role users. Use this on every endpoint that's
  *  internal-only — donors, internal ops, audit log, settings, etc.
  *  Agency caseworkers are restricted to /api/agency/* via an
@@ -116,6 +131,7 @@ export async function loadUser(userId: number): Promise<CurrentUser | null> {
       ua.user_account_id,
       ua.username,
       ua.is_admin,
+      COALESCE(ua.is_developer, false) AS is_developer,
       ua.is_active,
       ua.facility_staff_id,
       ua.agency_contact_id,

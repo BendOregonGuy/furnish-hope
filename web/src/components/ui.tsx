@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { HelpLink } from './HelpLink.tsx';
+import { IssueReporterButton } from './IssueReporter.tsx';
 
 export function PageHeader({
   title,
@@ -28,12 +29,11 @@ export function PageHeader({
         </h1>
         {subtitle && <p className="text-sm text-ink-soft mt-1 max-w-xl">{subtitle}</p>}
       </div>
-      {(actions || helpSection) && (
-        <div className="flex gap-2">
-          {actions}
-          {helpSection && <HelpLink section={helpSection} audience={helpAudience} />}
-        </div>
-      )}
+      <div className="flex gap-2">
+        {actions}
+        {helpSection && <HelpLink section={helpSection} audience={helpAudience} />}
+        <IssueReporterButton />
+      </div>
     </div>
   );
 }
