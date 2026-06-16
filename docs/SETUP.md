@@ -11,6 +11,8 @@ that matches what you're trying to do:
   and test them locally | [Windows Developer Setup](SETUP_DEV_WINDOWS.md) |
 | **Set up your Mac** so you can make changes to the app and test them
   locally | [Mac Developer Setup](SETUP_DEV_MAC.md) |
+| **Connect outside services** like QuickBooks Online or staff email
+  accounts | [Third-party Integrations](INTEGRATIONS.md) |
 
 You don't need to set up everything. Here's the typical sequence:
 
