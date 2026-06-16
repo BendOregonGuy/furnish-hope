@@ -779,8 +779,15 @@ export function Help() {
           diagram — every table organized by theme (Clients, Donations,
           Inventory, etc.), with primary keys, foreign keys, and the arrows
           between related tables. Useful as a reference when adding fields
-          or planning bulk edits. Regenerate from a fresh schema by running
-          <code>python scripts/generate_erd_pdf.py</code> against the dev DB.
+          or planning bulk edits.
+        </p>
+        <p>
+          When the schema changes, regenerate the PDF from a fresh schema by
+          running <code>python scripts/generate_erd_pdf.py</code> against the
+          dev DB, then commit + push the new <code>docs/FurnishHopeERD.pdf</code>.
+          Full step-by-step instructions (one-time setup of Graphviz +
+          Python packages, regeneration command, and troubleshooting) live
+          in <code>docs/REGENERATE_ERD.md</code> in the repo.
         </p>
         <ScreenshotSlot slug="admin-home" description="The admin landing page with the list of tables grouped by purpose." url="/admin" />
 
