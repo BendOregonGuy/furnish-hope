@@ -44,8 +44,17 @@ const TOC: TocEntry[] = [
   { id: 'reports', label: 'Reports' },
   { id: 'qbo', label: 'QuickBooks sync' },
   { id: 'patterns', label: 'Common patterns' },
+  { id: 'reporting-issues', label: 'Reporting issues', children: [
+    { id: 'reporting-issues-modal',    label: 'Using the Report Issue button' },
+    { id: 'reporting-issues-settings', label: 'Opening it up to everyone' },
+  ]},
   { id: 'troubleshooting', label: 'Troubleshooting' },
   { id: 'admin', label: 'Admin guide' },
+  { id: 'developer-tools', label: 'Developer tools', children: [
+    { id: 'developer-tools-flag',       label: 'Marking a user as developer' },
+    { id: 'developer-tools-console',    label: 'The issue console' },
+    { id: 'developer-tools-broadcasts', label: 'Broadcasting to all users' },
+  ]},
 ];
 
 export function Help() {
@@ -645,6 +654,69 @@ export function Help() {
       </section>
 
       {/* ============================================================ */}
+      <section id="reporting-issues">
+        <h2>Reporting issues</h2>
+        <p>
+          If something in the app doesn't work right — a page won't load, a
+          button does nothing, the wrong data shows — you can file a report
+          from inside the app and the development team will see it
+          immediately, with a screenshot of exactly what you were looking at.
+        </p>
+
+        <h3 id="reporting-issues-modal">Using the Report Issue button</h3>
+        <p>
+          On every page, look in the top-right corner of the page header for a
+          button labeled <strong>Report issue</strong> with a small "⓵" icon
+          next to it (next to the Help button). If you don't see it, scroll up
+          to the top of the page or see "Opening it up to everyone" below.
+        </p>
+        <ol>
+          <li>Click <strong>Report issue</strong>. A dialog opens and the app automatically takes a screenshot of the visible page behind it — you'll briefly see the modal "blink" while the screenshot captures.</li>
+          <li>
+            Fill in the dialog:
+            <ul>
+              <li><strong>Title</strong> — a one-line summary, e.g. "Donation receipt PDF is blank."</li>
+              <li><strong>Severity</strong> — Low / Medium / High / Critical. Use Critical only when work is fully blocked.</li>
+              <li><strong>What happened?</strong> — Describe the problem in your own words.</li>
+              <li><strong>Expected / Actual</strong> — Optional but very helpful. "I expected the PDF to show the receipt. Instead it was blank."</li>
+              <li><strong>Steps to reproduce</strong> — Optional. Number the clicks if you can: "1. Open donor X. 2. Click Send receipt. 3. PDF downloads but is blank."</li>
+            </ul>
+          </li>
+          <li>Click <strong>Submit issue</strong>. You'll see a confirmation; the report is in the developer's queue.</li>
+        </ol>
+        <p>
+          The form auto-captures the page URL, your viewport size, and your
+          browser version — you don't have to type any of that. The screenshot
+          is stored privately on the server and only the developer can view it.
+        </p>
+        <ScreenshotSlot slug="report-issue-modal" description="The Report Issue dialog with all fields filled in and the auto-captured screenshot preview at the bottom." url="/" />
+
+        <h3 id="reporting-issues-settings">Opening it up to everyone</h3>
+        <p>
+          By default the Report Issue button is visible only to <strong>admins</strong>.
+          During the initial rollout, you may want every staff user to be able to
+          flag problems. An admin can open it up from the Settings page:
+        </p>
+        <ol>
+          <li>Sidebar → <strong>System → Settings</strong>.</li>
+          <li>Find the row <code>issue_reporter_visible_to_all</code>.</li>
+          <li>Change the value from <code>false</code> to <code>true</code>. Save.</li>
+        </ol>
+        <p>
+          Within a few minutes (or immediately after their next page refresh)
+          every signed-in staff user will see the Report Issue button. Set the
+          value back to <code>false</code> to restrict reporting to admins
+          again once the app has stabilized.
+        </p>
+        <div className="callout tip">
+          <strong>💡 Privacy.</strong> Don't include passwords, full Social
+          Security numbers, or other secrets in the description. Screenshots
+          show what's on screen at the time — if a sensitive field is visible,
+          close the panel or scroll away before clicking Report Issue.
+        </div>
+      </section>
+
+      {/* ============================================================ */}
       <section id="troubleshooting">
         <h2>Troubleshooting</h2>
         <h3>"I can't see something I just created"</h3>
@@ -738,6 +810,106 @@ export function Help() {
           <li><strong>Monthly:</strong> review user list for departures, run reports in Quarterly view, take a DB backup.</li>
           <li><strong>Quarterly:</strong> review lookup tables for stale entries (mark inactive, don't delete).</li>
         </ul>
+      </section>
+
+      {/* ============================================================ */}
+      <section id="developer-tools">
+        <h2>Developer tools</h2>
+        <p>
+          A small set of admin-only pages exists for the person who maintains
+          the app. They live under <code>/dev/*</code> and only appear in the
+          sidebar for users flagged as developers. If you're not the
+          developer, you can skip this section.
+        </p>
+
+        <h3 id="developer-tools-flag">Marking a user as developer</h3>
+        <p>
+          The developer flag is separate from the admin flag. A user must be
+          BOTH an admin AND flagged as a developer to access the dev console
+          — the developer flag alone grants no access. To set it:
+        </p>
+        <ol>
+          <li>Sidebar → <strong>System → Database Admin</strong> → <code>tbl_user_account</code>.</li>
+          <li>Click the row for the developer user.</li>
+          <li>Make sure <strong>is_admin</strong> is checked.</li>
+          <li>Check <strong>is_developer</strong>. Save.</li>
+        </ol>
+        <p>
+          After saving, the developer should sign out and back in (or hard
+          refresh) so the app picks up the new role. A <strong>Developer</strong>
+          section appears in the sidebar with two entries:
+          <strong> Reported issues</strong> and <strong>Broadcasts</strong>.
+        </p>
+
+        <h3 id="developer-tools-console">The issue console</h3>
+        <p>
+          Sidebar → <strong>Developer → Reported issues</strong> lists every
+          issue staff has filed via the Report Issue button. Issues are sorted
+          by status (Open → Investigating → Resolved → Closed) and then by
+          severity (Critical first). Filters at the top let you narrow by
+          status or severity.
+        </p>
+        <p>Each issue's detail page shows:</p>
+        <ul>
+          <li>The full screenshot the reporter captured (click to open at full size in a new tab).</li>
+          <li>The narrative — title, description, expected vs actual, steps to reproduce.</li>
+          <li>Context — page URL, viewport size, browser version, reporter name, when it was filed.</li>
+          <li>Triage controls in the right sidebar — change Status, adjust Severity, write resolution notes.</li>
+        </ul>
+        <p><strong>Status workflow:</strong></p>
+        <ul>
+          <li><strong>Open</strong> — not yet looked at.</li>
+          <li><strong>Investigating</strong> — actively being worked on. Auto-set when you assign an assignee while the issue is Open.</li>
+          <li><strong>Resolved</strong> — fix is in. Auto-stamps a resolved-at timestamp.</li>
+          <li><strong>Closed</strong> — issue is verified fixed or otherwise closed out.</li>
+        </ul>
+        <p>
+          Resolution notes auto-save on blur (when you click outside the
+          textarea), so don't worry about pressing a Save button.
+        </p>
+
+        <h3 id="developer-tools-broadcasts">Broadcasting to all users</h3>
+        <p>
+          When you deploy a fix or want to warn users about an outage, you can
+          push a banner that appears at the top of every page for every
+          signed-in user until they dismiss it. There are two ways in:
+        </p>
+        <ol>
+          <li>
+            <strong>From an issue:</strong> on any issue detail page, click
+            <strong> Notify all users to refresh</strong> in the right sidebar.
+            You'll be prompted for a message; the broadcast is created as
+            "refresh required" kind and linked back to the issue.
+          </li>
+          <li>
+            <strong>Standalone:</strong> Sidebar → <strong>Developer → Broadcasts</strong>
+            → <strong>+ New broadcast</strong>. Pick a kind and type a message.
+          </li>
+        </ol>
+        <p><strong>Three broadcast kinds:</strong></p>
+        <ul>
+          <li>
+            <strong>Info</strong> (green) — "FYI, donor reports were sluggish
+            for a few minutes earlier; that's resolved." Just informational.
+          </li>
+          <li>
+            <strong>Warning</strong> (red) — "We're seeing an issue with
+            email sync. Working on it now." Attention-grabbing for known
+            problems.
+          </li>
+          <li>
+            <strong>Refresh required</strong> (gold) — "We just deployed a
+            fix. Please save your work and click Refresh to pick up the new
+            version." Includes a <strong>Refresh now</strong> button right on
+            the banner so users can reload with one click.
+          </li>
+        </ul>
+        <p>
+          The broadcast list page shows every broadcast you've sent with a
+          dismissal count (how many users have already clicked the × on it).
+          Deactivate a broadcast to stop showing it to anyone who hasn't
+          dismissed it yet; delete it to remove it entirely.
+        </p>
       </section>
 
       <hr className="my-8" />

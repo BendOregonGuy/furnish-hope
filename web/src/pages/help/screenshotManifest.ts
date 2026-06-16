@@ -47,6 +47,8 @@ export const SCREENSHOT_MANIFEST: ScreenshotMeta[] = [
     description: 'The Visits list page with date and status filters.' },
   { slug: 'container-pickup-panel', audience: 'staff', group: 'Operations',  url: '/deliveries',
     description: 'A delivery detail page in container-pickup mode, with the lock code, deadline, container list, and Send code button visible.' },
+  { slug: 'report-issue-modal', audience: 'staff', group: 'Reporting issues', url: '/',
+    description: 'The Report Issue dialog with all fields filled in and the auto-captured screenshot preview at the bottom.' },
   { slug: 'inventory-list',    audience: 'staff',  group: 'Operations',      url: '/inventory',
     description: 'The inventory list with status filters at the top.' },
 

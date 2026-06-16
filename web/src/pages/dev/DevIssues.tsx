@@ -48,6 +48,7 @@ export function DevIssues() {
   return (
     <>
       <PageHeader
+        helpSection="developer-tools-console"
         title="Issues"
         emphasis="reported"
         subtitle="Issues filed from inside the app via the Report issue button. Triage by status, investigate the screenshot + page context, mark resolved when done."

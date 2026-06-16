@@ -83,6 +83,7 @@ export function DevIssueDetail() {
   return (
     <>
       <PageHeader
+        helpSection="developer-tools-console"
         title={`Issue #${data.issue_id}`}
         subtitle={data.title}
         actions={

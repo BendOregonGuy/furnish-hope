@@ -49,6 +49,7 @@ export function DevBroadcasts() {
   return (
     <>
       <PageHeader
+        helpSection="developer-tools-broadcasts"
         title="Broadcasts"
         emphasis=""
         subtitle="Send a banner message to every signed-in user. Use this to warn before a deploy, request a refresh after one, or note a known issue."
@@ -140,6 +141,7 @@ export function DevBroadcastForm() {
   return (
     <>
       <PageHeader
+        helpSection="developer-tools-broadcasts"
         title="New broadcast"
         subtitle="Composes a banner that appears at the top of every page for every signed-in user until they dismiss it."
         actions={<Link to="/dev/broadcasts" className="text-xs text-ink-soft hover:text-terracotta">← All broadcasts</Link>}
