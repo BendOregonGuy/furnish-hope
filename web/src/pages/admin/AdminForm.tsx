@@ -215,6 +215,15 @@ export function AdminForm() {
     onError: (err: any) => setTopError(err.message ?? 'Save failed'),
   });
 
+  // Address-edit confirmation: when editing a tbl_address row that is
+  // referenced by more than one other record (multiple roommates, a
+  // shared corp-facility address, etc.), pause the save and surface a
+  // modal showing how many records would be affected.
+  const [addressShareModal, setAddressShareModal] = useState<{
+    usage: AddressUsage;
+    body: Record<string, any>;
+  } | null>(null);
+
   const deleteMut = useMutation({
     mutationFn: () => apiDelete(`/api/admin/${table}/${id}`),
     onSuccess: () => {
@@ -252,8 +261,31 @@ export function AdminForm() {
     for (const col of formCols) {
       body[col.name] = serializeForApi(col, values[col.name]);
     }
-    if (isNew) createMut.mutate(body);
-    else updateMut.mutate(body);
+    if (isNew) {
+      createMut.mutate(body);
+      return;
+    }
+    // Edit path. For tbl_address only, check how many records share
+    // this row; if more than one, gate the save behind a modal so the
+    // user explicitly opts into the cross-record change.
+    if (table === 'tbl_address') {
+      void (async () => {
+        try {
+          const usage = await apiGet<AddressUsage>(`/api/admin/address-usage/${id}`);
+          if ((usage.total ?? 0) > 1) {
+            setAddressShareModal({ usage, body });
+            return;
+          }
+          updateMut.mutate(body);
+        } catch {
+          // If usage lookup fails (network, perm), fall back to the
+          // normal save path rather than blocking the edit entirely.
+          updateMut.mutate(body);
+        }
+      })();
+      return;
+    }
+    updateMut.mutate(body);
   }
 
   function handleFieldChange(colName: string, v: any) {
@@ -441,6 +473,18 @@ export function AdminForm() {
           </div>
         </div>
       </form>
+
+      {addressShareModal && (
+        <AddressShareModal
+          usage={addressShareModal.usage}
+          onCancel={() => setAddressShareModal(null)}
+          onConfirm={() => {
+            const body = addressShareModal.body;
+            setAddressShareModal(null);
+            updateMut.mutate(body);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -598,6 +642,68 @@ function NavArrowButton({
     >
       {children}
     </button>
+  );
+}
+
+/* =================================================================== */
+/*  Address share confirmation modal                                    */
+/* =================================================================== */
+
+interface AddressUsage {
+  total: number;
+  breakdown: {
+    contacts: number;
+    corp_facilities: number;
+    donors: number;
+    agencies: number;
+    donation_pickups: number;
+    events: number;
+  };
+  contact_examples: string[];
+}
+
+function AddressShareModal({
+  usage, onConfirm, onCancel,
+}: {
+  usage: AddressUsage;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const breakdownLines: string[] = [];
+  if (usage.breakdown.contacts)         breakdownLines.push(`${usage.breakdown.contacts} contact${usage.breakdown.contacts === 1 ? '' : 's'}`);
+  if (usage.breakdown.corp_facilities)  breakdownLines.push(`${usage.breakdown.corp_facilities} corporate facilit${usage.breakdown.corp_facilities === 1 ? 'y' : 'ies'}`);
+  if (usage.breakdown.donors)           breakdownLines.push(`${usage.breakdown.donors} donor record${usage.breakdown.donors === 1 ? '' : 's'}`);
+  if (usage.breakdown.agencies)         breakdownLines.push(`${usage.breakdown.agencies} agenc${usage.breakdown.agencies === 1 ? 'y' : 'ies'}`);
+  if (usage.breakdown.donation_pickups) breakdownLines.push(`${usage.breakdown.donation_pickups} donation pickup${usage.breakdown.donation_pickups === 1 ? '' : 's'}`);
+  if (usage.breakdown.events)           breakdownLines.push(`${usage.breakdown.events} event${usage.breakdown.events === 1 ? '' : 's'}`);
+
+  return (
+    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center p-6 z-50" onClick={onCancel}>
+      <div className="bg-paper rounded-[10px] max-w-lg w-full p-6" onClick={e => e.stopPropagation()}>
+        <h3 className="font-display font-medium text-xl mb-2">{usage.total} records share this address</h3>
+        <p className="text-sm text-ink-soft mb-4">
+          Editing this row affects every record that points at it. Used by:
+        </p>
+        <ul className="list-disc ml-5 mb-4 text-sm text-ink space-y-0.5">
+          {breakdownLines.map(line => <li key={line}>{line}</li>)}
+        </ul>
+        {usage.contact_examples.length > 0 && (
+          <div className="bg-cream/40 rounded p-3 mb-4 text-xs text-ink-soft">
+            <div className="font-medium text-ink mb-1">Examples (contacts):</div>
+            <div className="italic">{usage.contact_examples.join(' · ')}</div>
+          </div>
+        )}
+        <div className="bg-terracotta-soft/60 rounded p-3 mb-4 text-xs text-ink">
+          <strong>Apply to all</strong> = the address row is corrected for every record above (use this for a typo fix or a real correction that should propagate).
+          <br /><br />
+          <strong>Cancel</strong> = nothing changes. If you meant to record that ONLY one of these records moved, go back to that record's form and pick or create a different address there.
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onCancel} className="btn-ghost text-xs">Cancel</button>
+          <button type="button" onClick={onConfirm} className="btn-primary text-xs">Apply to all {usage.total} records</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -2423,6 +2423,90 @@ const MIGRATIONS: Migration[] = [
       ]);
     },
   },
+  // ============================================================
+  // Address dedupe (2026-06-16)
+  // ------------------------------------------------------------
+  // tbl_address has no uniqueness constraint and the quick-create
+  // endpoint did an unconditional INSERT, so two identical addresses
+  // produced two rows. With multiple staff entering the same place,
+  // the table accumulated near-duplicates over time.
+  //
+  // Migration steps:
+  //   1) Find normalized-equal duplicate groups
+  //      (LOWER(TRIM(address)) + LOWER(TRIM(COALESCE(address2,'')))
+  //       + city_id + state_id + postalcode).
+  //   2) For each group, pick the lowest address_id as the canonical
+  //      row. Re-point every FK in the six referencing tables
+  //      (tbl_agency / tbl_contact / tbl_corp_facility /
+  //       tbl_donation_pickup / tbl_donor / tbl_event) from each
+  //      duplicate to the canonical.
+  //   3) Delete the now-orphaned duplicate rows.
+  //   4) Add a unique btree index on the normalized key so the
+  //      schema enforces the property going forward. Future inserts
+  //      use ON CONFLICT against this index for race-safe
+  //      find-or-create behavior.
+  //
+  // Wrapped in a single DO block so partial failure rolls back.
+  // ============================================================
+  {
+    name: 'tbl_address: dedupe normalized + unique index',
+    async run() {
+      await query(`
+        DO $$
+        DECLARE
+          dup RECORD;
+          dup_id INTEGER;
+          merged_count INTEGER := 0;
+          deleted_count INTEGER := 0;
+        BEGIN
+          -- Find each duplicate group and re-point its non-canonical IDs.
+          FOR dup IN
+            SELECT
+              MIN(address_id) AS canonical_id,
+              array_agg(address_id ORDER BY address_id) AS all_ids
+            FROM tbl_address
+            GROUP BY
+              LOWER(TRIM(address)),
+              LOWER(TRIM(COALESCE(address2, ''))),
+              city_id, state_id, postalcode
+            HAVING COUNT(*) > 1
+          LOOP
+            FOREACH dup_id IN ARRAY dup.all_ids
+            LOOP
+              CONTINUE WHEN dup_id = dup.canonical_id;
+              UPDATE tbl_agency          SET address_id        = dup.canonical_id WHERE address_id        = dup_id;
+              UPDATE tbl_contact         SET address_id        = dup.canonical_id WHERE address_id        = dup_id;
+              UPDATE tbl_corp_facility   SET address_id        = dup.canonical_id WHERE address_id        = dup_id;
+              UPDATE tbl_donation_pickup SET pickup_address_id = dup.canonical_id WHERE pickup_address_id = dup_id;
+              UPDATE tbl_donor           SET address_id        = dup.canonical_id WHERE address_id        = dup_id;
+              UPDATE tbl_event           SET address_id        = dup.canonical_id WHERE address_id        = dup_id;
+              DELETE FROM tbl_address WHERE address_id = dup_id;
+              merged_count := merged_count + 1;
+              deleted_count := deleted_count + 1;
+            END LOOP;
+          END LOOP;
+          IF deleted_count > 0 THEN
+            RAISE NOTICE 'tbl_address dedupe: merged % duplicates, deleted % orphan rows', merged_count, deleted_count;
+          END IF;
+        END $$;
+      `);
+
+      // Now that duplicates are gone, the unique index can be safely
+      // created. Idempotent via IF NOT EXISTS — re-running the migration
+      // is a no-op once the index exists.
+      await query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_address_dedupe
+          ON tbl_address (
+            LOWER(TRIM(address)),
+            LOWER(TRIM(COALESCE(address2, ''))),
+            city_id,
+            state_id,
+            postalcode
+          )
+      `);
+    },
+  },
+
   {
     name: 'tbl_app_broadcast + tbl_app_broadcast_dismissal',
     async run() {

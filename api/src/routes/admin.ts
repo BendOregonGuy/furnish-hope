@@ -101,6 +101,67 @@ adminRouter.get('/_counts', async (req, res, next) => {
 });
 
 /* ----------------------------------------------------------------- */
+/*  Address usage — count of FK references per table                 */
+/*                                                                    */
+/*  Used by the AdminForm's confirmation modal when editing a row     */
+/*  in tbl_address: if more than one other row points at this         */
+/*  address, the modal warns "N records share this — apply edits to  */
+/*  all of them?" before allowing save. Declared BEFORE the generic  */
+/*  /:table catch-all so "address-usage" isn't parsed as a table.    */
+/* ----------------------------------------------------------------- */
+
+adminRouter.get('/address-usage/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+
+    const counts = await queryOne<{
+      contacts: string;
+      corp_facilities: string;
+      donors: string;
+      agencies: string;
+      donation_pickups: string;
+      events: string;
+    }>(`
+      SELECT
+        (SELECT COUNT(*)::text FROM tbl_contact         WHERE address_id        = $1) AS contacts,
+        (SELECT COUNT(*)::text FROM tbl_corp_facility   WHERE address_id        = $1) AS corp_facilities,
+        (SELECT COUNT(*)::text FROM tbl_donor           WHERE address_id        = $1) AS donors,
+        (SELECT COUNT(*)::text FROM tbl_agency          WHERE address_id        = $1) AS agencies,
+        (SELECT COUNT(*)::text FROM tbl_donation_pickup WHERE pickup_address_id = $1) AS donation_pickups,
+        (SELECT COUNT(*)::text FROM tbl_event           WHERE address_id        = $1) AS events
+    `, [id]);
+
+    const breakdown = {
+      contacts:         Number(counts?.contacts        ?? 0),
+      corp_facilities:  Number(counts?.corp_facilities ?? 0),
+      donors:           Number(counts?.donors          ?? 0),
+      agencies:         Number(counts?.agencies        ?? 0),
+      donation_pickups: Number(counts?.donation_pickups ?? 0),
+      events:           Number(counts?.events          ?? 0),
+    };
+    const total = Object.values(breakdown).reduce((a, b) => a + b, 0);
+
+    // Friendly labels for a few example contacts — helps the modal show
+    // "Sally Staff, Joe Client, …" instead of bare counts. Cap at 5 so
+    // the modal stays scannable; surface the total separately.
+    const contactExamples = await query<{ name: string }>(`
+      SELECT (c.first_name || ' ' || c.last_name) AS name
+        FROM tbl_contact c
+       WHERE c.address_id = $1
+       ORDER BY c.contact_id
+       LIMIT 5
+    `, [id]);
+
+    res.json({
+      total,
+      breakdown,
+      contact_examples: contactExamples.map(r => r.name),
+    });
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
 /*  Foreign-key dropdown options                                     */
 /* ----------------------------------------------------------------- */
 

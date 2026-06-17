@@ -53,22 +53,58 @@ quickCreateRouter.post('/address', async (req, res, next) => {
     if (!b.postalcode?.trim()) errs.push('ZIP is required');
     if (errs.length) return res.status(400).json({ error: errs.join('; ') });
 
-    const row = await queryOne<{ address_id: number; address_name: string; address: string }>(`
+    // Find-or-create: try INSERT, but if the row already exists per the
+    // normalized unique index (idx_tbl_address_dedupe), the ON CONFLICT
+    // skips it and we fall through to the SELECT. Atomic + race-safe.
+    const addressTrim   = b.address.trim();
+    const address2Trim  = b.address2?.trim() || null;
+    const postalTrim    = b.postalcode.trim();
+
+    const inserted = await queryOne<{ address_id: number; address_name: string; address: string }>(`
       INSERT INTO tbl_address
         (address_name, address_type_id, address, address2, city_id, county_id, state_id, postalcode, description)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (
+        (LOWER(TRIM(address))),
+        (LOWER(TRIM(COALESCE(address2, '')))),
+        city_id, state_id, postalcode
+      ) DO NOTHING
       RETURNING address_id, address_name, address
     `, [
-      b.address_name.trim(), b.address_type_id, b.address.trim(),
-      b.address2?.trim() || null,
-      b.city_id, b.county_id, b.state_id, b.postalcode.trim(),
+      b.address_name.trim(), b.address_type_id, addressTrim,
+      address2Trim, b.city_id, b.county_id, b.state_id, postalTrim,
       b.description?.trim() || null,
     ]);
 
-    await auditCreate(req, 'tbl_address', row!.address_id, row!);
+    let row = inserted;
+    let reused = false;
+    if (!row) {
+      // The unique index caught a normalized match; look up the existing
+      // canonical row and reuse its id.
+      row = await queryOne<{ address_id: number; address_name: string; address: string }>(`
+        SELECT address_id, address_name, address
+          FROM tbl_address
+         WHERE LOWER(TRIM(address))                       = LOWER($1)
+           AND LOWER(TRIM(COALESCE(address2, '')))        = LOWER(COALESCE($2, ''))
+           AND city_id                                    = $3
+           AND state_id                                   = $4
+           AND postalcode                                 = $5
+         LIMIT 1
+      `, [addressTrim, address2Trim, b.city_id, b.state_id, postalTrim]);
+      reused = true;
+    }
+
+    if (!row) {
+      // Both INSERT and SELECT returned nothing — should be impossible,
+      // but fail explicitly rather than crashing on row!.
+      return res.status(500).json({ error: 'Address create/lookup returned no row.' });
+    }
+    if (!reused) {
+      await auditCreate(req, 'tbl_address', row.address_id, row);
+    }
     // FK display label mirrors the admin config: "<name> — <street>"
-    const label = `${row!.address_name} — ${row!.address}`;
-    res.status(201).json({ address_id: row!.address_id, label });
+    const label = `${row.address_name} — ${row.address}`;
+    res.status(reused ? 200 : 201).json({ address_id: row.address_id, label, reused });
   } catch (err) { next(err); }
 });
 
