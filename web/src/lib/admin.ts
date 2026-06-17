@@ -24,6 +24,11 @@ export interface ColumnMeta {
   helpText?: string;
   hideInForm?: boolean;
   hideInList?: boolean;
+  /** When set, the field renders as a <select> with these allowed
+   *  values instead of a plain text input. Populated from config.ts
+   *  for VARCHAR columns pinned by a CHECK constraint to an enum
+   *  (e.g. tbl_app_issue.severity / .status). */
+  enumValues?: string[];
 }
 
 export interface TableMeta {

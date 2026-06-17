@@ -29,6 +29,10 @@ export interface ColumnOverride {
   helpText?: string;
   hideInForm?: boolean;
   hideInList?: boolean;
+  /** When the underlying VARCHAR is pinned by a CHECK constraint to a
+   *  fixed set of values (e.g. severity / status / kind), declare them
+   *  here so the admin form renders a <select> instead of a text input. */
+  enumValues?: string[];
 }
 
 /**
@@ -568,6 +572,75 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
         hideInForm: true,    // managed via the friendly toggles on /admin/shift-templates
       },
       created_at: { label: 'Created at', hideInForm: true },
+    },
+  },
+
+  // ============================================================
+  // CHECK-constrained VARCHAR enums.
+  // ============================================================
+  // The columns below are VARCHAR(N) with a CHECK (... IN (...)) clause
+  // that pins them to a fixed value set. Postgres won't surface those
+  // values through information_schema, so without these enumValues the
+  // admin form would render a freeform text input (and the user would
+  // have to know to type the exact string).
+  // ============================================================
+  tbl_app_issue: {
+    group: 'System',
+    label: 'App Issues',
+    singular: 'App Issue',
+    description: 'Issues filed from inside the app via the Report Issue button. Manage at /dev/issues for the full developer workflow.',
+    displaySql: "'#' || t.issue_id::text || ' — ' || COALESCE(t.title, '(no title)')",
+    columns: {
+      severity:        { label: 'Severity', enumValues: ['low', 'medium', 'high', 'critical'] },
+      status:          { label: 'Status',   enumValues: ['open', 'investigating', 'resolved', 'closed'] },
+      screenshot_data: { hideInForm: true, hideInList: true },
+      user_agent:      { hideInList: true },
+    },
+  },
+  tbl_app_broadcast: {
+    group: 'System',
+    label: 'App Broadcasts',
+    singular: 'App Broadcast',
+    description: 'Banners pushed to every signed-in user. Manage at /dev/broadcasts for the full developer workflow.',
+    displaySql: "'#' || t.broadcast_id::text || ' — ' || LEFT(COALESCE(t.message, ''), 60)",
+    columns: {
+      kind: { label: 'Kind', enumValues: ['info', 'refresh_required', 'warning'] },
+    },
+  },
+  tbl_volunteer_signup: {
+    group: 'Staff & Volunteers',
+    label: 'Volunteer Applications',
+    singular: 'Volunteer Application',
+    description: 'Pending public volunteer-signup submissions. Review at /admin/volunteer-signups for the friendly workflow.',
+    displaySql: "t.first_name || ' ' || t.last_name",
+    columns: {
+      frequency: { label: 'Frequency',  enumValues: ['one_time', 'recurring', 'on_call'] },
+      can_lift:  { label: 'Lifting capacity', enumValues: ['under_25', '25_50', '50_plus', 'cannot'] },
+      status:    { label: 'Status',     enumValues: ['pending', 'approved', 'rejected', 'archived'] },
+    },
+  },
+  tbl_volunteer_shift_signup: {
+    group: 'Staff & Volunteers',
+    label: 'Shift Signups',
+    singular: 'Shift Signup',
+    displaySql: "'Signup #' || t.signup_id::text",
+    columns: {
+      signup_status: { label: 'Signup status', enumValues: ['signed_up', 'cancelled', 'attended', 'no_show'] },
+    },
+  },
+  tbl_email_account: {
+    group: 'Notes & Communication',
+    label: 'Email Accounts',
+    singular: 'Email Account',
+    displaySql: 't.email_address',
+    columns: {
+      provider:         { label: 'Provider',    enumValues: ['gmail', 'icloud', 'outlook', 'yahoo', 'proton', 'imap'] },
+      auth_type:        { label: 'Auth type',   enumValues: ['password', 'oauth'] },
+      last_test_status: { label: 'Last test',   enumValues: ['success', 'failure'] },
+      // OAuth + IMAP secrets are encrypted at rest; never display.
+      oauth_access_token_enc:  { hideInForm: true, hideInList: true },
+      oauth_refresh_token_enc: { hideInForm: true, hideInList: true },
+      encrypted_password:      { hideInForm: true, hideInList: true },
     },
   },
 };

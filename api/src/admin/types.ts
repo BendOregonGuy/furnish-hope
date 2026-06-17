@@ -31,6 +31,12 @@ export interface ColumnMeta {
   helpText?: string;
   hideInForm?: boolean;
   hideInList?: boolean;
+  /** When set, the field renders as a <select> with these allowed
+   *  values (instead of a plain text input). Used for VARCHAR
+   *  columns whose CHECK constraint pins them to an enum — admin
+   *  introspection has no way to read CHECK content, so we declare
+   *  the values manually in config.ts. */
+  enumValues?: string[];
 }
 
 export interface TableMeta {

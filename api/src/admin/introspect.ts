@@ -188,6 +188,7 @@ export async function introspectSchema(): Promise<SchemaMap> {
         helpText: ov.helpText,
         hideInForm: ov.hideInForm || isPk, // PKs are read-only in form (server assigns)
         hideInList: ov.hideInList,
+        enumValues: ov.enumValues,
       };
       return meta;
     });

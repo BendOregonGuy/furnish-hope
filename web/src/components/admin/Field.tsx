@@ -75,6 +75,26 @@ function FieldInput({
     );
   }
 
+  // VARCHAR columns pinned by a CHECK constraint to an enum render as a
+  // <select> with the allowed values. Declared in api/src/admin/config.ts
+  // because the introspector can't read CHECK constraint content.
+  if (col.enumValues && col.enumValues.length > 0) {
+    return (
+      <select
+        id={id}
+        className="field-input"
+        value={value ?? ''}
+        required={col.required}
+        onChange={e => onChange(e.target.value || null)}
+      >
+        {!col.required && <option value="">— None —</option>}
+        {col.enumValues.map(v => (
+          <option key={v} value={v}>{v}</option>
+        ))}
+      </select>
+    );
+  }
+
   if (col.type === 'boolean') {
     return (
       <label className="inline-flex items-center gap-2 cursor-pointer">
