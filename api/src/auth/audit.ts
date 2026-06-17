@@ -90,11 +90,16 @@ const MASKED_FIELDS = new Set([
   'password_hash',
   'temporary_password',
   // OAuth / IMAP / SMTP tokens (already encrypted at rest, but no
-  // reason to mirror them to audit storage)
-  'oauth_access_token_encrypted',
-  'oauth_refresh_token_encrypted',
-  'imap_password_encrypted',
-  'smtp_password_encrypted',
+  // reason to mirror them to audit storage; column names below match
+  // the actual schema):
+  //   tbl_quickbooks_connection
+  'access_token_encrypted',
+  'refresh_token_encrypted',
+  //   tbl_email_account
+  'oauth_access_token_enc',
+  'oauth_refresh_token_enc',
+  'encrypted_password',
+  // Generic short names, in case any future helper writes them out
   'access_token', 'refresh_token',
   // Sensitive PII
   'date_of_birth',
