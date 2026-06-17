@@ -21,6 +21,12 @@ export interface ColumnMeta {
   label: string;            // human-friendly label
   type: FieldType;
   required: boolean;       // NOT NULL with no default
+  /** True when the column has a SQL DEFAULT (NOW(), 0, false, etc.).
+   *  Used by the admin POST handler to OMIT the column from the INSERT
+   *  when the form sent null — so Postgres applies its DEFAULT instead
+   *  of failing the NOT NULL check. Same idea on UPDATE we DON'T skip,
+   *  because explicitly setting a column to null is meaningful. */
+  hasDefault: boolean;
   isPk: boolean;
   isFk: boolean;
   fkTable?: string;        // when isFk

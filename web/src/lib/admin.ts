@@ -14,6 +14,10 @@ export interface ColumnMeta {
   label: string;
   type: FieldType;
   required: boolean;
+  /** True when the SQL column has a DEFAULT (NOW(), 0, false, etc.).
+   *  The frontend doesn't use it today; surfaced for parity with the
+   *  server-side ColumnMeta so the wire shape stays predictable. */
+  hasDefault?: boolean;
   isPk: boolean;
   isFk: boolean;
   fkTable?: string;

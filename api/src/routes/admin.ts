@@ -520,8 +520,16 @@ function buildInsertValues(
   for (const col of writable) {
     if (!(col.name in body)) continue;
     const raw = body[col.name];
+    const coerced = coerce(col, raw);
+    // If the form sent null for a column that has a SQL DEFAULT
+    // (e.g. created_at TIMESTAMPTZ NOT NULL DEFAULT now()), skip it
+    // from the INSERT so Postgres applies the default. Without this
+    // skip we send VALUES (..., NULL, ...) and Postgres rejects with
+    // "violates not-null constraint" — the default only kicks in for
+    // OMITTED columns.
+    if (coerced === null && col.hasDefault) continue;
     columns.push(col.name);
-    params.push(coerce(col, raw));
+    params.push(coerced);
     values.push(`$${params.length}`);
   }
   return { columns, values, params };

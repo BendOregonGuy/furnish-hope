@@ -178,6 +178,7 @@ export async function introspectSchema(): Promise<SchemaMap> {
         label: ov.label ?? humanize(c.column_name, isFk),
         type: ov.type ?? derivedType,
         required: c.is_nullable === 'NO' && c.column_default === null && !isPk,
+        hasDefault: c.column_default !== null,
         isPk,
         isFk,
         fkTable: fk?.foreign_table_name,
