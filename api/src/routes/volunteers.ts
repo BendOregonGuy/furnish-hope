@@ -24,6 +24,14 @@ interface ContactPayload {
 interface StaffPayload {
   corp_facility_id: number;
   hire_date?: string | null;
+  // Drives the "is this a paid staff member or a volunteer?" toggle on
+  // the form. Volunteers continue to see the prefs / availability /
+  // activity sections; paid staff see only the basic profile.
+  is_volunteer?: boolean;
+  // Background check moved off tbl_volunteer_profile so paid staff can
+  // track it too. Optional on the wire; older clients keep working.
+  background_check_status_id?: number | null;
+  background_check_expiration?: string | null;
 }
 
 interface ProfilePayload {
@@ -78,9 +86,11 @@ volunteersRouter.get('/', async (_req, res, next) => {
         contact.mobile_phone,
         contact.email,
         fs.hire_date,
+        fs.is_volunteer,
+        fs.background_check_status_id,
+        bcs.background_check_status,
+        fs.background_check_expiration,
         vp.waiver_signed,
-        vp.background_check_status,
-        vp.background_check_expiration,
         st.staff_type,
         s.facility_staff_status AS status,
         COALESCE((
@@ -95,6 +105,8 @@ volunteersRouter.get('/', async (_req, res, next) => {
       FROM tbl_facility_staff fs
       JOIN tbl_contact contact ON contact.contact_id = fs.contact_id
       LEFT JOIN tbl_volunteer_profile vp ON vp.facility_staff_id = fs.facility_staff_id
+      LEFT JOIN lkp_background_check_status bcs
+        ON bcs.background_check_status_id = fs.background_check_status_id
       LEFT JOIN LATERAL (
         SELECT st.staff_type FROM tbl_staff_types stt
          JOIN tbl_staff_type st ON st.staff_type_id = stt.staff_type_id
@@ -107,7 +119,6 @@ volunteersRouter.get('/', async (_req, res, next) => {
         WHERE ss.facility_staff_id = fs.facility_staff_id
         ORDER BY ss.status_date_changed DESC LIMIT 1
       ) s ON true
-      WHERE fs.is_volunteer = true
       ORDER BY contact.last_name
     `);
 
@@ -130,6 +141,10 @@ volunteersRouter.get('/:id', async (req, res, next) => {
         fs.contact_id,
         fs.corp_facility_id,
         fs.hire_date,
+        fs.is_volunteer,
+        fs.background_check_status_id,
+        bcs.background_check_status,
+        fs.background_check_expiration,
         f.facility_name,
         contact.first_name,
         contact.middle_name,
@@ -167,10 +182,12 @@ volunteersRouter.get('/:id', async (req, res, next) => {
       LEFT JOIN lkp_gender g ON g.gender_id = contact.gender_id
       LEFT JOIN lkp_ethnicity e ON e.ethnicity_id = contact.ethnicity_id
       LEFT JOIN tbl_volunteer_profile vp ON vp.facility_staff_id = fs.facility_staff_id
-      WHERE fs.facility_staff_id = $1 AND fs.is_volunteer = true
+      LEFT JOIN lkp_background_check_status bcs
+        ON bcs.background_check_status_id = fs.background_check_status_id
+      WHERE fs.facility_staff_id = $1
     `, [id]);
 
-    if (!volunteer) return res.status(404).json({ error: 'Volunteer not found' });
+    if (!volunteer) return res.status(404).json({ error: 'Staff member not found' });
 
     const skills = await query(`
       SELECT sk.skill_id, sk.skill
@@ -216,16 +233,14 @@ volunteersRouter.get('/:id', async (req, res, next) => {
       SELECT fs.facility_staff_id AS id
         FROM tbl_facility_staff fs
         JOIN tbl_contact contact ON contact.contact_id = fs.contact_id
-       WHERE fs.is_volunteer = true
-         AND (contact.last_name < $1 OR (contact.last_name = $1 AND fs.facility_staff_id < $2))
+       WHERE (contact.last_name < $1 OR (contact.last_name = $1 AND fs.facility_staff_id < $2))
        ORDER BY contact.last_name DESC, fs.facility_staff_id DESC LIMIT 1
     `, [cur?.last_name, id]);
     const next = await queryOne<{ id: number }>(`
       SELECT fs.facility_staff_id AS id
         FROM tbl_facility_staff fs
         JOIN tbl_contact contact ON contact.contact_id = fs.contact_id
-       WHERE fs.is_volunteer = true
-         AND (contact.last_name > $1 OR (contact.last_name = $1 AND fs.facility_staff_id > $2))
+       WHERE (contact.last_name > $1 OR (contact.last_name = $1 AND fs.facility_staff_id > $2))
        ORDER BY contact.last_name ASC, fs.facility_staff_id ASC LIMIT 1
     `, [cur?.last_name, id]);
 
@@ -261,18 +276,31 @@ volunteersRouter.post('/', async (req, res, next) => {
         body.contact.other_phone ?? null, body.contact.email ?? null,
       ]);
 
+      const isVolunteer = body.staff.is_volunteer ?? true;
       const fs = await tx.queryOne<Record<string, any>>(`
-        INSERT INTO tbl_facility_staff (corp_facility_id, contact_id, is_volunteer, hire_date)
-        VALUES ($1, $2, true, $3)
+        INSERT INTO tbl_facility_staff
+          (corp_facility_id, contact_id, is_volunteer, hire_date,
+           background_check_status_id, background_check_expiration)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *
-      `, [body.staff.corp_facility_id, contact!.contact_id, body.staff.hire_date ?? null]);
+      `, [
+        body.staff.corp_facility_id, contact!.contact_id, isVolunteer,
+        body.staff.hire_date ?? null,
+        body.staff.background_check_status_id ?? null,
+        body.staff.background_check_expiration ?? null,
+      ]);
 
-      const profileCols = profileColumnsAndValues(body.profile, fs!.facility_staff_id);
-      await tx.query(
-        `INSERT INTO tbl_volunteer_profile (${profileCols.columns.join(', ')})
-         VALUES (${profileCols.placeholders.join(', ')})`,
-        profileCols.values,
-      );
+      // Volunteer profile only exists for is_volunteer = true; paid
+      // staff don't get one (their staff-level data lives directly on
+      // tbl_facility_staff).
+      if (isVolunteer) {
+        const profileCols = profileColumnsAndValues(body.profile, fs!.facility_staff_id);
+        await tx.query(
+          `INSERT INTO tbl_volunteer_profile (${profileCols.columns.join(', ')})
+           VALUES (${profileCols.placeholders.join(', ')})`,
+          profileCols.values,
+        );
+      }
 
       for (const skill_id of body.skill_ids ?? []) {
         await tx.query(`INSERT INTO tbl_volunteer_skill (facility_staff_id, skill_id) VALUES ($1, $2)`,
@@ -300,10 +328,10 @@ volunteersRouter.put('/:id', async (req, res, next) => {
     if (errs.length) return res.status(400).json({ error: errs.join('; ') });
 
     await withTransaction(async (tx) => {
-      const existing = await tx.queryOne<{ contact_id: number }>(
-        `SELECT contact_id FROM tbl_facility_staff WHERE facility_staff_id = $1 AND is_volunteer = true`, [id],
+      const existing = await tx.queryOne<{ contact_id: number; is_volunteer: boolean }>(
+        `SELECT contact_id, is_volunteer FROM tbl_facility_staff WHERE facility_staff_id = $1`, [id],
       );
-      if (!existing) throw withStatus(404, 'Volunteer not found');
+      if (!existing) throw withStatus(404, 'Staff member not found');
 
       const beforeFs = await tx.queryOne<Record<string, any>>(`SELECT * FROM tbl_facility_staff WHERE facility_staff_id = $1`, [id]);
 
@@ -322,18 +350,38 @@ volunteersRouter.put('/:id', async (req, res, next) => {
         existing.contact_id,
       ]);
 
+      const updatedIsVolunteer = body.staff.is_volunteer ?? existing.is_volunteer;
       const afterFs = await tx.queryOne<Record<string, any>>(`
         UPDATE tbl_facility_staff
-           SET corp_facility_id = $1, hire_date = $2
-         WHERE facility_staff_id = $3
+           SET corp_facility_id = $1,
+               hire_date = $2,
+               is_volunteer = $3,
+               background_check_status_id = $4,
+               background_check_expiration = $5
+         WHERE facility_staff_id = $6
          RETURNING *
-      `, [body.staff.corp_facility_id, body.staff.hire_date ?? null, id]);
+      `, [
+        body.staff.corp_facility_id, body.staff.hire_date ?? null,
+        updatedIsVolunteer,
+        body.staff.background_check_status_id ?? null,
+        body.staff.background_check_expiration ?? null,
+        id,
+      ]);
       if (beforeFs && afterFs) await auditUpdate(req, 'tbl_facility_staff', id, beforeFs, afterFs, tx);
 
-      // Upsert volunteer profile.
+      // Upsert volunteer profile — only for volunteers. If a record
+      // is flipped from volunteer to paid staff we LEAVE the existing
+      // profile row in place (in case it gets flipped back) but stop
+      // writing to it.
       const hasProfile = await tx.queryOne<{ id: number }>(
         `SELECT volunteer_profile_id AS id FROM tbl_volunteer_profile WHERE facility_staff_id = $1`, [id],
       );
+      // Paid staff don't have a volunteer profile. Skip the upsert
+      // entirely; we don't want to silently materialize a row with
+      // default values for someone who isn't a volunteer.
+      if (!updatedIsVolunteer) {
+        // intentional no-op; fall through to skills handling
+      } else {
       const profileCols = profileColumnsAndValues(body.profile, id);
       if (hasProfile) {
         // UPDATE form: column = $N pairs, excluding facility_staff_id (first column).
@@ -355,6 +403,7 @@ volunteersRouter.put('/:id', async (req, res, next) => {
           profileCols.values,
         );
       }
+      } // end if (updatedIsVolunteer)
 
       // Diff skills.
       const incoming = new Set(body.skill_ids ?? []);

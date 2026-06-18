@@ -36,16 +36,19 @@ const CONTACT_FIELDS: ColumnMeta[] = [
 ];
 
 const STAFF_FIELDS: ColumnMeta[] = [
+  { name: 'is_volunteer',     label: 'Volunteer? (unchecked = paid staff)', type: 'boolean', required: false, isPk: false, isFk: false, helpText: 'Volunteers see the availability / activity / lift sections below; paid staff see only the basic profile.' },
   { name: 'corp_facility_id', label: 'Home facility', type: 'fk',   required: true,  isPk: false, isFk: true, fkTable: 'tbl_corp_facility' },
   { name: 'hire_date',        label: 'Start date',     type: 'date', required: false, isPk: false, isFk: false },
+  { name: 'background_check_status_id',  label: 'Background check status', type: 'fk',   required: false, isPk: false, isFk: true, fkTable: 'lkp_background_check_status', helpText: 'Applies to both paid staff and volunteers.' },
+  { name: 'background_check_expiration', label: 'BG check expires',       type: 'date', required: false, isPk: false, isFk: false },
 ];
 
+// Volunteer-only onboarding. Background check fields moved to the
+// staff section so paid staff can track them too.
 const PROFILE_FIELDS: ColumnMeta[] = [
   { name: 'waiver_signed',              label: 'Waiver signed',          type: 'boolean', required: false, isPk: false, isFk: false },
   { name: 'waiver_signed_date',         label: 'Waiver date',            type: 'date',    required: false, isPk: false, isFk: false },
   { name: 'waiver_version',             label: 'Waiver version',         type: 'text',    required: false, isPk: false, isFk: false, maxLength: 20 },
-  { name: 'background_check_status',    label: 'Background check status', type: 'text',   required: false, isPk: false, isFk: false, maxLength: 50, helpText: 'e.g. Cleared, Pending, Expired, Denied.' },
-  { name: 'background_check_expiration', label: 'BG check expires',      type: 'date',    required: false, isPk: false, isFk: false },
   { name: 'emergency_contact_name',     label: 'Emergency contact name', type: 'text',    required: false, isPk: false, isFk: false, maxLength: 100 },
   { name: 'emergency_contact_phone',    label: 'Emergency contact phone', type: 'text',   required: false, isPk: false, isFk: false, maxLength: 20 },
   { name: 't_shirt_size',               label: 'T-shirt size',           type: 'text',    required: false, isPk: false, isFk: false, maxLength: 10 },
@@ -157,13 +160,14 @@ export function VolunteerForm() {
       home_phone:   v.home_phone ?? '',
       other_phone:  v.other_phone ?? '',
       email:        v.email ?? '',
+      is_volunteer: v.is_volunteer ?? true,
       corp_facility_id: v.corp_facility_id,
       hire_date:    dateOnly(v.hire_date),
+      background_check_status_id:  v.background_check_status_id ?? null,
+      background_check_expiration: dateOnly(v.background_check_expiration),
       waiver_signed: !!v.waiver_signed,
       waiver_signed_date: dateOnly(v.waiver_signed_date),
       waiver_version: v.waiver_version ?? '',
-      background_check_status: v.background_check_status ?? '',
-      background_check_expiration: dateOnly(v.background_check_expiration),
       emergency_contact_name: v.emergency_contact_name ?? '',
       emergency_contact_phone: v.emergency_contact_phone ?? '',
       t_shirt_size: v.t_shirt_size ?? '',
@@ -279,15 +283,16 @@ export function VolunteerForm() {
         email:        values.email || null,
       },
       staff: {
-        corp_facility_id: Number(values.corp_facility_id),
-        hire_date:        values.hire_date || null,
+        is_volunteer:                !!values.is_volunteer,
+        corp_facility_id:            Number(values.corp_facility_id),
+        hire_date:                   values.hire_date || null,
+        background_check_status_id:  values.background_check_status_id ? Number(values.background_check_status_id) : null,
+        background_check_expiration: values.background_check_expiration || null,
       },
       profile: {
         waiver_signed:               !!values.waiver_signed,
         waiver_signed_date:          values.waiver_signed_date || null,
         waiver_version:              values.waiver_version || null,
-        background_check_status:     values.background_check_status || null,
-        background_check_expiration: values.background_check_expiration || null,
         emergency_contact_name:      values.emergency_contact_name || null,
         emergency_contact_phone:     values.emergency_contact_phone || null,
         t_shirt_size:                values.t_shirt_size || null,
@@ -366,9 +371,11 @@ export function VolunteerForm() {
     <>
       <PageHeader
         helpSection="volunteers-manual"
-        title={isNew ? 'New' : (fullName || 'Edit volunteer')}
-        emphasis={isNew ? 'volunteer' : undefined}
-        subtitle={isNew ? 'Add a new volunteer.' : `Editing volunteer #${id}.`}
+        title={isNew ? 'New' : (fullName || 'Edit')}
+        emphasis={isNew ? (values.is_volunteer ? 'volunteer' : 'staff member') : undefined}
+        subtitle={isNew
+          ? `Add a new ${values.is_volunteer ? 'volunteer' : 'paid staff member'}. Switch the "Volunteer?" checkbox to change.`
+          : `Editing ${values.is_volunteer ? 'volunteer' : 'paid staff'} #${id}.`}
       />
 
       <FormNavBar
@@ -392,32 +399,36 @@ export function VolunteerForm() {
           <FieldGrid>{STAFF_FIELDS.map(renderField)}</FieldGrid>
         </Section>
 
-        <Section title="Onboarding" hint="Waiver, background check, emergency contact, t-shirt.">
-          <FieldGrid>{PROFILE_FIELDS.map(renderField)}</FieldGrid>
-        </Section>
+        {values.is_volunteer && (
+          <>
+            <Section title="Volunteer onboarding" hint="Waiver, emergency contact, t-shirt.">
+              <FieldGrid>{PROFILE_FIELDS.map(renderField)}</FieldGrid>
+            </Section>
 
-        <Section title="Schedule" hint="Commitment level and availability window.">
-          <FieldGrid>{SCHEDULE_FIELDS.map(renderField)}</FieldGrid>
-        </Section>
+            <Section title="Schedule" hint="Commitment level and availability window.">
+              <FieldGrid>{SCHEDULE_FIELDS.map(renderField)}</FieldGrid>
+            </Section>
 
-        <Section title="Availability" hint="Days and times they can typically volunteer. Used to match them against shifts.">
-          <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mb-1.5">Days of week</div>
-          <FieldGrid>{AVAILABILITY_DAY_FIELDS.map(renderField)}</FieldGrid>
-          <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mt-3 mb-1.5">Time of day</div>
-          <FieldGrid>{AVAILABILITY_TIME_FIELDS.map(renderField)}</FieldGrid>
-        </Section>
+            <Section title="Availability" hint="Days and times they can typically volunteer. Used to match them against shifts.">
+              <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mb-1.5">Days of week</div>
+              <FieldGrid>{AVAILABILITY_DAY_FIELDS.map(renderField)}</FieldGrid>
+              <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mt-3 mb-1.5">Time of day</div>
+              <FieldGrid>{AVAILABILITY_TIME_FIELDS.map(renderField)}</FieldGrid>
+            </Section>
 
-        <Section title="Activity preferences" hint="Types of work they're interested in. Drives the default volunteer list when staff signs them up for a shift.">
-          <FieldGrid>{ACTIVITY_FIELDS.map(renderField)}</FieldGrid>
-        </Section>
+            <Section title="Activity preferences" hint="Types of work they're interested in. Drives the default volunteer list when staff signs them up for a shift.">
+              <FieldGrid>{ACTIVITY_FIELDS.map(renderField)}</FieldGrid>
+            </Section>
 
-        <Section title="Physical / logistics" hint="Used to filter pickup and delivery shifts.">
-          <FieldGrid>{PHYSICAL_FIELDS.map(renderField)}</FieldGrid>
-        </Section>
+            <Section title="Physical / logistics" hint="Used to filter pickup and delivery shifts.">
+              <FieldGrid>{PHYSICAL_FIELDS.map(renderField)}</FieldGrid>
+            </Section>
 
-        <Section title="Background" hint="Free-text context for recruiters; not used by the matcher.">
-          <FieldGrid>{NARRATIVE_FIELDS.map(renderField)}</FieldGrid>
-        </Section>
+            <Section title="Background" hint="Free-text context for recruiters; not used by the matcher.">
+              <FieldGrid>{NARRATIVE_FIELDS.map(renderField)}</FieldGrid>
+            </Section>
+          </>
+        )}
 
         <Section title="Skills" hint="Pick any that apply.">
           <SubformList<SkillRow>
@@ -466,9 +477,10 @@ function blankFormState(): Record<string, any> {
     first_name: '', middle_name: '', last_name: '', birth_date: '',
     gender_id: null, ethnicity_id: null,
     mobile_phone: '', home_phone: '', other_phone: '', email: '',
+    is_volunteer: true,
     corp_facility_id: null, hire_date: '',
+    background_check_status_id: null, background_check_expiration: '',
     waiver_signed: false, waiver_signed_date: '', waiver_version: '',
-    background_check_status: '', background_check_expiration: '',
     emergency_contact_name: '', emergency_contact_phone: '', t_shirt_size: '',
     // Expanded profile (originally captured by public signup form)
     frequency: null, start_date: '', end_date: '',

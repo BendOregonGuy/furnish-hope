@@ -2424,6 +2424,91 @@ const MIGRATIONS: Migration[] = [
     },
   },
   // ============================================================
+  // Background check status as a lookup + on tbl_facility_staff (2026-06-17)
+  // ------------------------------------------------------------
+  // Background check status was a free-text VARCHAR on
+  // tbl_volunteer_profile. That meant typos ("Cleared" vs
+  // "cleared" vs "CLEARED") fragmented reports, and there was no
+  // way for paid staff to track it at all (no profile row).
+  //
+  // Schema move:
+  //   - new lkp_background_check_status seeded with canonical values
+  //   - background_check_status_id + background_check_expiration on
+  //     tbl_facility_staff (applies to both volunteers and paid
+  //     staff; volunteers are just facility_staff with is_volunteer=true)
+  //   - tbl_volunteer_profile.background_check_status (text) and
+  //     background_check_expiration STAY for now as deprecated
+  //     read-only sources; backfill seeds the new FK from them.
+  // ============================================================
+  {
+    name: 'lkp_background_check_status + tbl_facility_staff columns + backfill',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS lkp_background_check_status (
+          background_check_status_id SERIAL PRIMARY KEY,
+          background_check_status    VARCHAR(40) NOT NULL UNIQUE,
+          sort_order                 INTEGER NOT NULL DEFAULT 0,
+          is_active                  BOOLEAN NOT NULL DEFAULT true,
+          description                VARCHAR(200)
+        )
+      `);
+      const seed: Array<[string, number, string]> = [
+        ['Not required',  10, 'Role does not require a background check.'],
+        ['Pending',       20, 'Check has been requested but not started.'],
+        ['In progress',   30, 'Check is in flight with the screening service.'],
+        ['Cleared',       40, 'Check came back clean; person is approved.'],
+        ['Expired',       50, 'Past the expiration window; renewal needed.'],
+        ['Failed',        60, 'Check did not clear; do not assign to sensitive roles.'],
+      ];
+      for (const [name, sort, desc] of seed) {
+        await query(
+          `INSERT INTO lkp_background_check_status
+             (background_check_status, sort_order, description)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (background_check_status) DO NOTHING`,
+          [name, sort, desc],
+        );
+      }
+
+      await query(`
+        ALTER TABLE tbl_facility_staff
+          ADD COLUMN IF NOT EXISTS background_check_status_id INTEGER
+            REFERENCES lkp_background_check_status(background_check_status_id),
+          ADD COLUMN IF NOT EXISTS background_check_expiration DATE
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_facility_staff_background_status
+          ON tbl_facility_staff (background_check_status_id)
+          WHERE background_check_status_id IS NOT NULL
+      `);
+
+      // Backfill from tbl_volunteer_profile's free-text column.
+      // Match case-insensitively + trim — any free-text typos that
+      // don't match a seeded label are left as NULL (admin can fix
+      // by editing the row). Same for the expiration date.
+      await query(`
+        UPDATE tbl_facility_staff fs
+           SET background_check_status_id = lkp.background_check_status_id
+          FROM tbl_volunteer_profile vp
+          JOIN lkp_background_check_status lkp
+            ON LOWER(TRIM(lkp.background_check_status)) = LOWER(TRIM(vp.background_check_status))
+         WHERE vp.facility_staff_id = fs.facility_staff_id
+           AND fs.background_check_status_id IS NULL
+           AND vp.background_check_status IS NOT NULL
+           AND TRIM(vp.background_check_status) <> ''
+      `);
+      await query(`
+        UPDATE tbl_facility_staff fs
+           SET background_check_expiration = vp.background_check_expiration
+          FROM tbl_volunteer_profile vp
+         WHERE vp.facility_staff_id = fs.facility_staff_id
+           AND fs.background_check_expiration IS NULL
+           AND vp.background_check_expiration IS NOT NULL
+      `);
+    },
+  },
+
+  // ============================================================
   // Volunteer profile expansion (2026-06-17)
   // ------------------------------------------------------------
   // The public volunteer-signup form captures preferences and

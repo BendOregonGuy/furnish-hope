@@ -9,6 +9,7 @@ type Volunteer = {
   mobile_phone: string | null;
   email: string | null;
   hire_date: string | null;
+  is_volunteer: boolean;
   waiver_signed: boolean | null;
   background_check_status: string | null;
   background_check_expiration: string | null;
@@ -33,7 +34,7 @@ export function Volunteers() {
         subtitle="Onboarding status, hours, and skills. Volunteers are the heart of the Cycle of Hope."
         actions={
           <Link to="/volunteers/new" className="btn-primary">
-            <span className="text-base leading-none">+</span> Add volunteer
+            <span className="text-base leading-none">+</span> Add volunteer or staff
           </Link>
         }
       />
@@ -55,7 +56,7 @@ export function Volunteers() {
                 <div>
                   <div className="font-medium">{v.name}</div>
                   <div className="text-[11px] text-ink-faint">
-                    {v.staff_type ?? 'Volunteer'} · since {formatShortDate(v.hire_date)}
+                    {v.staff_type ?? (v.is_volunteer ? 'Volunteer' : 'Paid staff')} · since {formatShortDate(v.hire_date)}
                   </div>
                   {v.mobile_phone && <div className="text-[11px] text-ink-faint mt-0.5">{v.mobile_phone}</div>}
                 </div>
