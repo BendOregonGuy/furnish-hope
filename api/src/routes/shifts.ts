@@ -86,6 +86,194 @@ shiftsRouter.get('/', async (req, res, next) => {
 });
 
 /* ----------------------------------------------------------------- */
+/*  Eligible volunteers for a shift                                   */
+/*                                                                    */
+/*  GET /api/shifts/:id/eligible-volunteers?relax=activity,...        */
+/*                                                                    */
+/*  Filters tbl_facility_staff (is_volunteer=true) against the        */
+/*  shift's type / date / times using the preference data on          */
+/*  tbl_volunteer_profile. Three independently-relaxable filters:     */
+/*                                                                    */
+/*    activity     act_X for the shift's type OR act_anywhere         */
+/*    availability avail_<dow>  AND  matching time-of-day             */
+/*    physical     pickup/delivery shifts need a license OR vehicle,  */
+/*                  AND can_lift in {25_50, 50_plus}; other shifts    */
+/*                  have no physical filter                           */
+/*                                                                    */
+/*  ?relax=activity,physical drops those checks. Empty relax = strict.*/
+/*                                                                    */
+/*  Returns one row per matching volunteer with a one-line summary    */
+/*  the ShiftDetail picker can display.                               */
+/* ----------------------------------------------------------------- */
+
+/** Pickup / delivery shifts get the physical-capability filter; the
+ *  others don't because we don't require lifting or driving for office
+ *  or admin volunteer work. */
+const PHYSICAL_REQUIRED_TYPES = new Set(['Pickup crew', 'Delivery crew']);
+
+/** Map lkp_shift_type.shift_type -> the act_* column on
+ *  tbl_volunteer_profile that signals matching preference. Outreach
+ *  maps to act_events as the closest semantic neighbor (community
+ *  presence). act_anywhere always counts as a match in addition to
+ *  the type-specific column. */
+const ACT_COLUMN_FOR_TYPE: Record<string, string> = {
+  'Pickup crew':    'act_pickups',
+  'Delivery crew':  'act_deliveries',
+  'Warehouse':      'act_warehouse',
+  'Event support':  'act_events',
+  'Administrative': 'act_admin',
+  'Outreach':       'act_events',
+};
+
+/** Map a TIME ('HH:MM:SS') to the morning / afternoon / evening
+ *  buckets the public signup form uses. Morning = <12, afternoon =
+ *  12..<17, evening = >=17. Shifts that straddle a boundary should
+ *  match every bucket they touch — the union catches that. */
+function timeBucketsForShift(start: string | null, end: string | null): string[] {
+  if (!start && !end) return [];
+  const hour = (t: string | null): number | null => {
+    if (!t) return null;
+    const parts = t.split(':');
+    const h = Number(parts[0]);
+    return Number.isFinite(h) ? h : null;
+  };
+  const startH = hour(start) ?? 0;
+  const endH   = hour(end)   ?? 23;
+  const buckets: string[] = [];
+  if (startH < 12) buckets.push('time_morning');
+  if (startH < 17 && endH >= 12) buckets.push('time_afternoon');
+  if (endH >= 17) buckets.push('time_evening');
+  return [...new Set(buckets)];
+}
+
+/** Postgres uses Sunday=0, Monday=1, …, Saturday=6 from EXTRACT(DOW). */
+const AVAIL_COLUMN_FOR_DOW: Record<number, string> = {
+  0: 'avail_sun', 1: 'avail_mon', 2: 'avail_tue',
+  3: 'avail_wed', 4: 'avail_thu', 5: 'avail_fri', 6: 'avail_sat',
+};
+
+shiftsRouter.get('/:id/eligible-volunteers', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+
+    const relax = new Set(
+      String(req.query.relax || '').split(',').map(s => s.trim()).filter(Boolean),
+    );
+    const relaxActivity     = relax.has('activity');
+    const relaxAvailability = relax.has('availability');
+    const relaxPhysical     = relax.has('physical');
+
+    const shift = await queryOne<{
+      shift_id: number;
+      shift_date: string;
+      start_time: string | null;
+      end_time: string | null;
+      shift_type: string;
+      dow: number;
+    }>(`
+      SELECT
+        s.shift_id, s.shift_date::text AS shift_date,
+        s.start_time::text AS start_time,
+        s.end_time::text   AS end_time,
+        st.shift_type,
+        EXTRACT(DOW FROM s.shift_date)::int AS dow
+      FROM tbl_volunteer_shift s
+      JOIN lkp_shift_type st ON st.shift_type_id = s.shift_type_id
+      WHERE s.shift_id = $1
+    `, [id]);
+    if (!shift) return res.status(404).json({ error: 'Shift not found' });
+
+    const conds: string[] = [
+      `fs.is_volunteer = true`,
+      // Don't suggest a volunteer who's already signed up for this same
+      // shift and not cancelled — they'd be double-listed.
+      `NOT EXISTS (
+         SELECT 1 FROM tbl_volunteer_shift_signup sg
+          WHERE sg.shift_id = ${id}
+            AND sg.facility_staff_id = fs.facility_staff_id
+            AND sg.signup_status <> 'cancelled'
+       )`,
+    ];
+
+    if (!relaxActivity) {
+      const actCol = ACT_COLUMN_FOR_TYPE[shift.shift_type];
+      if (actCol) {
+        conds.push(`(vp.${actCol} = true OR vp.act_anywhere = true)`);
+      }
+    }
+
+    if (!relaxAvailability) {
+      const availCol = AVAIL_COLUMN_FOR_DOW[shift.dow];
+      if (availCol) conds.push(`vp.${availCol} = true`);
+      const buckets = timeBucketsForShift(shift.start_time, shift.end_time);
+      if (buckets.length > 0) {
+        conds.push(`(${buckets.map(b => `vp.${b} = true`).join(' OR ')})`);
+      }
+    }
+
+    if (!relaxPhysical && PHYSICAL_REQUIRED_TYPES.has(shift.shift_type)) {
+      conds.push(`(vp.has_drivers_license = true OR vp.has_vehicle = true)`);
+      conds.push(`(vp.can_lift IN ('25_50', '50_plus'))`);
+    }
+
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+
+    const rows = await query<{
+      facility_staff_id: number;
+      name: string;
+      mobile_phone: string | null;
+      email: string | null;
+      can_lift: string | null;
+      has_drivers_license: boolean | null;
+      has_vehicle: boolean | null;
+      frequency: string | null;
+    }>(`
+      SELECT
+        fs.facility_staff_id,
+        contact.first_name || ' ' || contact.last_name AS name,
+        contact.mobile_phone, contact.email,
+        vp.can_lift, vp.has_drivers_license, vp.has_vehicle, vp.frequency
+      FROM tbl_facility_staff fs
+      JOIN tbl_contact contact ON contact.contact_id = fs.contact_id
+      LEFT JOIN tbl_volunteer_profile vp ON vp.facility_staff_id = fs.facility_staff_id
+      ${where}
+      ORDER BY contact.last_name, contact.first_name
+      LIMIT 500
+    `);
+
+    // Also report the count we'd return without any relaxes — lets
+    // the UI show "Showing N (M without filters)" without making the
+    // client run the query twice.
+    const totalRow = await queryOne<{ count: string }>(`
+      SELECT COUNT(*)::text AS count
+      FROM tbl_facility_staff fs
+      JOIN tbl_contact contact ON contact.contact_id = fs.contact_id
+      WHERE fs.is_volunteer = true
+        AND NOT EXISTS (
+          SELECT 1 FROM tbl_volunteer_shift_signup sg
+           WHERE sg.shift_id = $1
+             AND sg.facility_staff_id = fs.facility_staff_id
+             AND sg.signup_status <> 'cancelled'
+        )
+    `, [id]);
+
+    res.json({
+      shift: {
+        shift_type: shift.shift_type,
+        shift_date: shift.shift_date,
+        start_time: shift.start_time,
+        end_time: shift.end_time,
+        physical_required: PHYSICAL_REQUIRED_TYPES.has(shift.shift_type),
+      },
+      relaxed: { activity: relaxActivity, availability: relaxAvailability, physical: relaxPhysical },
+      total_eligible: Number(totalRow?.count ?? 0),
+      volunteers: rows,
+    });
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
 /*  Read one + signups                                                */
 /* ----------------------------------------------------------------- */
 

@@ -51,7 +51,55 @@ const PROFILE_FIELDS: ColumnMeta[] = [
   { name: 't_shirt_size',               label: 'T-shirt size',           type: 'text',    required: false, isPk: false, isFk: false, maxLength: 10 },
 ];
 
-const ALL_FIELDS = [...PERSON_FIELDS, ...CONTACT_FIELDS, ...STAFF_FIELDS, ...PROFILE_FIELDS];
+// Originally captured by the public signup form. Surfaced here so staff
+// can edit and so the shift signup picker has data to match on.
+const SCHEDULE_FIELDS: ColumnMeta[] = [
+  { name: 'frequency', label: 'Frequency', type: 'text', required: false, isPk: false, isFk: false, enumValues: ['one_time', 'recurring', 'on_call'], helpText: 'How often they expect to volunteer.' },
+  { name: 'start_date', label: 'Available from', type: 'date', required: false, isPk: false, isFk: false },
+  { name: 'end_date',   label: 'Available until', type: 'date', required: false, isPk: false, isFk: false },
+];
+const AVAILABILITY_DAY_FIELDS: ColumnMeta[] = [
+  { name: 'avail_mon', label: 'Monday',    type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'avail_tue', label: 'Tuesday',   type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'avail_wed', label: 'Wednesday', type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'avail_thu', label: 'Thursday',  type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'avail_fri', label: 'Friday',    type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'avail_sat', label: 'Saturday',  type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'avail_sun', label: 'Sunday',    type: 'boolean', required: false, isPk: false, isFk: false },
+];
+const AVAILABILITY_TIME_FIELDS: ColumnMeta[] = [
+  { name: 'time_morning',   label: 'Mornings',   type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'time_afternoon', label: 'Afternoons', type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'time_evening',   label: 'Evenings',   type: 'boolean', required: false, isPk: false, isFk: false },
+];
+const ACTIVITY_FIELDS: ColumnMeta[] = [
+  { name: 'act_pickups',     label: 'Pickups',           type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'act_deliveries',  label: 'Deliveries',        type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'act_warehouse',   label: 'Warehouse',         type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'act_events',      label: 'Events / outreach', type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'act_admin',       label: 'Administrative',    type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'act_photography', label: 'Photography',       type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'act_trades',      label: 'Skilled trades',    type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'act_anywhere',    label: 'Anywhere needed',   type: 'boolean', required: false, isPk: false, isFk: false, helpText: 'Treats any shift type as a match in the picker.' },
+];
+const PHYSICAL_FIELDS: ColumnMeta[] = [
+  { name: 'can_lift', label: 'Lifting capacity', type: 'text', required: false, isPk: false, isFk: false, enumValues: ['under_25', '25_50', '50_plus', 'cannot'], helpText: 'Pickup and delivery shifts default to filtering by 25-50 lbs and up.' },
+  { name: 'has_drivers_license', label: 'Has driver\'s license', type: 'boolean', required: false, isPk: false, isFk: false },
+  { name: 'has_vehicle',         label: 'Has own vehicle',       type: 'boolean', required: false, isPk: false, isFk: false },
+];
+const NARRATIVE_FIELDS: ColumnMeta[] = [
+  { name: 'special_skills',       label: 'Special skills (free text)', type: 'textarea', required: false, isPk: false, isFk: false },
+  { name: 'why_interested',       label: 'Why interested',             type: 'textarea', required: false, isPk: false, isFk: false },
+  { name: 'heard_from_id',        label: 'How they heard about us',    type: 'fk',       required: false, isPk: false, isFk: true,  fkTable: 'lkp_howtheyfoundus' },
+  { name: 'needs_verified_hours', label: 'Needs verified hours',       type: 'boolean',  required: false, isPk: false, isFk: false, helpText: 'For school / community-service credit.' },
+  { name: 'agreed_to_emails',     label: 'Opted in to emails',         type: 'boolean',  required: false, isPk: false, isFk: false },
+];
+
+const ALL_FIELDS = [
+  ...PERSON_FIELDS, ...CONTACT_FIELDS, ...STAFF_FIELDS, ...PROFILE_FIELDS,
+  ...SCHEDULE_FIELDS, ...AVAILABILITY_DAY_FIELDS, ...AVAILABILITY_TIME_FIELDS,
+  ...ACTIVITY_FIELDS, ...PHYSICAL_FIELDS, ...NARRATIVE_FIELDS,
+];
 
 interface SkillRow extends SubformRow {
   skill_id: number | null;
@@ -119,6 +167,30 @@ export function VolunteerForm() {
       emergency_contact_name: v.emergency_contact_name ?? '',
       emergency_contact_phone: v.emergency_contact_phone ?? '',
       t_shirt_size: v.t_shirt_size ?? '',
+      frequency: v.frequency ?? null,
+      start_date: dateOnly(v.start_date),
+      end_date:   dateOnly(v.end_date),
+      avail_mon: !!v.avail_mon, avail_tue: !!v.avail_tue, avail_wed: !!v.avail_wed,
+      avail_thu: !!v.avail_thu, avail_fri: !!v.avail_fri, avail_sat: !!v.avail_sat, avail_sun: !!v.avail_sun,
+      time_morning:   !!v.time_morning,
+      time_afternoon: !!v.time_afternoon,
+      time_evening:   !!v.time_evening,
+      act_pickups:     !!v.act_pickups,
+      act_deliveries:  !!v.act_deliveries,
+      act_warehouse:   !!v.act_warehouse,
+      act_events:      !!v.act_events,
+      act_admin:       !!v.act_admin,
+      act_photography: !!v.act_photography,
+      act_trades:      !!v.act_trades,
+      act_anywhere:    !!v.act_anywhere,
+      can_lift: v.can_lift ?? null,
+      has_drivers_license: !!v.has_drivers_license,
+      has_vehicle:         !!v.has_vehicle,
+      special_skills:       v.special_skills ?? '',
+      heard_from_id:        v.heard_from_id ?? null,
+      why_interested:       v.why_interested ?? '',
+      needs_verified_hours: !!v.needs_verified_hours,
+      agreed_to_emails:     !!v.agreed_to_emails,
     };
     const sk: SkillRow[] = existing.skills.map(s => ({ skill_id: s.skill_id }));
     setValues(init); setInitial(init);
@@ -219,6 +291,33 @@ export function VolunteerForm() {
         emergency_contact_name:      values.emergency_contact_name || null,
         emergency_contact_phone:     values.emergency_contact_phone || null,
         t_shirt_size:                values.t_shirt_size || null,
+        // Expanded profile (signup-form parity)
+        frequency:                   values.frequency || null,
+        start_date:                  values.start_date || null,
+        end_date:                    values.end_date || null,
+        avail_mon: !!values.avail_mon, avail_tue: !!values.avail_tue,
+        avail_wed: !!values.avail_wed, avail_thu: !!values.avail_thu,
+        avail_fri: !!values.avail_fri, avail_sat: !!values.avail_sat,
+        avail_sun: !!values.avail_sun,
+        time_morning:   !!values.time_morning,
+        time_afternoon: !!values.time_afternoon,
+        time_evening:   !!values.time_evening,
+        act_pickups:     !!values.act_pickups,
+        act_deliveries:  !!values.act_deliveries,
+        act_warehouse:   !!values.act_warehouse,
+        act_events:      !!values.act_events,
+        act_admin:       !!values.act_admin,
+        act_photography: !!values.act_photography,
+        act_trades:      !!values.act_trades,
+        act_anywhere:    !!values.act_anywhere,
+        can_lift:                    values.can_lift || null,
+        has_drivers_license: !!values.has_drivers_license,
+        has_vehicle:         !!values.has_vehicle,
+        special_skills:              values.special_skills || null,
+        heard_from_id:               values.heard_from_id ? Number(values.heard_from_id) : null,
+        why_interested:              values.why_interested || null,
+        needs_verified_hours: !!values.needs_verified_hours,
+        agreed_to_emails:     !!values.agreed_to_emails,
       },
       skill_ids: skills.map(s => Number(s.skill_id)).filter(Boolean),
     };
@@ -297,6 +396,29 @@ export function VolunteerForm() {
           <FieldGrid>{PROFILE_FIELDS.map(renderField)}</FieldGrid>
         </Section>
 
+        <Section title="Schedule" hint="Commitment level and availability window.">
+          <FieldGrid>{SCHEDULE_FIELDS.map(renderField)}</FieldGrid>
+        </Section>
+
+        <Section title="Availability" hint="Days and times they can typically volunteer. Used to match them against shifts.">
+          <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mb-1.5">Days of week</div>
+          <FieldGrid>{AVAILABILITY_DAY_FIELDS.map(renderField)}</FieldGrid>
+          <div className="text-[10px] uppercase tracking-widest text-ink-faint font-medium mt-3 mb-1.5">Time of day</div>
+          <FieldGrid>{AVAILABILITY_TIME_FIELDS.map(renderField)}</FieldGrid>
+        </Section>
+
+        <Section title="Activity preferences" hint="Types of work they're interested in. Drives the default volunteer list when staff signs them up for a shift.">
+          <FieldGrid>{ACTIVITY_FIELDS.map(renderField)}</FieldGrid>
+        </Section>
+
+        <Section title="Physical / logistics" hint="Used to filter pickup and delivery shifts.">
+          <FieldGrid>{PHYSICAL_FIELDS.map(renderField)}</FieldGrid>
+        </Section>
+
+        <Section title="Background" hint="Free-text context for recruiters; not used by the matcher.">
+          <FieldGrid>{NARRATIVE_FIELDS.map(renderField)}</FieldGrid>
+        </Section>
+
         <Section title="Skills" hint="Pick any that apply.">
           <SubformList<SkillRow>
             rows={skills}
@@ -348,6 +470,17 @@ function blankFormState(): Record<string, any> {
     waiver_signed: false, waiver_signed_date: '', waiver_version: '',
     background_check_status: '', background_check_expiration: '',
     emergency_contact_name: '', emergency_contact_phone: '', t_shirt_size: '',
+    // Expanded profile (originally captured by public signup form)
+    frequency: null, start_date: '', end_date: '',
+    avail_mon: false, avail_tue: false, avail_wed: false,
+    avail_thu: false, avail_fri: false, avail_sat: false, avail_sun: false,
+    time_morning: false, time_afternoon: false, time_evening: false,
+    act_pickups: false, act_deliveries: false, act_warehouse: false,
+    act_events: false,  act_admin: false,       act_photography: false,
+    act_trades: false,  act_anywhere: false,
+    can_lift: null, has_drivers_license: false, has_vehicle: false,
+    special_skills: '', heard_from_id: null, why_interested: '',
+    needs_verified_hours: false, agreed_to_emails: false,
   };
 }
 

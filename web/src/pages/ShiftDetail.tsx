@@ -9,8 +9,6 @@ import { useState } from 'react';
 import { apiGet, apiPost, apiPut, formatLongDate } from '../lib/api.ts';
 import { Loading, ErrorBox, StatusPill } from '../components/ui.tsx';
 import { DetailNavBar } from '../components/forms/FormNavBar.tsx';
-import { FkSelectWithCreate } from '../components/admin/FkSelectWithCreate.tsx';
-import { FacilityStaffQuickCreateModal } from '../components/quickCreate/FacilityStaffQuickCreateModal.tsx';
 
 interface Signup {
   signup_id: number;
@@ -49,6 +47,34 @@ export function ShiftDetail() {
   const qc = useQueryClient();
   const [addingId, setAddingId] = useState<number | null>(null);
   const [addingNotes, setAddingNotes] = useState('');
+  const [relaxActivity,     setRelaxActivity]     = useState(false);
+  const [relaxAvailability, setRelaxAvailability] = useState(false);
+  const [relaxPhysical,     setRelaxPhysical]     = useState(false);
+
+  const relaxList: string[] = [];
+  if (relaxActivity)     relaxList.push('activity');
+  if (relaxAvailability) relaxList.push('availability');
+  if (relaxPhysical)     relaxList.push('physical');
+
+  const { data: eligible } = useQuery<{
+    shift: { shift_type: string; physical_required: boolean };
+    relaxed: { activity: boolean; availability: boolean; physical: boolean };
+    total_eligible: number;
+    volunteers: Array<{
+      facility_staff_id: number;
+      name: string;
+      mobile_phone: string | null;
+      email: string | null;
+      can_lift: string | null;
+      has_drivers_license: boolean | null;
+      has_vehicle: boolean | null;
+      frequency: string | null;
+    }>;
+  }>({
+    queryKey: ['shift', id, 'eligible-volunteers', relaxList.join(',')],
+    queryFn: () => apiGet(`/api/shifts/${id}/eligible-volunteers`, { relax: relaxList.join(',') || undefined }),
+    enabled: !!id,
+  });
 
   const { data, isLoading, error } = useQuery<ShiftDetail>({
     queryKey: ['shift', id],
@@ -191,19 +217,66 @@ export function ShiftDetail() {
           </table>
         )}
 
-        {/* Add signup */}
+        {/* Add signup — filtered by activity / availability / physical match */}
         <div className="border-t border-hairline pt-4">
-          <div className="text-[10px] tracking-widest uppercase text-ink-faint font-medium mb-2">Add signup</div>
+          <div className="flex items-baseline justify-between mb-2">
+            <div className="text-[10px] tracking-widest uppercase text-ink-faint font-medium">Add signup</div>
+            <div className="text-[11px] text-ink-faint">
+              {eligible
+                ? `Showing ${eligible.volunteers.length} of ${eligible.total_eligible}`
+                : 'Loading…'}
+            </div>
+          </div>
+
+          {/* Three relax checkboxes — checking one drops that filter */}
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5 mb-2 text-xs">
+            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={relaxActivity} onChange={e => { setRelaxActivity(e.target.checked); setAddingId(null); }}
+                className="w-3.5 h-3.5 accent-terracotta" />
+              <span>All activity types</span>
+            </label>
+            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={relaxAvailability} onChange={e => { setRelaxAvailability(e.target.checked); setAddingId(null); }}
+                className="w-3.5 h-3.5 accent-terracotta" />
+              <span>All availability</span>
+            </label>
+            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={relaxPhysical} onChange={e => { setRelaxPhysical(e.target.checked); setAddingId(null); }}
+                className="w-3.5 h-3.5 accent-terracotta"
+                disabled={!eligible?.shift.physical_required}
+                title={!eligible?.shift.physical_required ? 'Physical filter only applies to pickup and delivery shifts' : ''} />
+              <span className={!eligible?.shift.physical_required ? 'text-ink-faint' : ''}>All physical capability</span>
+            </label>
+          </div>
+
           <div className="grid grid-cols-[1fr_1fr_auto] gap-3 items-end">
             <div>
               <label className="field-label">Volunteer / staff</label>
-              <FkSelectWithCreate
-                fkTable="tbl_facility_staff"
-                value={addingId}
-                onChange={setAddingId}
-                newButtonLabel="+ New"
-                renderModal={ctx => <FacilityStaffQuickCreateModal {...ctx} />}
-              />
+              <select
+                className="field-input"
+                value={addingId ?? ''}
+                onChange={e => setAddingId(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">
+                  {!eligible || eligible.volunteers.length === 0
+                    ? '— No matching volunteers —'
+                    : '— Pick a volunteer —'}
+                </option>
+                {eligible?.volunteers.map(v => (
+                  <option key={v.facility_staff_id} value={v.facility_staff_id}>
+                    {v.name}
+                    {v.can_lift ? ` · lifts ${v.can_lift.replace('_', '-')}` : ''}
+                    {v.has_drivers_license ? ' · license' : ''}
+                    {v.has_vehicle ? ' · vehicle' : ''}
+                    {v.frequency ? ` · ${v.frequency.replace('_', ' ')}` : ''}
+                  </option>
+                ))}
+              </select>
+              {eligible && eligible.volunteers.length === 0 && eligible.total_eligible > 0 && (
+                <div className="text-[11px] text-ink-faint mt-1">
+                  No volunteers match this shift's filters. Check one of the boxes above to expand the list.
+                </div>
+              )}
             </div>
             <div>
               <label className="field-label">Notes (optional)</label>

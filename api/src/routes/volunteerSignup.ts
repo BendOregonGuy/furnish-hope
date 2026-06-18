@@ -291,6 +291,50 @@ volunteerSignupsAdminRouter.post('/:id/approve', async (req, res, next) => {
         `Approved from volunteer signup #${id}`,
       ]);
 
+      // Create the volunteer_profile row up front so the preference
+      // data the applicant gave us is immediately accessible to staff
+      // (and to the shift signup matcher). Without this the prefs
+      // would only live on tbl_volunteer_signup until someone opens
+      // and saves the staff volunteer form.
+      const profile = await tx.queryOne<Record<string, any>>(`
+        INSERT INTO tbl_volunteer_profile (
+          facility_staff_id, waiver_signed,
+          emergency_contact_name, emergency_contact_phone,
+          frequency, start_date, end_date,
+          avail_mon, avail_tue, avail_wed, avail_thu, avail_fri, avail_sat, avail_sun,
+          time_morning, time_afternoon, time_evening,
+          act_pickups, act_deliveries, act_warehouse, act_events,
+          act_admin, act_photography, act_trades, act_anywhere,
+          can_lift, has_drivers_license, has_vehicle,
+          special_skills, heard_from_id, why_interested,
+          needs_verified_hours, agreed_to_emails
+        )
+        VALUES (
+          $1, $2,
+          $3, $4,
+          $5, $6, $7,
+          $8, $9, $10, $11, $12, $13, $14,
+          $15, $16, $17,
+          $18, $19, $20, $21,
+          $22, $23, $24, $25,
+          $26, $27, $28,
+          $29, $30, $31,
+          $32, $33
+        )
+        RETURNING *
+      `, [
+        fs!.facility_staff_id, !!s.agreed_to_waiver,
+        s.emergency_contact_name, s.emergency_contact_phone,
+        s.frequency, s.start_date, s.end_date,
+        !!s.avail_mon, !!s.avail_tue, !!s.avail_wed, !!s.avail_thu, !!s.avail_fri, !!s.avail_sat, !!s.avail_sun,
+        !!s.time_morning, !!s.time_afternoon, !!s.time_evening,
+        !!s.act_pickups, !!s.act_deliveries, !!s.act_warehouse, !!s.act_events,
+        !!s.act_admin, !!s.act_photography, !!s.act_trades, !!s.act_anywhere,
+        s.can_lift, !!s.has_drivers_license, !!s.has_vehicle,
+        s.special_skills, s.heard_from_id, s.why_interested,
+        !!s.needs_verified_hours, !!s.agreed_to_emails,
+      ]);
+
       const userId = req.user!.user_account_id;
       const after = await tx.queryOne<any>(`
         UPDATE tbl_volunteer_signup
@@ -306,6 +350,7 @@ volunteerSignupsAdminRouter.post('/:id/approve', async (req, res, next) => {
       await auditUpdate(req, 'tbl_volunteer_signup', id, s, after, tx);
       await auditCreate(req, 'tbl_contact', contact!.contact_id, contact!, tx);
       await auditCreate(req, 'tbl_facility_staff', fs!.facility_staff_id, fs!, tx);
+      if (profile) await auditCreate(req, 'tbl_volunteer_profile', profile.volunteer_profile_id, profile, tx);
       return { facility_staff_id: fs!.facility_staff_id, contact_id: contact!.contact_id };
     });
 

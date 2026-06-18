@@ -2424,6 +2424,146 @@ const MIGRATIONS: Migration[] = [
     },
   },
   // ============================================================
+  // Volunteer profile expansion (2026-06-17)
+  // ------------------------------------------------------------
+  // The public volunteer-signup form captures preferences and
+  // physical capability info (activity prefs, day/time-of-week
+  // availability, lift capacity, driver's license, vehicle, skills,
+  // narrative) that today live ONLY on tbl_volunteer_signup. After
+  // approval that data isn't accessible from the operational
+  // volunteer record, so neither the staff edit form nor the shift
+  // signup picker can see it.
+  //
+  // Migration:
+  //   1) Add the preference columns to tbl_volunteer_profile.
+  //   2) Backfill: for every approved tbl_volunteer_signup, ensure a
+  //      matching tbl_volunteer_profile row exists (create one if it
+  //      doesn't) and copy the preference fields in.
+  // ============================================================
+  {
+    name: 'tbl_volunteer_profile: preference columns + backfill from signups',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_volunteer_profile
+          ADD COLUMN IF NOT EXISTS frequency   VARCHAR(20)
+            CHECK (frequency IS NULL OR frequency IN ('one_time', 'recurring', 'on_call')),
+          ADD COLUMN IF NOT EXISTS start_date  DATE,
+          ADD COLUMN IF NOT EXISTS end_date    DATE,
+          ADD COLUMN IF NOT EXISTS avail_mon BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS avail_tue BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS avail_wed BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS avail_thu BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS avail_fri BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS avail_sat BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS avail_sun BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS time_morning   BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS time_afternoon BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS time_evening   BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS act_pickups     BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS act_deliveries  BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS act_warehouse   BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS act_events      BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS act_admin       BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS act_photography BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS act_trades      BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS act_anywhere    BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS can_lift VARCHAR(20)
+            CHECK (can_lift IS NULL OR can_lift IN ('under_25', '25_50', '50_plus', 'cannot')),
+          ADD COLUMN IF NOT EXISTS has_drivers_license BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS has_vehicle         BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS special_skills      TEXT,
+          ADD COLUMN IF NOT EXISTS heard_from_id       INTEGER REFERENCES lkp_howtheyfoundus(howtheyfoundus_id),
+          ADD COLUMN IF NOT EXISTS why_interested      TEXT,
+          ADD COLUMN IF NOT EXISTS needs_verified_hours BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS agreed_to_emails    BOOLEAN NOT NULL DEFAULT false
+      `);
+
+      // Backfill from approved signups. For each approved signup,
+      // INSERT a profile row if none exists (matching by
+      // facility_staff_id), or UPDATE the existing one to fill in
+      // any missing preference fields. Existing rows are preserved
+      // — the COALESCE pattern means we only write where the
+      // profile currently has the column's default.
+      await query(`
+        INSERT INTO tbl_volunteer_profile (
+          facility_staff_id, waiver_signed,
+          frequency, start_date, end_date,
+          avail_mon, avail_tue, avail_wed, avail_thu, avail_fri, avail_sat, avail_sun,
+          time_morning, time_afternoon, time_evening,
+          act_pickups, act_deliveries, act_warehouse, act_events,
+          act_admin, act_photography, act_trades, act_anywhere,
+          can_lift, has_drivers_license, has_vehicle,
+          special_skills, heard_from_id, why_interested,
+          needs_verified_hours, agreed_to_emails,
+          emergency_contact_name, emergency_contact_phone
+        )
+        SELECT
+          s.approved_facility_staff_id,
+          -- waiver_signed is NOT NULL on tbl_volunteer_profile but
+          -- the public signup records "agreed_to_waiver" — carry it
+          -- through. Defaults to false if signup data is missing.
+          COALESCE(s.agreed_to_waiver, false),
+          s.frequency, s.start_date, s.end_date,
+          s.avail_mon, s.avail_tue, s.avail_wed, s.avail_thu, s.avail_fri, s.avail_sat, s.avail_sun,
+          s.time_morning, s.time_afternoon, s.time_evening,
+          s.act_pickups, s.act_deliveries, s.act_warehouse, s.act_events,
+          s.act_admin, s.act_photography, s.act_trades, s.act_anywhere,
+          s.can_lift, s.has_drivers_license, s.has_vehicle,
+          s.special_skills, s.heard_from_id, s.why_interested,
+          s.needs_verified_hours, s.agreed_to_emails,
+          s.emergency_contact_name, s.emergency_contact_phone
+        FROM tbl_volunteer_signup s
+        WHERE s.status = 'approved'
+          AND s.approved_facility_staff_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM tbl_volunteer_profile p
+            WHERE p.facility_staff_id = s.approved_facility_staff_id
+          )
+      `);
+
+      // For approved signups whose profile row ALREADY existed,
+      // backfill ONLY the still-default preference fields. We don't
+      // want to clobber values the staff member may have already
+      // tuned post-approval; we only fill blanks/defaults.
+      await query(`
+        UPDATE tbl_volunteer_profile p
+           SET frequency           = COALESCE(p.frequency, s.frequency),
+               start_date          = COALESCE(p.start_date, s.start_date),
+               end_date            = COALESCE(p.end_date, s.end_date),
+               avail_mon           = CASE WHEN p.avail_mon THEN p.avail_mon ELSE s.avail_mon END,
+               avail_tue           = CASE WHEN p.avail_tue THEN p.avail_tue ELSE s.avail_tue END,
+               avail_wed           = CASE WHEN p.avail_wed THEN p.avail_wed ELSE s.avail_wed END,
+               avail_thu           = CASE WHEN p.avail_thu THEN p.avail_thu ELSE s.avail_thu END,
+               avail_fri           = CASE WHEN p.avail_fri THEN p.avail_fri ELSE s.avail_fri END,
+               avail_sat           = CASE WHEN p.avail_sat THEN p.avail_sat ELSE s.avail_sat END,
+               avail_sun           = CASE WHEN p.avail_sun THEN p.avail_sun ELSE s.avail_sun END,
+               time_morning        = CASE WHEN p.time_morning THEN p.time_morning ELSE s.time_morning END,
+               time_afternoon      = CASE WHEN p.time_afternoon THEN p.time_afternoon ELSE s.time_afternoon END,
+               time_evening        = CASE WHEN p.time_evening THEN p.time_evening ELSE s.time_evening END,
+               act_pickups         = CASE WHEN p.act_pickups THEN p.act_pickups ELSE s.act_pickups END,
+               act_deliveries      = CASE WHEN p.act_deliveries THEN p.act_deliveries ELSE s.act_deliveries END,
+               act_warehouse       = CASE WHEN p.act_warehouse THEN p.act_warehouse ELSE s.act_warehouse END,
+               act_events          = CASE WHEN p.act_events THEN p.act_events ELSE s.act_events END,
+               act_admin           = CASE WHEN p.act_admin THEN p.act_admin ELSE s.act_admin END,
+               act_photography     = CASE WHEN p.act_photography THEN p.act_photography ELSE s.act_photography END,
+               act_trades          = CASE WHEN p.act_trades THEN p.act_trades ELSE s.act_trades END,
+               act_anywhere        = CASE WHEN p.act_anywhere THEN p.act_anywhere ELSE s.act_anywhere END,
+               can_lift            = COALESCE(p.can_lift, s.can_lift),
+               has_drivers_license = CASE WHEN p.has_drivers_license THEN p.has_drivers_license ELSE s.has_drivers_license END,
+               has_vehicle         = CASE WHEN p.has_vehicle         THEN p.has_vehicle         ELSE s.has_vehicle         END,
+               special_skills      = COALESCE(p.special_skills, s.special_skills),
+               heard_from_id       = COALESCE(p.heard_from_id, s.heard_from_id),
+               why_interested      = COALESCE(p.why_interested, s.why_interested),
+               needs_verified_hours = CASE WHEN p.needs_verified_hours THEN p.needs_verified_hours ELSE s.needs_verified_hours END,
+               agreed_to_emails    = CASE WHEN p.agreed_to_emails THEN p.agreed_to_emails ELSE s.agreed_to_emails END
+          FROM tbl_volunteer_signup s
+         WHERE s.status = 'approved'
+           AND s.approved_facility_staff_id = p.facility_staff_id
+      `);
+    },
+  },
+
+  // ============================================================
   // Address dedupe (2026-06-16)
   // ------------------------------------------------------------
   // tbl_address has no uniqueness constraint and the quick-create

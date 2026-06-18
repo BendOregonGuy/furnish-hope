@@ -35,6 +35,27 @@ interface ProfilePayload {
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
   t_shirt_size?: string | null;
+  // Expansion 2026-06-17 — fields originally captured by the public
+  // volunteer-signup form. Optional on the write payload so the
+  // existing VolunteerForm (which doesn't send them yet) keeps
+  // working until the UI is updated.
+  frequency?: 'one_time' | 'recurring' | 'on_call' | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  avail_mon?: boolean; avail_tue?: boolean; avail_wed?: boolean;
+  avail_thu?: boolean; avail_fri?: boolean; avail_sat?: boolean; avail_sun?: boolean;
+  time_morning?: boolean; time_afternoon?: boolean; time_evening?: boolean;
+  act_pickups?: boolean; act_deliveries?: boolean; act_warehouse?: boolean;
+  act_events?: boolean;  act_admin?: boolean;       act_photography?: boolean;
+  act_trades?: boolean;  act_anywhere?: boolean;
+  can_lift?: 'under_25' | '25_50' | '50_plus' | 'cannot' | null;
+  has_drivers_license?: boolean;
+  has_vehicle?: boolean;
+  special_skills?: string | null;
+  heard_from_id?: number | null;
+  why_interested?: string | null;
+  needs_verified_hours?: boolean;
+  agreed_to_emails?: boolean;
 }
 
 interface VolunteerWritePayload {
@@ -129,7 +150,17 @@ volunteersRouter.get('/:id', async (req, res, next) => {
         vp.background_check_expiration,
         vp.emergency_contact_name,
         vp.emergency_contact_phone,
-        vp.t_shirt_size
+        vp.t_shirt_size,
+        vp.frequency,
+        vp.start_date,
+        vp.end_date,
+        vp.avail_mon, vp.avail_tue, vp.avail_wed, vp.avail_thu, vp.avail_fri, vp.avail_sat, vp.avail_sun,
+        vp.time_morning, vp.time_afternoon, vp.time_evening,
+        vp.act_pickups, vp.act_deliveries, vp.act_warehouse, vp.act_events,
+        vp.act_admin, vp.act_photography, vp.act_trades, vp.act_anywhere,
+        vp.can_lift, vp.has_drivers_license, vp.has_vehicle,
+        vp.special_skills, vp.heard_from_id, vp.why_interested,
+        vp.needs_verified_hours, vp.agreed_to_emails
       FROM tbl_facility_staff fs
       JOIN tbl_contact contact ON contact.contact_id = fs.contact_id
       JOIN tbl_corp_facility f ON f.corp_facility_id = fs.corp_facility_id
@@ -236,23 +267,12 @@ volunteersRouter.post('/', async (req, res, next) => {
         RETURNING *
       `, [body.staff.corp_facility_id, contact!.contact_id, body.staff.hire_date ?? null]);
 
-      await tx.query(`
-        INSERT INTO tbl_volunteer_profile
-          (facility_staff_id, waiver_signed, waiver_signed_date, waiver_version,
-           background_check_status, background_check_expiration,
-           emergency_contact_name, emergency_contact_phone, t_shirt_size)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      `, [
-        fs!.facility_staff_id,
-        body.profile.waiver_signed ?? false,
-        body.profile.waiver_signed_date ?? null,
-        body.profile.waiver_version ?? null,
-        body.profile.background_check_status ?? null,
-        body.profile.background_check_expiration ?? null,
-        body.profile.emergency_contact_name ?? null,
-        body.profile.emergency_contact_phone ?? null,
-        body.profile.t_shirt_size ?? null,
-      ]);
+      const profileCols = profileColumnsAndValues(body.profile, fs!.facility_staff_id);
+      await tx.query(
+        `INSERT INTO tbl_volunteer_profile (${profileCols.columns.join(', ')})
+         VALUES (${profileCols.placeholders.join(', ')})`,
+        profileCols.values,
+      );
 
       for (const skill_id of body.skill_ids ?? []) {
         await tx.query(`INSERT INTO tbl_volunteer_skill (facility_staff_id, skill_id) VALUES ($1, $2)`,
@@ -314,42 +334,26 @@ volunteersRouter.put('/:id', async (req, res, next) => {
       const hasProfile = await tx.queryOne<{ id: number }>(
         `SELECT volunteer_profile_id AS id FROM tbl_volunteer_profile WHERE facility_staff_id = $1`, [id],
       );
+      const profileCols = profileColumnsAndValues(body.profile, id);
       if (hasProfile) {
-        await tx.query(`
-          UPDATE tbl_volunteer_profile
-             SET waiver_signed = $1, waiver_signed_date = $2, waiver_version = $3,
-                 background_check_status = $4, background_check_expiration = $5,
-                 emergency_contact_name = $6, emergency_contact_phone = $7, t_shirt_size = $8
-           WHERE facility_staff_id = $9
-        `, [
-          body.profile.waiver_signed ?? false,
-          body.profile.waiver_signed_date ?? null,
-          body.profile.waiver_version ?? null,
-          body.profile.background_check_status ?? null,
-          body.profile.background_check_expiration ?? null,
-          body.profile.emergency_contact_name ?? null,
-          body.profile.emergency_contact_phone ?? null,
-          body.profile.t_shirt_size ?? null,
-          id,
-        ]);
+        // UPDATE form: column = $N pairs, excluding facility_staff_id (first column).
+        const setPairs = profileCols.columns
+          .slice(1)
+          .map((col, i) => `${col} = $${i + 1}`);
+        const updateValues = profileCols.values.slice(1);
+        updateValues.push(id);
+        await tx.query(
+          `UPDATE tbl_volunteer_profile
+              SET ${setPairs.join(', ')}
+            WHERE facility_staff_id = $${updateValues.length}`,
+          updateValues,
+        );
       } else {
-        await tx.query(`
-          INSERT INTO tbl_volunteer_profile
-            (facility_staff_id, waiver_signed, waiver_signed_date, waiver_version,
-             background_check_status, background_check_expiration,
-             emergency_contact_name, emergency_contact_phone, t_shirt_size)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        `, [
-          id,
-          body.profile.waiver_signed ?? false,
-          body.profile.waiver_signed_date ?? null,
-          body.profile.waiver_version ?? null,
-          body.profile.background_check_status ?? null,
-          body.profile.background_check_expiration ?? null,
-          body.profile.emergency_contact_name ?? null,
-          body.profile.emergency_contact_phone ?? null,
-          body.profile.t_shirt_size ?? null,
-        ]);
+        await tx.query(
+          `INSERT INTO tbl_volunteer_profile (${profileCols.columns.join(', ')})
+           VALUES (${profileCols.placeholders.join(', ')})`,
+          profileCols.values,
+        );
       }
 
       // Diff skills.
@@ -442,6 +446,59 @@ volunteersRouter.post('/:id/hours', async (req, res, next) => {
 });
 
 /* ================================================================= */
+
+/** Build the column / placeholder / values triple for INSERT or UPDATE
+ *  of tbl_volunteer_profile. facility_staff_id is always the first
+ *  column so the UPDATE caller can slice it off when building the
+ *  SET clause. Keeping this in one place ensures POST + PUT can't
+ *  drift on schema changes. */
+function profileColumnsAndValues(
+  profile: ProfilePayload,
+  facilityStaffId: number,
+): { columns: string[]; placeholders: string[]; values: any[] } {
+  const cols: Array<[string, any]> = [
+    ['facility_staff_id', facilityStaffId],
+    ['waiver_signed',              !!profile.waiver_signed],
+    ['waiver_signed_date',         profile.waiver_signed_date ?? null],
+    ['waiver_version',             profile.waiver_version ?? null],
+    ['background_check_status',    profile.background_check_status ?? null],
+    ['background_check_expiration', profile.background_check_expiration ?? null],
+    ['emergency_contact_name',     profile.emergency_contact_name ?? null],
+    ['emergency_contact_phone',    profile.emergency_contact_phone ?? null],
+    ['t_shirt_size',               profile.t_shirt_size ?? null],
+    ['frequency',                  profile.frequency ?? null],
+    ['start_date',                 profile.start_date ?? null],
+    ['end_date',                   profile.end_date ?? null],
+    ['avail_mon', !!profile.avail_mon], ['avail_tue', !!profile.avail_tue],
+    ['avail_wed', !!profile.avail_wed], ['avail_thu', !!profile.avail_thu],
+    ['avail_fri', !!profile.avail_fri], ['avail_sat', !!profile.avail_sat],
+    ['avail_sun', !!profile.avail_sun],
+    ['time_morning', !!profile.time_morning],
+    ['time_afternoon', !!profile.time_afternoon],
+    ['time_evening', !!profile.time_evening],
+    ['act_pickups', !!profile.act_pickups],
+    ['act_deliveries', !!profile.act_deliveries],
+    ['act_warehouse', !!profile.act_warehouse],
+    ['act_events', !!profile.act_events],
+    ['act_admin', !!profile.act_admin],
+    ['act_photography', !!profile.act_photography],
+    ['act_trades', !!profile.act_trades],
+    ['act_anywhere', !!profile.act_anywhere],
+    ['can_lift',                   profile.can_lift ?? null],
+    ['has_drivers_license', !!profile.has_drivers_license],
+    ['has_vehicle',         !!profile.has_vehicle],
+    ['special_skills',             profile.special_skills ?? null],
+    ['heard_from_id',              profile.heard_from_id ?? null],
+    ['why_interested',             profile.why_interested ?? null],
+    ['needs_verified_hours', !!profile.needs_verified_hours],
+    ['agreed_to_emails',     !!profile.agreed_to_emails],
+  ];
+  return {
+    columns: cols.map(([c]) => c),
+    placeholders: cols.map((_, i) => `$${i + 1}`),
+    values: cols.map(([, v]) => v),
+  };
+}
 
 function validateWritePayload(body: VolunteerWritePayload): string[] {
   const errs: string[] = [];
