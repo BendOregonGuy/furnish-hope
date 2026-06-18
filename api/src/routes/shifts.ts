@@ -184,9 +184,41 @@ shiftsRouter.get('/:id/eligible-volunteers', async (req, res, next) => {
     `, [id]);
     if (!shift) return res.status(404).json({ error: 'Shift not found' });
 
+    // Paid staff (is_volunteer = false) are matched UNCONDITIONALLY —
+    // they always appear because their job assignment, not their
+    // volunteer preferences, determines whether they're on a shift.
+    // Filtering them by activity / availability / physical (which are
+    // tracked on tbl_volunteer_profile via the public signup form)
+    // would silently hide them, regressing the old picker that listed
+    // every facility_staff row.
+    //
+    // Volunteers (is_volunteer = true) get the matching filters
+    // applied unless the corresponding relax flag is set.
+    const volunteerFilters: string[] = [];
+    if (!relaxActivity) {
+      const actCol = ACT_COLUMN_FOR_TYPE[shift.shift_type];
+      if (actCol) volunteerFilters.push(`(vp.${actCol} = true OR vp.act_anywhere = true)`);
+    }
+    if (!relaxAvailability) {
+      const availCol = AVAIL_COLUMN_FOR_DOW[shift.dow];
+      if (availCol) volunteerFilters.push(`vp.${availCol} = true`);
+      const buckets = timeBucketsForShift(shift.start_time, shift.end_time);
+      if (buckets.length > 0) {
+        volunteerFilters.push(`(${buckets.map(b => `vp.${b} = true`).join(' OR ')})`);
+      }
+    }
+    if (!relaxPhysical && PHYSICAL_REQUIRED_TYPES.has(shift.shift_type)) {
+      volunteerFilters.push(`(vp.has_drivers_license = true OR vp.has_vehicle = true)`);
+      volunteerFilters.push(`(vp.can_lift IN ('25_50', '50_plus'))`);
+    }
+    const volunteerClause = volunteerFilters.length
+      ? `(fs.is_volunteer = true AND ${volunteerFilters.join(' AND ')})`
+      : `fs.is_volunteer = true`;
+
     const conds: string[] = [
-      `fs.is_volunteer = true`,
-      // Don't suggest a volunteer who's already signed up for this same
+      // Paid staff always; volunteers only if their prefs match.
+      `(fs.is_volunteer = false OR ${volunteerClause})`,
+      // Don't suggest a person who's already signed up for this same
       // shift and not cancelled — they'd be double-listed.
       `NOT EXISTS (
          SELECT 1 FROM tbl_volunteer_shift_signup sg
@@ -196,32 +228,12 @@ shiftsRouter.get('/:id/eligible-volunteers', async (req, res, next) => {
        )`,
     ];
 
-    if (!relaxActivity) {
-      const actCol = ACT_COLUMN_FOR_TYPE[shift.shift_type];
-      if (actCol) {
-        conds.push(`(vp.${actCol} = true OR vp.act_anywhere = true)`);
-      }
-    }
-
-    if (!relaxAvailability) {
-      const availCol = AVAIL_COLUMN_FOR_DOW[shift.dow];
-      if (availCol) conds.push(`vp.${availCol} = true`);
-      const buckets = timeBucketsForShift(shift.start_time, shift.end_time);
-      if (buckets.length > 0) {
-        conds.push(`(${buckets.map(b => `vp.${b} = true`).join(' OR ')})`);
-      }
-    }
-
-    if (!relaxPhysical && PHYSICAL_REQUIRED_TYPES.has(shift.shift_type)) {
-      conds.push(`(vp.has_drivers_license = true OR vp.has_vehicle = true)`);
-      conds.push(`(vp.can_lift IN ('25_50', '50_plus'))`);
-    }
-
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
     const rows = await query<{
       facility_staff_id: number;
       name: string;
+      is_volunteer: boolean;
       mobile_phone: string | null;
       email: string | null;
       can_lift: string | null;
@@ -232,30 +244,29 @@ shiftsRouter.get('/:id/eligible-volunteers', async (req, res, next) => {
       SELECT
         fs.facility_staff_id,
         contact.first_name || ' ' || contact.last_name AS name,
+        fs.is_volunteer,
         contact.mobile_phone, contact.email,
         vp.can_lift, vp.has_drivers_license, vp.has_vehicle, vp.frequency
       FROM tbl_facility_staff fs
       JOIN tbl_contact contact ON contact.contact_id = fs.contact_id
       LEFT JOIN tbl_volunteer_profile vp ON vp.facility_staff_id = fs.facility_staff_id
       ${where}
-      ORDER BY contact.last_name, contact.first_name
+      ORDER BY fs.is_volunteer DESC, contact.last_name, contact.first_name
       LIMIT 500
     `);
 
-    // Also report the count we'd return without any relaxes — lets
-    // the UI show "Showing N (M without filters)" without making the
-    // client run the query twice.
+    // Total is everyone who COULD be signed up (paid staff + volunteers,
+    // minus those already on this shift) — the UI uses this to show
+    // "Showing N of M" so staff can tell whether to relax filters.
     const totalRow = await queryOne<{ count: string }>(`
       SELECT COUNT(*)::text AS count
       FROM tbl_facility_staff fs
-      JOIN tbl_contact contact ON contact.contact_id = fs.contact_id
-      WHERE fs.is_volunteer = true
-        AND NOT EXISTS (
-          SELECT 1 FROM tbl_volunteer_shift_signup sg
-           WHERE sg.shift_id = $1
-             AND sg.facility_staff_id = fs.facility_staff_id
-             AND sg.signup_status <> 'cancelled'
-        )
+      WHERE NOT EXISTS (
+        SELECT 1 FROM tbl_volunteer_shift_signup sg
+         WHERE sg.shift_id = $1
+           AND sg.facility_staff_id = fs.facility_staff_id
+           AND sg.signup_status <> 'cancelled'
+      )
     `, [id]);
 
     res.json({

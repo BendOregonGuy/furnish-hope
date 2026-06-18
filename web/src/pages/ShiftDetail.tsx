@@ -63,6 +63,7 @@ export function ShiftDetail() {
     volunteers: Array<{
       facility_staff_id: number;
       name: string;
+      is_volunteer: boolean;
       mobile_phone: string | null;
       email: string | null;
       can_lift: string | null;
@@ -265,6 +266,7 @@ export function ShiftDetail() {
                 {eligible?.volunteers.map(v => (
                   <option key={v.facility_staff_id} value={v.facility_staff_id}>
                     {v.name}
+                    {!v.is_volunteer ? ' · paid staff' : ''}
                     {v.can_lift ? ` · lifts ${v.can_lift.replace('_', '-')}` : ''}
                     {v.has_drivers_license ? ' · license' : ''}
                     {v.has_vehicle ? ' · vehicle' : ''}
