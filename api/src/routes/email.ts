@@ -132,21 +132,60 @@ emailRouter.post('/accounts', async (req, res, next) => {
     const errs = validate(body, /*isCreate*/ true);
     if (errs.length) return res.status(400).json({ error: errs.join('; ') });
 
-    const newId = await withTransaction(async (tx) => {
+    // Upsert: if the user already has a row for (user_account_id,
+    // LOWER(email_address)) — say they previously connected this
+    // mailbox, hit a problem, and are re-entering credentials — we
+    // REFRESH the row instead of failing on the unique constraint.
+    // Mirrors what the OAuth callback already does, and prevents the
+    // "You already have an account connected" dead-end when a prior
+    // disconnect didn't fully clean up or the user is rotating an
+    // app password.
+    const result = await withTransaction(async (tx) => {
       if (body.is_default_send) {
         await tx.query(
           `UPDATE tbl_email_account SET is_default_send = false WHERE user_account_id = $1`,
           [userId],
         );
       }
-      const r = await tx.queryOne<Record<string, any>>(`
+      const r = await tx.queryOne<Record<string, any> & { was_inserted: boolean }>(`
         INSERT INTO tbl_email_account
           (user_account_id, display_name, email_address, provider,
            imap_host, imap_port, imap_secure,
            smtp_host, smtp_port, smtp_secure,
-           username, encrypted_password, is_default_send, signature)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-        RETURNING *
+           username, encrypted_password, is_default_send, signature,
+           auth_type)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'password')
+        ON CONFLICT (user_account_id, (LOWER(email_address))) DO UPDATE SET
+          display_name        = EXCLUDED.display_name,
+          provider            = EXCLUDED.provider,
+          auth_type           = 'password',
+          -- Switching back to app-password mode wipes any OAuth tokens
+          -- left over from a previous Sign-in-with-Google / Microsoft
+          -- pass on the same address. Without this they'd sit encrypted
+          -- in the row forever, untracked.
+          oauth_provider          = NULL,
+          oauth_access_token_enc  = NULL,
+          oauth_refresh_token_enc = NULL,
+          oauth_expires_at        = NULL,
+          oauth_scope             = NULL,
+          imap_host           = EXCLUDED.imap_host,
+          imap_port           = EXCLUDED.imap_port,
+          imap_secure         = EXCLUDED.imap_secure,
+          smtp_host           = EXCLUDED.smtp_host,
+          smtp_port           = EXCLUDED.smtp_port,
+          smtp_secure         = EXCLUDED.smtp_secure,
+          username            = EXCLUDED.username,
+          -- Preserve existing password if the form didn't include a
+          -- new one (e.g. user just wants to update host/port).
+          encrypted_password  = COALESCE(EXCLUDED.encrypted_password, tbl_email_account.encrypted_password),
+          is_default_send     = EXCLUDED.is_default_send,
+          signature           = EXCLUDED.signature,
+          -- Force a fresh test on next sync since something material
+          -- (creds or host) just changed.
+          last_tested_at      = NULL,
+          last_test_status    = NULL,
+          last_test_error     = NULL
+        RETURNING *, (xmax = 0) AS was_inserted
       `, [
         userId, body.display_name ?? null, body.email_address.trim(), body.provider,
         body.imap_host ?? null, body.imap_port ?? null, body.imap_secure ?? true,
@@ -156,14 +195,19 @@ emailRouter.post('/accounts', async (req, res, next) => {
         body.is_default_send ?? false,
         body.signature ?? null,
       ]);
-      await auditCreate(req, 'tbl_email_account', r!.email_account_id, redactForAudit(r!), tx);
-      return r!.email_account_id;
+      if (r!.was_inserted) {
+        await auditCreate(req, 'tbl_email_account', r!.email_account_id, redactForAudit(r!), tx);
+      } else {
+        await auditUpdate(req, 'tbl_email_account', r!.email_account_id,
+          { upserted: 'previous credentials' }, redactForAudit(r!), tx);
+      }
+      return { id: r!.email_account_id as number, was_inserted: r!.was_inserted };
     });
-    res.status(201).json({ email_account_id: newId });
+    res.status(result.was_inserted ? 201 : 200).json({
+      email_account_id: result.id,
+      reused: !result.was_inserted,
+    });
   } catch (err) {
-    if ((err as any)?.code === '23505') {
-      return res.status(409).json({ error: 'You already have an account connected for this email address.' });
-    }
     next(err);
   }
 });
