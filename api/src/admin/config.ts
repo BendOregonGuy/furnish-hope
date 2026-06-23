@@ -132,6 +132,22 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
     searchColumns: [],
     defaultSort: { column: 'referral_date', direction: 'desc' },
   },
+  tbl_potential_duplicate: {
+    group: 'Clients & Referrals',
+    label: 'Potential Duplicates',
+    singular: 'Potential Duplicate',
+    displaySql: "'#' || t.client_id_a::text || ' vs #' || t.client_id_b::text || ' (' || t.match_score::text || '%)'",
+    listColumns: ['potential_duplicate_id', 'client_id_a', 'client_id_b', 'match_score', 'status', 'detected_at'],
+    searchColumns: ['match_reasons'],
+    defaultSort: { column: 'detected_at', direction: 'desc' },
+    columns: {
+      match_reasons: { type: 'textarea', label: 'Why flagged' },
+      status: {
+        label: 'Status',
+        enumValues: ['pending', 'merged', 'not_duplicate'],
+      },
+    },
+  },
   tbl_client_provisioning_request: {
     group: 'Clients & Referrals',
     label: 'Provisioning Requests',
@@ -142,6 +158,11 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
     defaultSort: { column: 'request_at', direction: 'desc' },
     columns: {
       client_request_note: { type: 'textarea', label: 'Request notes' },
+      review_status: {
+        label: 'Review status',
+        enumValues: ['awaiting_review', 'approved', 'rejected', 'in_progress', 'completed'],
+      },
+      referral_id: { label: 'Source referral' },
     },
   },
   tbl_client_request_items: {
