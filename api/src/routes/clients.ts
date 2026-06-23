@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { query, queryOne, withTransaction } from '../db/pool.js';
 import { auditCreate, auditDelete, auditUpdate } from '../auth/audit.js';
+import { buildScoringSql } from '../dedup/scoring.js';
 
 export const clientsRouter = Router();
 
@@ -94,6 +95,89 @@ clientsRouter.get('/', async (req, res, next) => {
       ORDER BY c.start_date DESC NULLS LAST, c.client_id DESC
       LIMIT 200
     `, params);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  Dedup search — "do you mean ...?" for the referral / client form  */
+/* ----------------------------------------------------------------- */
+
+/** GET /api/clients/search — top candidate matches above a 30% score.
+ *
+ *  Used by ReferralForm + ClientForm to prevent staff from accidentally
+ *  creating a duplicate when an existing household is sitting in the DB.
+ *  Returns at most 5 hits ordered by score desc.
+ *
+ *  All params optional, but at least first_name + last_name must be set
+ *  (otherwise scoring is meaningless). Other params are signal boosters.
+ */
+clientsRouter.get('/search', async (req, res, next) => {
+  try {
+    const first  = String(req.query.first_name   ?? '').trim();
+    const last   = String(req.query.last_name    ?? '').trim();
+    const dob    = String(req.query.birth_date   ?? '').trim();   // 'YYYY-MM-DD' or ''
+    const phone  = String(req.query.mobile_phone ?? '').trim();
+    const email  = String(req.query.email        ?? '').trim();
+    const addrId = req.query.address_id ? Number(req.query.address_id) : null;
+
+    if (first.length < 2 || last.length < 2) {
+      return res.json([]);
+    }
+
+    const sql = buildScoringSql() + `
+      WHERE (sig_exact_name OR sig_trgm_name OR sig_dob OR sig_phone OR sig_email OR sig_address)
+      ORDER BY match_score DESC, s.client_id DESC
+      LIMIT 5
+    `;
+    const rows = await query(sql, [first, last, dob || null, phone || null, email || null, addrId]);
+    res.json(rows.filter((r: any) => r.match_score >= 30));
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  Referral history — all referrals for one client                   */
+/* ----------------------------------------------------------------- */
+
+/** GET /api/clients/:id/referrals — every referral row for this client,
+ *  joined to its agency + caseworker + the requests it spawned.
+ *  Drives the "Referral history" panel on the client detail page. */
+clientsRouter.get('/:id/referrals', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+
+    const rows = await query(`
+      SELECT
+        r.referral_id,
+        r.referral_date,
+        r.description AS referral_note,
+        ag.agency_id,
+        ag.agency_name,
+        ac.agency_contact_id,
+        rc.first_name || ' ' || rc.last_name AS caseworker_name,
+        rc.email                              AS caseworker_email,
+        rc.mobile_phone                       AS caseworker_phone,
+        COALESCE(
+          (SELECT JSON_AGG(JSON_BUILD_OBJECT(
+              'request_id',    pr.client_provisioning_request_id,
+              'request_at',    pr.request_at,
+              'review_status', pr.review_status,
+              'item_count',
+                (SELECT COUNT(*)::int FROM tbl_client_request_items i
+                  WHERE i.client_provisioning_request_id = pr.client_provisioning_request_id)
+           ) ORDER BY pr.request_at DESC)
+             FROM tbl_client_provisioning_request pr
+            WHERE pr.referral_id = r.referral_id),
+          '[]'::json
+        ) AS requests
+      FROM tbl_referral r
+      JOIN tbl_agency_contact ac ON ac.agency_contact_id = r.agency_contact_id
+      JOIN tbl_agency ag         ON ag.agency_id         = ac.agency_id
+      JOIN tbl_contact rc        ON rc.contact_id        = ac.contact_id
+      WHERE r.client_id = $1
+      ORDER BY r.referral_date DESC, r.referral_id DESC
+    `, [id]);
     res.json(rows);
   } catch (err) { next(err); }
 });

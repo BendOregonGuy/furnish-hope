@@ -45,9 +45,9 @@ export function StatusPill({ status }: { status: string }) {
 
 function pillClassFor(status: string): string {
   const s = status.toLowerCase();
-  if (s === 'available' || s === 'delivered' || s === 'active' || s === 'ready to schedule' || s === 'completed' || s === 'fulfilled') return 'pill-sage';
-  if (s === 'matching' || s === 'reserved' || s === 'scheduled' || s === 'in transit' || s === 'in progress') return 'pill-gold';
-  if (s === 'new' || s === 'out' || s === 'cancelled' || s === 'failed' || s === 'intake') return 'pill-terra';
+  if (s === 'available' || s === 'delivered' || s === 'active' || s === 'ready to schedule' || s === 'completed' || s === 'fulfilled' || s === 'approved') return 'pill-sage';
+  if (s === 'matching' || s === 'reserved' || s === 'scheduled' || s === 'in transit' || s === 'in progress' || s === 'in_progress' || s === 'awaiting review' || s === 'awaiting_review') return 'pill-gold';
+  if (s === 'new' || s === 'out' || s === 'cancelled' || s === 'failed' || s === 'intake' || s === 'rejected') return 'pill-terra';
   if (s === 'closed' || s === 'served' || s === 'rescheduled') return 'pill-slate';
   return 'pill-muted';
 }

@@ -19,6 +19,7 @@ import { Router } from 'express';
 import { query, queryOne, withTransaction } from '../db/pool.js';
 import { auditCreate } from '../auth/audit.js';
 import { requireAgency } from '../auth/middleware.js';
+import { buildScoringSql } from '../dedup/scoring.js';
 
 export const agencyRouter = Router();
 
@@ -125,6 +126,49 @@ agencyRouter.get('/lookups/:table', async (req, res, next) => {
     if (!/^[a-z_]+$/.test(table)) return res.status(400).json({ error: 'Invalid table name' });
     const rows = await query(`SELECT * FROM ${table} ORDER BY 1`);
     res.json(rows);
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  /clients/search — "do you mean ...?" for the new-referral form    */
+/*                                                                    */
+/*  Scoped to clients THIS AGENCY has previously referred. Privacy:   */
+/*  agencies must not be able to enumerate the full client database   */
+/*  by trying name guesses.                                           */
+/* ----------------------------------------------------------------- */
+
+agencyRouter.get('/clients/search', async (req, res, next) => {
+  try {
+    const agencyId = req.user!.agency_id!;
+    const first  = String(req.query.first_name   ?? '').trim();
+    const last   = String(req.query.last_name    ?? '').trim();
+    const dob    = String(req.query.birth_date   ?? '').trim();
+    const phone  = String(req.query.mobile_phone ?? '').trim();
+    const email  = String(req.query.email        ?? '').trim();
+    const addrId = req.query.address_id ? Number(req.query.address_id) : null;
+
+    if (first.length < 2 || last.length < 2) {
+      return res.json([]);
+    }
+
+    // Scope by joining tbl_referral filtered to this agency's contacts.
+    // EXISTS, not JOIN, to avoid duplicate scored rows for clients with
+    // multiple referrals from the same agency.
+    const extraWhere = `
+      WHERE EXISTS (
+        SELECT 1
+          FROM tbl_referral r
+          JOIN tbl_agency_contact ac ON ac.agency_contact_id = r.agency_contact_id
+         WHERE r.client_id = c.client_id AND ac.agency_id = $7
+      )
+    `;
+    const sql = buildScoringSql('', extraWhere) + `
+      WHERE (sig_exact_name OR sig_trgm_name OR sig_dob OR sig_phone OR sig_email OR sig_address)
+      ORDER BY match_score DESC, s.client_id DESC
+      LIMIT 5
+    `;
+    const rows = await query(sql, [first, last, dob || null, phone || null, email || null, addrId, agencyId]);
+    res.json(rows.filter((r: any) => r.match_score >= 30));
   } catch (err) { next(err); }
 });
 

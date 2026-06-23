@@ -18,6 +18,7 @@ import type { ColumnMeta } from '../lib/admin.ts';
 import { validateForm, type FormErrors } from '../lib/adminValidate.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { Field } from '../components/admin/Field.tsx';
+import { DedupSuggestions } from '../components/DedupSuggestions.tsx';
 
 /* ----------------------------------------------------------------- */
 /*  Field configs                                                     */
@@ -288,6 +289,25 @@ export function ClientForm() {
 
       {topError && (
         <div className="mb-5 p-3 bg-terracotta-soft text-terracotta-deep rounded-md text-sm">{topError}</div>
+      )}
+
+      {isNew && (
+        <DedupSuggestions
+          apiPath="/api/clients/search"
+          first_name={values.first_name ?? ''}
+          last_name={values.last_name ?? ''}
+          birth_date={values.birth_date ?? ''}
+          mobile_phone={values.mobile_phone ?? ''}
+          email={values.email ?? ''}
+          onPickExisting={(c) => {
+            // Mark form clean so safeNavigate doesn't trigger the unsaved
+            // changes guard — picking an existing match means abandoning
+            // this new record on purpose.
+            setInitial(values);
+            setInitialHasAddress(hasAddress);
+            navigate(`/clients/${c.client_id}`);
+          }}
+        />
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5 max-w-4xl">

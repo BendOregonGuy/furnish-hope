@@ -27,6 +27,24 @@ interface ClientVisitRow {
   facility_name: string | null;
 }
 
+interface ReferralRow {
+  referral_id: number;
+  referral_date: string;
+  referral_note: string | null;
+  agency_id: number;
+  agency_name: string;
+  agency_contact_id: number;
+  caseworker_name: string;
+  caseworker_email: string | null;
+  caseworker_phone: string | null;
+  requests: Array<{
+    request_id: number;
+    request_at: string;
+    review_status: string;
+    item_count: number;
+  }>;
+}
+
 export function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -40,6 +58,12 @@ export function ClientDetail() {
   const { data: visits } = useQuery<ClientVisitRow[]>({
     queryKey: ['client-visits', id],
     queryFn: () => apiGet(`/api/visits`, { client_id: id }),
+    enabled: !!id,
+  });
+
+  const { data: referrals } = useQuery<ReferralRow[]>({
+    queryKey: ['client-referrals', id],
+    queryFn: () => apiGet(`/api/clients/${id}/referrals`),
     enabled: !!id,
   });
 
@@ -197,6 +221,58 @@ export function ClientDetail() {
             </table>
           )}
           </div>
+
+          {referrals && referrals.length > 0 && (
+            <div className="card">
+              <div className="card-head">
+                <h3 className="font-display font-medium text-[17px] m-0">Referral history</h3>
+                <span className="text-xs text-ink-faint">
+                  {referrals.length} {referrals.length === 1 ? 'referral' : 'referrals'}
+                  {referrals.length > 1 && (() => {
+                    const agencies = new Set(referrals.map(r => r.agency_id));
+                    return agencies.size > 1
+                      ? ` from ${agencies.size} agencies`
+                      : '';
+                  })()}
+                </span>
+              </div>
+
+              <ul className="divide-y divide-hairline">
+                {referrals.map(r => (
+                  <li key={r.referral_id} className="py-3">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <div>
+                        <div className="font-medium text-ink">
+                          {r.agency_name}
+                          <span className="text-ink-muted font-normal"> via {r.caseworker_name}</span>
+                        </div>
+                        {r.referral_note && (
+                          <div className="text-xs text-ink-soft mt-0.5 italic">"{r.referral_note}"</div>
+                        )}
+                      </div>
+                      <div className="text-xs text-ink-faint shrink-0">{formatShortDate(r.referral_date)}</div>
+                    </div>
+                    {r.requests.length > 0 && (
+                      <div className="mt-2 pl-3 border-l-2 border-paper-deep space-y-1">
+                        {r.requests.map(req => (
+                          <div key={req.request_id} className="flex items-center gap-2 text-xs">
+                            <Link to={`/requests/${req.request_id}`} className="text-terracotta hover:underline">
+                              Request #{req.request_id}
+                            </Link>
+                            <span className="text-ink-faint">·</span>
+                            <span className="text-ink-soft">{formatShortDate(req.request_at)}</span>
+                            <span className="text-ink-faint">·</span>
+                            <span className="text-ink-soft">{req.item_count} {req.item_count === 1 ? 'item' : 'items'}</span>
+                            <StatusPill status={req.review_status.replace(/_/g, ' ')} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">

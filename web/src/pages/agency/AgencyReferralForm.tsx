@@ -9,6 +9,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../../lib/api.ts';
 import { Loading } from '../../components/ui.tsx';
+import { DedupSuggestions } from '../../components/DedupSuggestions.tsx';
 
 interface ClientTypeRow { client_type_id: number; client_type: string }
 interface CityRow      { city_id: number;        city: string }
@@ -107,6 +108,19 @@ export function AgencyReferralForm() {
           All fields marked <span className="text-terracotta">*</span> are required.
         </p>
       </div>
+
+      <DedupSuggestions
+        apiPath="/api/agency/clients/search"
+        first_name={first}
+        last_name={last}
+        mobile_phone={mobile}
+        email={email}
+        onPickExisting={(c) => {
+          // Agency caseworkers route to their existing referral against this
+          // client. The detail path is /:client_id, not /:referral_id.
+          navigate(`/agency/referrals/${c.client_id}`);
+        }}
+      />
 
       <form onSubmit={handleSubmit} className="card max-w-2xl space-y-5">
 
