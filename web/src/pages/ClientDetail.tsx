@@ -127,9 +127,14 @@ export function ClientDetail() {
       <div className="flex gap-5 p-5 bg-cream border border-hairline rounded-[10px] mb-6">
         <Avatar name={fullName} size="lg" />
         <div className="flex-1">
-          <div className="flex items-baseline gap-3.5 mb-1">
+          <div className="flex items-baseline gap-2 mb-1 flex-wrap">
             <div className="font-display text-2xl font-medium">{fullName}</div>
-            <span className="pill pill-terra">{c.client_type}</span>
+            {(Array.isArray(c.client_types) && c.client_types.length > 0
+              ? c.client_types
+              : [c.client_type]
+            ).filter(Boolean).map((t: string) => (
+              <span key={t} className="pill pill-terra">{t}</span>
+            ))}
             <StatusPill status={c.client_status} />
           </div>
           <div className="flex gap-4 text-sm text-ink-soft flex-wrap">

@@ -19,6 +19,7 @@ import { validateForm, type FormErrors } from '../lib/adminValidate.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { Field } from '../components/admin/Field.tsx';
 import { DedupSuggestions } from '../components/DedupSuggestions.tsx';
+import { CheckboxGroup } from '../components/CheckboxGroup.tsx';
 
 /* ----------------------------------------------------------------- */
 /*  Field configs                                                     */
@@ -60,8 +61,9 @@ const ADDRESS_FIELDS: FieldDef[] = [
   { name: 'postalcode',      label: 'ZIP / postal code', type: 'text', required: true, isPk: false, isFk: false, maxLength: 10 },
 ];
 
+// Note: client_type is handled separately as a checkbox group (multi-select),
+// not part of this admin-Field list. See `clientTypeIds` state below.
 const CLIENT_FIELDS: FieldDef[] = [
-  { name: 'client_type_id',   label: 'Client type', type: 'fk',   required: true,  isPk: false, isFk: true, fkTable: 'lkp_client_type' },
   { name: 'client_status_id', label: 'Status',      type: 'fk',   required: true,  isPk: false, isFk: true, fkTable: 'lkp_client_status' },
   { name: 'start_date',       label: 'Intake date', type: 'date', required: false, isPk: false, isFk: false },
   { name: 'description',      label: 'Notes',       type: 'textarea', required: false, isPk: false, isFk: false, maxLength: 100, helpText: 'Brief notes about this client (max 100 characters).' },
@@ -98,11 +100,21 @@ export function ClientForm() {
   const [initial, setInitial] = useState<Record<string, any>>(() => blankFormState());
   const [hasAddress, setHasAddress] = useState<boolean>(false);
   const [initialHasAddress, setInitialHasAddress] = useState<boolean>(false);
+  /** Household type is many-to-many — handled outside the admin Field state. */
+  const [clientTypeIds, setClientTypeIds] = useState<number[]>([]);
+  const [initialClientTypeIds, setInitialClientTypeIds] = useState<number[]>([]);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [topError, setTopError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
   const savedFlashTimer = useRef<number | null>(null);
+
+  /* ---------- Household-type lookup (powers the checkbox group) ---------- */
+  const { data: clientTypes } = useQuery<{ client_type_id: number; client_type: string }[]>({
+    queryKey: ['lookup', 'lkp_client_type'],
+    queryFn: () => apiGet('/api/lookups/lkp_client_type'),
+    staleTime: 5 * 60_000,
+  });
 
   /* Populate the form once we have data (or empty values for "new"). */
   useEffect(() => {
@@ -115,10 +127,17 @@ export function ClientForm() {
       setInitial(blank);
       setHasAddress(false);
       setInitialHasAddress(false);
+      setClientTypeIds([]);
+      setInitialClientTypeIds([]);
       return;
     }
     if (!existing) return;
     const c = existing.client;
+    const typeIds: number[] = Array.isArray(c.client_type_ids) && c.client_type_ids.length > 0
+      ? c.client_type_ids
+      : (c.client_type_id ? [c.client_type_id] : []);
+    setClientTypeIds(typeIds);
+    setInitialClientTypeIds(typeIds);
     const v: Record<string, any> = {
       first_name:         c.first_name ?? '',
       middle_name:        c.middle_name ?? '',
@@ -153,8 +172,10 @@ export function ClientForm() {
 
   /* ---------- Dirty tracking + browser unload guard ---------- */
   const isDirty = useMemo(
-    () => hasAddress !== initialHasAddress || isDirtyValues(values, initial),
-    [values, initial, hasAddress, initialHasAddress],
+    () => hasAddress !== initialHasAddress
+       || isDirtyValues(values, initial)
+       || !sameSet(clientTypeIds, initialClientTypeIds),
+    [values, initial, hasAddress, initialHasAddress, clientTypeIds, initialClientTypeIds],
   );
 
   useEffect(() => {
@@ -179,6 +200,7 @@ export function ClientForm() {
       // Mark clean before nav so the safeNavigate doesn't prompt.
       setInitial(values);
       setInitialHasAddress(hasAddress);
+      setInitialClientTypeIds(clientTypeIds);
       navigate(`/clients/${data.client_id}`);
     },
     onError: (err: any) => setTopError(err.message ?? 'Save failed'),
@@ -191,6 +213,7 @@ export function ClientForm() {
       queryClient.invalidateQueries({ queryKey: ['client', id] });
       setInitial(values);
       setInitialHasAddress(hasAddress);
+      setInitialClientTypeIds(clientTypeIds);
       setTopError(null);
       setSavedFlash(true);
       if (savedFlashTimer.current) window.clearTimeout(savedFlashTimer.current);
@@ -234,6 +257,9 @@ export function ClientForm() {
     setSubmitAttempted(true);
     const fieldsToValidate = hasAddress ? ALL_INCLUDING_ADDRESS : ALL_NON_ADDRESS;
     const errs = validateForm(fieldsToValidate, values);
+    if (clientTypeIds.length === 0) {
+      errs.client_type_ids = 'Please check at least one household type.';
+    }
     setErrors(errs);
     if (Object.keys(errs).length > 0) {
       setTopError(`Please fix the highlighted ${Object.keys(errs).length === 1 ? 'field' : 'fields'} before saving.`);
@@ -247,7 +273,7 @@ export function ClientForm() {
     const body = {
       contact: pickFields(values, ['first_name', 'middle_name', 'last_name', 'birth_date', 'gender_id', 'ethnicity_id', 'citizen_status_id', 'mobile_phone', 'home_phone', 'other_phone', 'email']),
       address: hasAddress ? pickFields(values, ['address_name', 'address_type_id', 'address', 'address2', 'city_id', 'county_id', 'state_id', 'postalcode']) : null,
-      client: pickFields(values, ['client_type_id', 'client_status_id', 'start_date', 'description']),
+      client: { ...pickFields(values, ['client_status_id', 'start_date', 'description']), client_type_ids: clientTypeIds },
     };
     if (isNew) createMut.mutate(body);
     else updateMut.mutate(body);
@@ -359,6 +385,25 @@ export function ClientForm() {
         </Section>
 
         <Section title="Client details" hint="The classification and status used for matching and reports.">
+          <div id="field-client_type_ids" className="mb-4">
+            <CheckboxGroup
+              label="Household type"
+              required
+              helpText="Check all that apply. A household can be more than one (e.g. Veteran + Natural Disaster)."
+              options={(clientTypes ?? []).map(t => ({ value: t.client_type_id, label: t.client_type }))}
+              value={clientTypeIds}
+              onChange={ids => {
+                setClientTypeIds(ids);
+                if (submitAttempted) {
+                  const next = { ...errors };
+                  if (ids.length === 0) next.client_type_ids = 'Please check at least one household type.';
+                  else delete next.client_type_ids;
+                  setErrors(next);
+                }
+              }}
+              error={errors.client_type_ids ?? null}
+            />
+          </div>
           <FieldGrid>
             {CLIENT_FIELDS.map(col => (
               <Cell key={col.name} col={col}>
@@ -491,8 +536,15 @@ function blankFormState(): Record<string, any> {
     mobile_phone: '', home_phone: '', other_phone: '', email: '',
     address_name: '', address_type_id: 1, address: '', address2: '',
     city_id: null, county_id: null, state_id: null, postalcode: '',
-    client_type_id: null, client_status_id: null, start_date: '', description: '',
+    client_status_id: null, start_date: '', description: '',
   };
+}
+
+function sameSet(a: number[], b: number[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = [...a].sort();
+  const sb = [...b].sort();
+  return sa.every((v, i) => v === sb[i]);
 }
 
 function pickFields(src: Record<string, any>, keys: string[]): Record<string, any> {

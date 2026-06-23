@@ -18,6 +18,7 @@ interface ReferralDetail {
     email: string | null;
     mobile_phone: string | null;
     client_type: string;
+    client_types?: string[];
     client_status: string;
     address: string | null;
     address2: string | null;
@@ -57,7 +58,7 @@ export function AgencyReferralDetail() {
         <Link to="/agency/referrals" className="text-xs text-terracotta hover:text-terracotta-deep">← All referrals</Link>
         <h1 className="font-display text-2xl font-medium m-0 mt-1">{c.client_name}</h1>
         <p className="text-sm text-ink-soft mt-1">
-          {c.client_type} · referred {formatDate(c.referral_date)}
+          {(c.client_types && c.client_types.length > 0 ? c.client_types.join(', ') : c.client_type)} · referred {formatDate(c.referral_date)}
         </p>
       </div>
 
@@ -115,7 +116,7 @@ export function AgencyReferralDetail() {
           <div className="card">
             <h3 className="font-display font-medium text-[17px] m-0 mb-3">Household</h3>
             <Row label="Status"  value={c.client_status} />
-            <Row label="Type"    value={c.client_type} />
+            <Row label="Type"    value={(c.client_types && c.client_types.length > 0 ? c.client_types.join(', ') : c.client_type)} />
             <Row label="Email"   value={c.email ?? '—'} />
             <Row label="Phone"   value={c.mobile_phone ?? '—'} />
             <Row label="Address" value={

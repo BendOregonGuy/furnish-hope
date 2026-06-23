@@ -132,6 +132,14 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
     searchColumns: [],
     defaultSort: { column: 'referral_date', direction: 'desc' },
   },
+  tbl_client_client_type: {
+    group: 'Clients & Referrals',
+    label: 'Client → Household Types',
+    singular: 'Client Type Assignment',
+    displaySql: "'#' || t.client_id::text || ' → ' || (SELECT client_type FROM lkp_client_type WHERE client_type_id = t.client_type_id)",
+    listColumns: ['client_id', 'client_type_id'],
+    searchColumns: [],
+  },
   tbl_potential_duplicate: {
     group: 'Clients & Referrals',
     label: 'Potential Duplicates',

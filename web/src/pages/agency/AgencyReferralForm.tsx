@@ -10,6 +10,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../../lib/api.ts';
 import { Loading } from '../../components/ui.tsx';
 import { DedupSuggestions } from '../../components/DedupSuggestions.tsx';
+import { CheckboxGroup } from '../../components/CheckboxGroup.tsx';
 
 interface ClientTypeRow   { client_type_id: number; client_type: string }
 interface CityRow         { city_id: number;        city: string }
@@ -62,7 +63,7 @@ export function AgencyReferralForm() {
   const [dob, setDob]           = useState('');
   const [email, setEmail]       = useState('');
   const [mobile, setMobile]     = useState('');
-  const [clientTypeId, setClientTypeId] = useState<number | ''>('');
+  const [clientTypeIds, setClientTypeIds] = useState<number[]>([]);
   const [addr1, setAddr1]       = useState('');
   const [addr2, setAddr2]       = useState('');
   const [cityId, setCityId]     = useState<number | null>(null);
@@ -100,7 +101,7 @@ export function AgencyReferralForm() {
         state_id: stateId!,
         postalcode: zip.trim(),
       },
-      client_type_id: Number(clientTypeId),
+      client_type_ids: clientTypeIds,
       notes: notes.trim() || null,
       items: items
         .filter(i => i.item_category_id)
@@ -126,7 +127,7 @@ export function AgencyReferralForm() {
     if (!countyId)     missing.push('County');
     if (!stateId)      missing.push('State');
     if (!zip.trim())   missing.push('ZIP');
-    if (!clientTypeId) missing.push('Household type');
+    if (clientTypeIds.length === 0) missing.push('Household type');
     if (missing.length) { setErr(`Required: ${missing.join(', ')}`); return; }
     submitMut.mutate();
   }
@@ -170,16 +171,14 @@ export function AgencyReferralForm() {
           </div>
         </Section>
 
-        <Section title="Household type">
-          <select
-            className="field-input max-w-xs"
-            value={clientTypeId}
-            onChange={e => setClientTypeId(e.target.value ? Number(e.target.value) : '')}
+        <Section title="Household type" hint="Check all that apply — a household can be more than one (e.g. Veteran + Natural Disaster).">
+          <CheckboxGroup
+            label=""
             required
-          >
-            <option value="">Choose…</option>
-            {clientTypes.map(t => <option key={t.client_type_id} value={t.client_type_id}>{t.client_type}</option>)}
-          </select>
+            options={clientTypes.map(t => ({ value: t.client_type_id, label: t.client_type }))}
+            value={clientTypeIds}
+            onChange={setClientTypeIds}
+          />
         </Section>
 
         <Section title="Delivery address">

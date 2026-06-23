@@ -2846,6 +2846,33 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: 'tbl_client_client_type join (many-to-many household types)',
+    async run() {
+      // A household can be Veteran + Natural Disaster + Domestic Violence at
+      // the same time. The legacy single tbl_client.client_type_id stays as
+      // the "primary" type so existing list / report queries keep working;
+      // the new join table is the source of truth for the full set.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_client_client_type (
+          client_id      INTEGER NOT NULL REFERENCES tbl_client(client_id)        ON DELETE CASCADE,
+          client_type_id INTEGER NOT NULL REFERENCES lkp_client_type(client_type_id),
+          PRIMARY KEY (client_id, client_type_id)
+        )
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_client_client_type_type
+          ON tbl_client_client_type (client_type_id)
+      `);
+      // Backfill: every existing client gets its current primary type in the
+      // join too. Idempotent — ON CONFLICT no-ops on re-run.
+      await query(`
+        INSERT INTO tbl_client_client_type (client_id, client_type_id)
+        SELECT client_id, client_type_id FROM tbl_client
+        ON CONFLICT (client_id, client_type_id) DO NOTHING
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

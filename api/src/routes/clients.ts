@@ -36,6 +36,10 @@ interface AddressPayload {
 
 interface ClientPayload {
   client_type_id: number;
+  /** Multi-select replacement for client_type_id. When present, the first
+   *  entry is also stored as tbl_client.client_type_id for backward compat;
+   *  the full set is written to tbl_client_client_type. */
+  client_type_ids?: number[];
   client_status_id: number;
   start_date?: string | null;
   description?: string | null;
@@ -252,6 +256,19 @@ clientsRouter.get('/:id', async (req, res, next) => {
 
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
+    // Multi-type support: a household can be Veteran + Disaster + Domestic
+    // Violence simultaneously. The legacy c.client_type column above is the
+    // primary; this array carries the full set.
+    const typeRows = await query<{ client_type_id: number; client_type: string }>(`
+      SELECT t.client_type_id, ct.client_type
+        FROM tbl_client_client_type t
+        JOIN lkp_client_type ct ON ct.client_type_id = t.client_type_id
+       WHERE t.client_id = $1
+       ORDER BY ct.client_type
+    `, [id]);
+    (client as any).client_type_ids = typeRows.map(r => r.client_type_id);
+    (client as any).client_types    = typeRows.map(r => r.client_type);
+
     const requests = await query(`
       SELECT
         r.client_provisioning_request_id AS request_id,
@@ -343,18 +360,30 @@ clientsRouter.post('/', async (req, res, next) => {
         body.contact.other_phone ?? null, body.contact.email ?? null,
       ]);
 
-      // 3. Client
+      // 3. Client. The primary client_type_id is the first checkbox (or the
+      //    legacy single FK if no array was sent). The join table gets ALL
+      //    chosen types — that's the source of truth going forward.
+      const typeIds = pickTypeIds(body.client);
+      const primaryTypeId = typeIds[0];
       const client = await tx.queryOne<Record<string, any>>(`
         INSERT INTO tbl_client (client_type_id, contact_id, start_date, client_status_id, description)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING *
       `, [
-        body.client.client_type_id, contact!.contact_id,
+        primaryTypeId, contact!.contact_id,
         body.client.start_date ?? null, body.client.client_status_id,
         body.client.description ?? null,
       ]);
 
-      await auditCreate(req, 'tbl_client', client!.client_id, client!, tx);
+      for (const t of typeIds) {
+        await tx.query(
+          `INSERT INTO tbl_client_client_type (client_id, client_type_id) VALUES ($1, $2)
+           ON CONFLICT DO NOTHING`,
+          [client!.client_id, t],
+        );
+      }
+
+      await auditCreate(req, 'tbl_client', client!.client_id, { ...client!, client_type_ids: typeIds }, tx);
       return client!.client_id;
     });
 
@@ -453,18 +482,36 @@ clientsRouter.put('/:id', async (req, res, next) => {
         existing.contact_id,
       ]);
 
-      // 3. Client
+      // 3. Client. Same primary+join-table treatment as POST. On update we
+      //    delete-and-reinsert the join rows so the set matches the incoming
+      //    array exactly (no stale checkboxes lingering after staff unchecks
+      //    a type).
+      const typeIds = pickTypeIds(body.client);
+      const primaryTypeId = typeIds[0];
       const after = await tx.queryOne<Record<string, any>>(`
         UPDATE tbl_client
            SET client_type_id = $1, start_date = $2, client_status_id = $3, description = $4
          WHERE client_id = $5
          RETURNING *
       `, [
-        body.client.client_type_id, body.client.start_date ?? null,
+        primaryTypeId, body.client.start_date ?? null,
         body.client.client_status_id, body.client.description ?? null,
         id,
       ]);
-      if (before && after) await auditUpdate(req, 'tbl_client', id, before, after, tx);
+      await tx.query(`DELETE FROM tbl_client_client_type WHERE client_id = $1`, [id]);
+      for (const t of typeIds) {
+        await tx.query(
+          `INSERT INTO tbl_client_client_type (client_id, client_type_id) VALUES ($1, $2)`,
+          [id, t],
+        );
+      }
+
+      if (before && after) {
+        await auditUpdate(req, 'tbl_client', id,
+          { ...before },
+          { ...after, client_type_ids: typeIds },
+          tx);
+      }
     });
 
     res.json({ client_id: id });
@@ -548,8 +595,11 @@ function validateWritePayload(body: ClientWritePayload, _isCreate: boolean): str
     if (!body.contact.last_name?.trim()) errs.push('contact.last_name required');
   }
   if (body.client) {
-    if (!Number.isInteger(body.client.client_type_id) || body.client.client_type_id <= 0) {
-      errs.push('client.client_type_id required');
+    const typeIds = pickTypeIds(body.client);
+    if (typeIds.length === 0) {
+      errs.push('client.client_type_ids must include at least one household type');
+    } else if (typeIds.some(t => !Number.isInteger(t) || t <= 0)) {
+      errs.push('client.client_type_ids contains an invalid id');
     }
     if (!Number.isInteger(body.client.client_status_id) || body.client.client_status_id <= 0) {
       errs.push('client.client_status_id required');
@@ -565,6 +615,16 @@ function validateWritePayload(body: ClientWritePayload, _isCreate: boolean): str
     if (!body.address.postalcode?.trim()) errs.push('address.postalcode required');
   }
   return errs;
+}
+
+/** Coalesce the legacy single client_type_id with the new array. Returns a
+ *  de-duped list with the FIRST id treated as primary (so unchecking the
+ *  primary checkbox naturally promotes the next one). */
+function pickTypeIds(c: ClientPayload): number[] {
+  const arr = Array.isArray(c.client_type_ids) ? c.client_type_ids.filter(n => Number.isInteger(n) && n > 0) : [];
+  if (arr.length > 0) return Array.from(new Set(arr));
+  if (Number.isInteger(c.client_type_id) && c.client_type_id > 0) return [c.client_type_id];
+  return [];
 }
 
 function translatePgError(err: any): any {

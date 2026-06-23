@@ -238,7 +238,8 @@ interface ReferralCreatePayload {
     postalcode: string;
     address_type_id?: number | null;
   };
-  client_type_id: number;
+  client_type_id?: number;        // legacy single-type; kept for back-compat
+  client_type_ids?: number[];     // multi-select replacement (preferred)
   family_size?: number | null;
   notes?: string | null;
   /** Optional needs the agency wants Furnish Hope to provision. When
@@ -302,16 +303,25 @@ agencyRouter.post('/referrals', async (req, res, next) => {
         ORDER BY CASE WHEN client_status ILIKE 'New' THEN 0 ELSE 1 END, client_status_id
         LIMIT 1
       `);
+      const typeIds = pickAgencyTypeIds(body);
+      const primaryTypeId = typeIds[0];
       const client = await tx.queryOne<{ client_id: number }>(`
         INSERT INTO tbl_client (client_type_id, contact_id, client_status_id, description, start_date)
         VALUES ($1, $2, $3, $4, CURRENT_DATE)
         RETURNING client_id
       `, [
-        body.client_type_id,
+        primaryTypeId,
         contact!.contact_id,
         statusRow!.client_status_id,
         body.notes?.trim() || null,
       ]);
+      for (const t of typeIds) {
+        await tx.query(
+          `INSERT INTO tbl_client_client_type (client_id, client_type_id) VALUES ($1, $2)
+           ON CONFLICT DO NOTHING`,
+          [client!.client_id, t],
+        );
+      }
 
       // 4) Referral linking the caseworker to the new client
       const referral = await tx.queryOne<{ referral_id: number }>(`
@@ -407,6 +417,13 @@ agencyRouter.post('/referrals', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+function pickAgencyTypeIds(b: ReferralCreatePayload): number[] {
+  const arr = Array.isArray(b.client_type_ids) ? b.client_type_ids.filter(n => Number.isInteger(n) && n > 0) : [];
+  if (arr.length > 0) return Array.from(new Set(arr));
+  if (Number.isInteger(b.client_type_id) && (b.client_type_id ?? 0) > 0) return [b.client_type_id!];
+  return [];
+}
+
 function validateReferral(b: ReferralCreatePayload): string[] {
   const errs: string[] = [];
   if (!b?.contact?.first_name?.trim()) errs.push('First name required');
@@ -416,7 +433,7 @@ function validateReferral(b: ReferralCreatePayload): string[] {
   if (!b?.address?.county_id)          errs.push('County required');
   if (!b?.address?.state_id)           errs.push('State required');
   if (!b?.address?.postalcode?.trim()) errs.push('Postal code required');
-  if (!b?.client_type_id)              errs.push('Client type required');
+  if (pickAgencyTypeIds(b).length === 0) errs.push('At least one household type required');
   if (b?.items?.length) {
     b.items.forEach((it, i) => {
       if (!it.item_category_id)             errs.push(`Item ${i + 1}: category required`);
@@ -447,6 +464,10 @@ agencyRouter.get('/referrals/:id', async (req, res, next) => {
         contact.email,
         contact.mobile_phone,
         ct.client_type,
+        (SELECT COALESCE(JSON_AGG(ct2.client_type ORDER BY ct2.client_type), '[]'::json)
+           FROM tbl_client_client_type cct
+           JOIN lkp_client_type ct2 ON ct2.client_type_id = cct.client_type_id
+          WHERE cct.client_id = c.client_id) AS client_types,
         cs.client_status,
         addr.address, addr.address2,
         city.city,
