@@ -2760,6 +2760,92 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: 'agency-led requests + client dedup foundation',
+    async run() {
+      // 1) Trigram extension powers fuzzy-name matching in the dedup scan + the
+      //    "do you mean…?" search hint on the referral form.
+      await query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+
+      // 2) Link each provisioning request to the referral that motivated it.
+      //    Nullable so legacy rows (created before this column existed) are valid.
+      await query(`
+        ALTER TABLE tbl_client_provisioning_request
+          ADD COLUMN IF NOT EXISTS referral_id INTEGER
+            REFERENCES tbl_referral(referral_id) ON DELETE SET NULL
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_client_provisioning_request_referral_id
+          ON tbl_client_provisioning_request (referral_id)
+      `);
+
+      // 3) review_status gates agency-submitted requests so staff can triage
+      //    before matching starts. Default 'approved' so existing rows + new
+      //    staff-created rows skip the queue and go straight to matching.
+      await query(`
+        ALTER TABLE tbl_client_provisioning_request
+          ADD COLUMN IF NOT EXISTS review_status VARCHAR(20) NOT NULL DEFAULT 'approved'
+      `);
+      await query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+             WHERE conname = 'tbl_client_provisioning_request_review_status_chk'
+          ) THEN
+            ALTER TABLE tbl_client_provisioning_request
+              ADD CONSTRAINT tbl_client_provisioning_request_review_status_chk
+              CHECK (review_status IN ('awaiting_review','approved','rejected','in_progress','completed'));
+          END IF;
+        END $$;
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_client_provisioning_request_review_status
+          ON tbl_client_provisioning_request (review_status)
+          WHERE review_status = 'awaiting_review'
+      `);
+
+      // 4) tbl_potential_duplicate — nightly scan writes findings here.
+      //    Convention: client_id_a < client_id_b. Partial unique index ensures
+      //    a re-scan never re-adds a pair that's already pending OR resolved.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_potential_duplicate (
+          potential_duplicate_id  SERIAL PRIMARY KEY,
+          client_id_a             INTEGER NOT NULL REFERENCES tbl_client(client_id) ON DELETE CASCADE,
+          client_id_b             INTEGER NOT NULL REFERENCES tbl_client(client_id) ON DELETE CASCADE,
+          match_score             INTEGER NOT NULL CHECK (match_score BETWEEN 0 AND 100),
+          match_reasons           TEXT NOT NULL,
+          status                  VARCHAR(20) NOT NULL DEFAULT 'pending'
+                                   CHECK (status IN ('pending','merged','not_duplicate')),
+          detected_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          reviewed_by_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id) ON DELETE SET NULL,
+          reviewed_at             TIMESTAMPTZ,
+          merged_into_client_id   INTEGER REFERENCES tbl_client(client_id) ON DELETE SET NULL,
+          CHECK (client_id_a < client_id_b)
+        )
+      `);
+      await query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tbl_potential_duplicate_pair
+          ON tbl_potential_duplicate (client_id_a, client_id_b)
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_potential_duplicate_pending
+          ON tbl_potential_duplicate (detected_at DESC)
+          WHERE status = 'pending'
+      `);
+
+      // 5) Admin-tunable match threshold for the nightly scan.
+      await query(`
+        INSERT INTO tbl_app_setting (setting_key, setting_value, description)
+        VALUES (
+          'dedupe_match_threshold',
+          '70',
+          'Minimum match score (0-100) for a client pair to land in the duplicate-review queue. Lower = catches more candidates, more false positives. Higher = fewer false positives, may miss real duplicates.'
+        )
+        ON CONFLICT (setting_key) DO NOTHING
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */
