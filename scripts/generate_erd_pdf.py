@@ -83,6 +83,7 @@ THEMES: list[tuple[str, str, list[str]]] = [
         "waiver, and delivery. Container pickup tables live here too.",
         [
             "tbl_client",
+            "tbl_client_client_type",
             "tbl_referral",
             "tbl_client_provisioning_request",
             "tbl_client_request_items",
@@ -96,6 +97,7 @@ THEMES: list[tuple[str, str, list[str]]] = [
             "tbl_delivery_staff",
             "tbl_delivery_vehicle",
             "tbl_delivery_receipt",
+            "tbl_potential_duplicate",
             "lkp_client_type",
             "lkp_client_status",
             "lkp_delivery_status",
@@ -200,6 +202,7 @@ THEMES: list[tuple[str, str, list[str]]] = [
             "lkp_skill",
             "lkp_volunteer_activity_type",
             "lkp_status_change_reason",
+            "lkp_background_check_status",
         ],
     ),
     (

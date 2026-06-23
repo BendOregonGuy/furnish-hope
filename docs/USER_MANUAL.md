@@ -224,19 +224,42 @@ A **client** is a household receiving furniture from us. Clients are deliberatel
 ### Adding a client
 
 1. Sidebar → **Clients** → **+ New Client**.
-2. Fill in head-of-household, address, family size, **referring agency** (the partner agency that referred this household).
-3. Add notes about delivery accessibility (apartment unit, stairs, pet warnings).
-4. Save.
+2. Fill in head-of-household, address, family composition.
+3. **Household type** is a multi-select checkbox group — a family can be more than one type at the same time (e.g. **Veteran** AND **Natural Disaster**). Check every category that applies; the first checked becomes the "primary" used in some reports.
+4. **"Did you mean...?" banner.** As you type a name + DOB, the form may surface existing households that look similar. If one is the same person, click **Use this household** — you'll land on their existing detail page and can file a new referral against them instead of duplicating.
+5. Add notes about delivery accessibility (apartment unit, stairs, pet warnings).
+6. Save.
+
+### Adding new household types
+
+Sidebar → **Database Admin** → search for `lkp_client_type` → **+ New** → enter a label (e.g. "Recently incarcerated") → save. The new option appears as a checkbox on every client form on the next page load — no developer needed.
+
+### Multi-agency referrals
+
+A household can be referred by **more than one agency** (~5% of clients). The system keeps **one client record** but stacks multiple referrals against them. On the client detail page, scroll to **Referral history** to see every agency, caseworker, date, and the requests each referral spawned.
+
+If two agencies refer the same family in the same week for the same furniture, each agency's request goes into the **review queue** for staff to triage. Each request stays tied to its originating referral (and agency); you can approve one and reject the other, or approve both if they're for different things.
 
 ### Requests
 
-A **request** is what a household has asked for — beds, dining table, couch, dressers, etc. Capture the request as soon as the household is intaked, then track it through fulfillment.
+A **request** is what a household has asked for — beds, dining table, couch, dressers, etc.
 
-1. From the client's detail page, click **+ New Request**.
-2. List the items they need, urgency, any special notes.
-3. Save.
+Requests reach Furnish Hope two ways:
 
-Later, when you fulfill the request, create a **delivery** that links to it. That closes the loop and lets you report on average time-from-request-to-delivery.
+1. **Staff-created** — you open the client detail page, click **+ New Request**, list items, save. These land approved and join the matching pipeline immediately.
+2. **Agency-submitted** — a caseworker fills in items on their referral form, which atomically creates the client + referral + request + items. These land with **review status = "Awaiting review"** so you can confirm them before matching starts.
+
+### The review queue (agency-submitted requests)
+
+Sidebar → **Clients → Review queue** (red badge shows pending count). The queue lists every awaiting-review request oldest first.
+
+For each:
+
+- **Edit** — open the full RequestDetail to adjust items, assign the correct facility, pick the right origin/creator, then save and approve.
+- **Approve** — accept the request as-is. Status flips to **Approved** and the request joins the matching pipeline.
+- **Reject** — opens a modal for a brief note. The agency caseworker sees that note in their portal so they know what to fix or contact Furnish Hope about. Be brief and constructive.
+
+The badge clears when the queue is empty.
 
 > `[Screenshot: client-detail.png — a client detail page with their request history.]`
 

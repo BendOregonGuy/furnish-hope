@@ -1,6 +1,6 @@
 # Furnish Hope — Codebase Summary
 
-*Last regenerated: 2026-06-18*
+*Last regenerated: 2026-06-23*
 
 ## What it is
 
@@ -14,14 +14,14 @@ Built specifically for a **non-technical primary user** (a nonprofit's database 
 
 | Metric | Count |
 |---|---:|
-| TypeScript LOC (api + web) | ~50,900 |
-| Schema migrations | 87 |
-| Database tables (`tbl_*` + `lkp_*`) | 75 + 65 = 140 |
-| Foreign keys | 213 |
+| TypeScript LOC (api + web) | ~52,300 |
+| Schema migrations | 89 |
+| Database tables (`tbl_*` + `lkp_*`) | 77 + 65 = 142 |
+| Foreign keys | 220 |
 | API route files | 38 |
-| API endpoints | 216 |
-| Frontend pages | 80 |
-| Commits on `main` | 113 |
+| API endpoints | 222 |
+| Frontend pages | 81 |
+| Commits on `main` | 120 |
 | Production bundle size | ~1.9 MB JS, 506 KB gzipped |
 
 ---
@@ -114,7 +114,7 @@ Plus row-level scoping for agency caseworkers (they only see their own org's ref
 ## Feature domains (12 themes from the ERD)
 
 1. **Contacts & Addresses** — shared people + place rows; address dedupe + shared-edit confirmation modal
-2. **Clients & Households** — referral → intake → provisioning request → visit → waiver → delivery (with home / walkout / container pickup fulfillment methods)
+2. **Clients & Households** — referral → intake → provisioning request → visit → waiver → delivery. Households can be multi-type (Veteran + Disaster + ...) via `tbl_client_client_type`. Multiple agencies can refer the same client; staff see the full referral history per client. Client-dedup search ("do you mean...?") surfaces likely matches before a new client is created, scoped per-agency in the partner portal. Agency-submitted requests land in a staff **review queue** with Approve / Edit / Reject actions before joining the matching pipeline. Fulfillment methods: home / walkout / container pickup.
 3. **Donors, Donations & QuickBooks** — gifts, designations, pledges, full QBO sync (donations → Sales Receipts), 6 QBO tables for OAuth + mappings + sync log
 4. **Inventory & Storage** — items, reservations, container/lockbox flagging
 5. **Facilities & Vehicles** — corporate sites, vehicle fleet + maintenance log

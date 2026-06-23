@@ -78,13 +78,20 @@ clientsRouter.get('/', async (req, res, next) => {
     }
     const whereSql = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
+    // The LEFT JOIN against tbl_referral can produce duplicate rows when a
+    // household has multiple referrals (multi-agency). Wrap in DISTINCT ON
+    // to keep one row per client, picking the most recent referral's agency.
     const rows = await query(`
-      SELECT
+      SELECT DISTINCT ON (c.client_id)
         c.client_id,
         contact.first_name,
         contact.last_name,
         contact.mobile_phone,
         ct.client_type,
+        (SELECT COALESCE(JSON_AGG(ct2.client_type ORDER BY ct2.client_type), '[]'::json)
+           FROM tbl_client_client_type cct
+           JOIN lkp_client_type ct2 ON ct2.client_type_id = cct.client_type_id
+          WHERE cct.client_id = c.client_id) AS client_types,
         s.client_status,
         c.start_date,
         ag.agency_name AS referring_agency
@@ -96,9 +103,16 @@ clientsRouter.get('/', async (req, res, next) => {
       LEFT JOIN tbl_agency_contact acn ON acn.agency_contact_id = ref.agency_contact_id
       LEFT JOIN tbl_agency ag ON ag.agency_id = acn.agency_id
       ${whereSql}
-      ORDER BY c.start_date DESC NULLS LAST, c.client_id DESC
+      ORDER BY c.client_id DESC, ref.referral_date DESC NULLS LAST
       LIMIT 200
     `, params);
+    // Re-sort by the user-visible order after DISTINCT ON's required ordering.
+    rows.sort((a: any, b: any) => {
+      const ad = a.start_date ?? '';
+      const bd = b.start_date ?? '';
+      if (ad !== bd) return bd.localeCompare(ad);
+      return b.client_id - a.client_id;
+    });
     res.json(rows);
   } catch (err) { next(err); }
 });

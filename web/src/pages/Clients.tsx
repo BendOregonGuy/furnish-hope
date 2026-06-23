@@ -9,7 +9,8 @@ type Client = {
   first_name: string;
   last_name: string;
   mobile_phone: string | null;
-  client_type: string;
+  client_type: string;             // legacy primary; kept for back-compat
+  client_types?: string[];         // multi-select (Phase C household-type-multi)
   client_status: string;
   start_date: string | null;
   referring_agency: string | null;
@@ -73,7 +74,17 @@ export function Clients() {
                       </div>
                     </Link>
                   </td>
-                  <td className="px-5 py-3">{c.client_type}</td>
+                  <td className="px-5 py-3">
+                    {c.client_types && c.client_types.length > 0
+                      ? (
+                        <div className="flex flex-wrap gap-1">
+                          {c.client_types.map(t => (
+                            <span key={t} className="pill pill-terra text-[10px]">{t}</span>
+                          ))}
+                        </div>
+                      )
+                      : c.client_type}
+                  </td>
                   <td className="px-5 py-3">{c.referring_agency ?? '—'}</td>
                   <td className="px-5 py-3">{formatShortDate(c.start_date)}</td>
                   <td className="px-5 py-3"><StatusPill status={c.client_status} /></td>

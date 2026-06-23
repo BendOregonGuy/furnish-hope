@@ -1,56 +1,77 @@
 # Onboarding a partner-agency caseworker
 
-A partner agency wants their caseworker to submit referrals directly. Here's how an admin sets that up.
+A partner agency wants their caseworker to submit referrals directly. Here's how an admin sets that up — all clicks in the existing admin UI, no SQL needed.
 
 ## One-time per agency
 
-1. Admin -> search tbl_agency -> + New -> fill in agency name + address -> Save
-
-## For each caseworker
-
-2. Admin -> tbl_contact -> + New -> first/last/email -> Save
-3. Admin -> tbl_agency_contact -> + New -> pick the agency + contact -> Save
-4. Admin -> User accounts -> + New
-   - Username: their email
-   - Pick the agency_contact you just created
-   - **Leave facility_staff blank** (this is the role discriminator)
-   - Leave is_admin unchecked
-   - is_active = true
-   - Temporary password (copy it now!)
+1. **Add the agency** (if not already in the system)
+   - Admin → search **`tbl_agency`** → **+ New**
+   - Fill in agency name, address, etc.
    - Save
-5. Email them their credentials + the login URL.
 
-When they sign in, the system detects they're an agency user (agency_contact_id set, no facility_staff_id, not admin) and lands them at /agency.
+## For each caseworker at that agency
 
-## What the caseworker CAN do
+2. **Add the person as a contact**
+   - Admin → search **`tbl_contact`** → **+ New**
+   - First name, last name, email, phone
+   - Save
 
-- Dashboard at /agency: own-agency referral counts + recent activity
-- My referrals: searchable list
-- + Refer a household: short form, creates client + referral atomically
-- Read-only referral detail with request/delivery status
+3. **Link the contact to the agency**
+   - Admin → search **`tbl_agency_contact`** → **+ New**
+   - Pick the agency + pick the contact → Save
+
+4. **Create their login account**
+   - Admin → **User accounts** → **+ New**
+   - Username: their email address
+   - Pick the **agency_contact** you just created
+   - **Leave `facility_staff` blank** — this is the role discriminator
+   - **Leave `is_admin` unchecked**
+   - Set **`is_active = true`**
+   - Set a one-time temporary password — **copy it now**, you can't see it again
+   - Save
+
+5. **Email them their credentials**
+   - URL: `https://hammerhead-app-tk838.ondigitalocean.app/login`
+   - Username: their email
+   - Password: <the temporary one>
+   - Tell them to change it on first login
+
+That's it. When they sign in, the system detects `agency_contact_id is set AND facility_staff_id is null AND is_admin is false` → role becomes `agency` → they land at `/agency` (the partner portal) and never see the staff UI.
+
+## What the caseworker can do
+
+- **Dashboard** at `/agency` — own-agency referral counts + recent activity
+- **My referrals** — searchable list of households their agency has referred
+- **+ Refer a household** — short form, creates client + referral atomically
+- **Referral detail** — read-only household + request/delivery status
 
 ## What the caseworker CANNOT do
 
-Server-enforced via requireStaff middleware. Even hand-crafted URLs return 403:
-- Other agencies' referrals
-- Donors, donations, pledges, campaigns, events
-- Volunteers, staff, vendors
-- Inventory, pickups, internal deliveries
-- Audit log, settings, admin panel
-- Email, reports, dashboards, mailbox, calendar
+Enforced server-side via `requireStaff` middleware. Even hand-crafted URLs return 403:
+
+- See other agencies' referrals
+- See donors, donations, pledges, campaigns, events
+- See volunteers, staff, vehicles, vendors
+- See inventory, pickups, internal deliveries
+- See audit log, settings, lookup tables, admin panel
+- Send email from Furnish Hope accounts
+- Access reports / dashboards / mailbox / calendar
+- Edit a client after submission
 
 ## Multi-caseworker agencies
 
-Multiple caseworkers per agency each get their own login. They share the same agency_id so they see the same pool of referrals. Each referral records WHO submitted it via tbl_referral.agency_contact_id.
+Multiple caseworkers at the same agency can each have their own login. They all see the same agency-wide pool of referrals (shared `agency_id`). Each referral records the specific caseworker who submitted it (`tbl_referral.agency_contact_id`).
 
 ## Revoking access
 
-Admin -> User accounts -> find them -> is_active = false -> save. History intact, can't log in. Re-enable by flipping the flag.
+- Admin → User accounts → find them → set `is_active = false` → save
+- Their referral history stays intact (audit trail preserved); they just can't log in
+- Re-enable later by flipping the same flag
 
-## Security model
+## Security model — three layers
 
-1. Session middleware - every request requires signed-in user
-2. requireStaff / requireAgency - gate route families to one role
-3. In-query scoping - WHERE ac.agency_id = userAgencyId on every agency SQL
+1. **Session middleware** — every API request requires a valid signed-in user
+2. **`requireStaff` / `requireAgency`** — gates entire route families to one role
+3. **In-query scoping** — every agency endpoint includes `WHERE ac.agency_id = $userAgencyId`, so a guessed `client_id` from another agency returns 404
 
-A bug in one layer alone doesn't leak data. All three would have to fail.
+A bug in any one layer doesn't expose data alone. All three would have to fail.
