@@ -11,10 +11,18 @@ import { apiGet, apiPost } from '../../lib/api.ts';
 import { Loading } from '../../components/ui.tsx';
 import { DedupSuggestions } from '../../components/DedupSuggestions.tsx';
 
-interface ClientTypeRow { client_type_id: number; client_type: string }
-interface CityRow      { city_id: number;        city: string }
-interface CountyRow    { county_id: number;      county: string }
-interface StateRow     { state_id: number;       state: string }
+interface ClientTypeRow   { client_type_id: number; client_type: string }
+interface CityRow         { city_id: number;        city: string }
+interface CountyRow       { county_id: number;      county: string }
+interface StateRow        { state_id: number;       state: string }
+interface ItemCategoryRow { item_category_id: number; item_category: string }
+
+interface ItemLine {
+  item_category_id: number | '';
+  quantity: number;
+  priority: '' | 'low' | 'medium' | 'high';
+  item_notes: string;
+}
 
 export function AgencyReferralForm() {
   const navigate = useNavigate();
@@ -43,9 +51,15 @@ export function AgencyReferralForm() {
     queryFn: () => apiGet('/api/agency/lookups/lkp_state'),
     staleTime: 5 * 60_000,
   });
+  const { data: itemCategories } = useQuery<ItemCategoryRow[]>({
+    queryKey: ['agency', 'lookup', 'item_category'],
+    queryFn: () => apiGet('/api/agency/lookups/lkp_item_category'),
+    staleTime: 5 * 60_000,
+  });
 
   const [first, setFirst]       = useState('');
   const [last, setLast]         = useState('');
+  const [dob, setDob]           = useState('');
   const [email, setEmail]       = useState('');
   const [mobile, setMobile]     = useState('');
   const [clientTypeId, setClientTypeId] = useState<number | ''>('');
@@ -56,7 +70,18 @@ export function AgencyReferralForm() {
   const [stateId, setStateId]   = useState<number | null>(null);
   const [zip, setZip]           = useState('');
   const [notes, setNotes]       = useState('');
+  const [items, setItems]       = useState<ItemLine[]>([]);
   const [err, setErr]           = useState<string | null>(null);
+
+  function addItemLine() {
+    setItems(prev => [...prev, { item_category_id: '', quantity: 1, priority: '', item_notes: '' }]);
+  }
+  function updateItemLine(i: number, patch: Partial<ItemLine>) {
+    setItems(prev => prev.map((line, idx) => idx === i ? { ...line, ...patch } : line));
+  }
+  function removeItemLine(i: number) {
+    setItems(prev => prev.filter((_, idx) => idx !== i));
+  }
 
   const submitMut = useMutation({
     mutationFn: () => apiPost<{ client_id: number }>('/api/agency/referrals', {
@@ -65,6 +90,7 @@ export function AgencyReferralForm() {
         last_name: last.trim(),
         email: email.trim() || null,
         mobile_phone: mobile.trim() || null,
+        birth_date: dob.trim() || null,
       },
       address: {
         address: addr1.trim(),
@@ -76,6 +102,14 @@ export function AgencyReferralForm() {
       },
       client_type_id: Number(clientTypeId),
       notes: notes.trim() || null,
+      items: items
+        .filter(i => i.item_category_id)
+        .map(i => ({
+          item_category_id: Number(i.item_category_id),
+          quantity: i.quantity,
+          priority: i.priority || null,
+          item_notes: i.item_notes.trim() || null,
+        })),
     }),
     onSuccess: (r) => navigate(`/agency/referrals/${r.client_id}`),
     onError: (e: any) => setErr(e.message ?? 'Submit failed'),
@@ -97,7 +131,7 @@ export function AgencyReferralForm() {
     submitMut.mutate();
   }
 
-  if (!clientTypes || !cities || !counties || !states) return <Loading />;
+  if (!clientTypes || !cities || !counties || !states || !itemCategories) return <Loading />;
 
   return (
     <>
@@ -113,6 +147,7 @@ export function AgencyReferralForm() {
         apiPath="/api/agency/clients/search"
         first_name={first}
         last_name={last}
+        birth_date={dob}
         mobile_phone={mobile}
         email={email}
         onPickExisting={(c) => {
@@ -128,6 +163,8 @@ export function AgencyReferralForm() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="First name" required value={first} onChange={setFirst} />
             <Field label="Last name"  required value={last}  onChange={setLast} />
+            <Field label="Date of birth" type="date" value={dob} onChange={setDob} />
+            <div /> {/* spacer to keep email/phone on their own row */}
             <Field label="Email" type="email" value={email} onChange={setEmail} />
             <Field label="Phone" type="tel" value={mobile} onChange={setMobile} />
           </div>
@@ -176,6 +213,82 @@ export function AgencyReferralForm() {
             </div>
             <Field label="ZIP" required value={zip} onChange={setZip} />
           </div>
+        </Section>
+
+        <Section title="What does the household need?" hint="Optional — list the furniture and household items you're requesting. Furnish Hope staff will review and may adjust before sourcing.">
+          {items.length === 0 ? (
+            <div className="text-sm text-ink-soft mb-2">No items added yet.</div>
+          ) : (
+            <div className="space-y-2 mb-2">
+              {items.map((line, i) => (
+                <div key={i} className="grid grid-cols-12 gap-2 items-end p-2 bg-cream-soft rounded">
+                  <div className="col-span-12 sm:col-span-5">
+                    <label className="field-label text-xs">Item</label>
+                    <select
+                      className="field-input"
+                      value={line.item_category_id}
+                      onChange={e => updateItemLine(i, { item_category_id: e.target.value ? Number(e.target.value) : '' })}
+                    >
+                      <option value="">Choose…</option>
+                      {itemCategories.map(c => (
+                        <option key={c.item_category_id} value={c.item_category_id}>{c.item_category}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-3 sm:col-span-2">
+                    <label className="field-label text-xs">Qty</label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="field-input"
+                      value={line.quantity}
+                      onChange={e => updateItemLine(i, { quantity: Math.max(1, Number(e.target.value) || 1) })}
+                    />
+                  </div>
+                  <div className="col-span-5 sm:col-span-2">
+                    <label className="field-label text-xs">Priority</label>
+                    <select
+                      className="field-input"
+                      value={line.priority}
+                      onChange={e => updateItemLine(i, { priority: e.target.value as ItemLine['priority'] })}
+                    >
+                      <option value="">—</option>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </div>
+                  <div className="col-span-10 sm:col-span-2">
+                    <label className="field-label text-xs">Notes</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      value={line.item_notes}
+                      onChange={e => updateItemLine(i, { item_notes: e.target.value })}
+                      placeholder="e.g. twin size"
+                    />
+                  </div>
+                  <div className="col-span-2 sm:col-span-1 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => removeItemLine(i)}
+                      className="text-terracotta hover:text-terracotta-deep text-sm py-2"
+                      title="Remove this item"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={addItemLine}
+            className="btn-ghost text-sm"
+          >
+            + Add item
+          </button>
         </Section>
 
         <Section title="Notes" hint="Anything Furnish Hope should know — accessibility needs, language preference, urgency, etc.">

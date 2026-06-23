@@ -31,6 +31,7 @@ interface ReferralDetail {
     request_id: number;
     request_at: string;
     note: string | null;
+    review_status: string;
     item_count: number;
     matched_count: number;
     latest_delivery_date: string | null;
@@ -83,6 +84,11 @@ export function AgencyReferralDetail() {
                         Opened {formatDate(r.request_at)}
                       </div>
                     </div>
+                    {r.review_status && r.review_status !== 'approved' && (
+                      <div className={`text-xs mb-2 p-2 rounded ${reviewBanner(r.review_status)}`}>
+                        {reviewStatusBlurb(r.review_status, r.note)}
+                      </div>
+                    )}
                     <div className="text-xs text-ink-soft mb-2">
                       {r.item_count} item{r.item_count === 1 ? '' : 's'} requested
                       {r.matched_count > 0 && <> · {r.matched_count} reserved from inventory</>}
@@ -160,4 +166,31 @@ function deliveryStatusPill(s: string | null): string {
 
 function deliveryStatusLabel(s: string | null): string {
   return s ?? 'Pending';
+}
+
+function reviewBanner(status: string): string {
+  if (status === 'rejected')        return 'bg-terracotta-soft text-terracotta-deep';
+  if (status === 'awaiting_review') return 'bg-gold-soft text-ink';
+  return 'bg-cream text-ink-soft';
+}
+
+function reviewStatusBlurb(status: string, note: string | null): string {
+  if (status === 'awaiting_review') {
+    return 'Awaiting staff review. Furnish Hope will reach out shortly.';
+  }
+  if (status === 'rejected') {
+    return note
+      ? `Request was rejected by Furnish Hope. ${extractRejectNote(note)}`
+      : 'Request was rejected by Furnish Hope. Please contact them for details.';
+  }
+  if (status === 'in_progress') return 'In progress — Furnish Hope is matching items now.';
+  if (status === 'completed')   return 'Request completed.';
+  return status;
+}
+
+function extractRejectNote(note: string): string {
+  // POST /reject prefixes the stored note with "[Rejected YYYY-MM-DD] ..." —
+  // pull just the human-readable part out.
+  const m = note.match(/^\[Rejected[^\]]+\]\s*(.*?)(?:\n\n|$)/s);
+  return m ? m[1].trim() : note;
 }

@@ -28,6 +28,7 @@ const sections: NavSection[] = [
     items: [
       { to: '/clients',   name: 'Clients',             icon: 'users' },
       { to: '/requests',  name: 'Provisioning Requests', icon: 'list-check' },
+      { to: '/requests/review', name: 'Review queue',  icon: 'list-check' },
       { to: '/visits',    name: 'Visits',              icon: 'schedule' },
     ],
   },
@@ -128,6 +129,15 @@ export function Sidebar() {
   });
   const unreadCount = unread?.count ?? 0;
 
+  // Triage queue size → badge on the Review queue sidebar entry.
+  const { data: reviewQ } = useQuery<unknown[]>({
+    queryKey: ['requests-review-queue'],
+    queryFn: () => apiGet('/api/requests/review-queue'),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+  const reviewCount = reviewQ?.length ?? 0;
+
   return (
     <aside className="w-[232px] bg-gradient-to-b from-[#1F1B16] to-[#2A241D] text-[#E8DFCD] py-5 flex flex-col">
       <div className="flex items-center gap-2.5 px-5 pb-5 border-b border-white/10">
@@ -172,6 +182,14 @@ export function Sidebar() {
                     title={`${unreadCount} unread`}
                   >
                     {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+                {item.to === '/requests/review' && reviewCount > 0 && (
+                  <span
+                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-terracotta text-paper text-[10px] font-medium leading-none"
+                    title={`${reviewCount} awaiting review`}
+                  >
+                    {reviewCount > 99 ? '99+' : reviewCount}
                   </span>
                 )}
               </NavLink>

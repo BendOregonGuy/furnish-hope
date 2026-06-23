@@ -30,6 +30,96 @@ interface RequestWritePayload {
 /*  List                                                              */
 /* ----------------------------------------------------------------- */
 
+/* ----------------------------------------------------------------- */
+/*  Triage queue — agency-submitted requests awaiting staff review    */
+/* ----------------------------------------------------------------- */
+
+/** GET /api/requests/review-queue — all requests awaiting staff review,
+ *  ordered oldest first so nothing sits forgotten. */
+requestsRouter.get('/review-queue', async (req, res, next) => {
+  try {
+    const rows = await query(`
+      SELECT
+        r.client_provisioning_request_id AS request_id,
+        r.request_at,
+        r.client_request_note,
+        r.client_id,
+        contact.first_name || ' ' || contact.last_name AS client_name,
+        ag.agency_name,
+        rc.first_name || ' ' || rc.last_name AS caseworker_name,
+        ref.referral_date,
+        (SELECT COUNT(*)::int FROM tbl_client_request_items i WHERE i.client_provisioning_request_id = r.client_provisioning_request_id) AS item_count
+      FROM tbl_client_provisioning_request r
+      JOIN tbl_client c          ON c.client_id = r.client_id
+      JOIN tbl_contact contact   ON contact.contact_id = c.contact_id
+      LEFT JOIN tbl_referral ref ON ref.referral_id = r.referral_id
+      LEFT JOIN tbl_agency_contact ac ON ac.agency_contact_id = ref.agency_contact_id
+      LEFT JOIN tbl_agency ag    ON ag.agency_id = ac.agency_id
+      LEFT JOIN tbl_contact rc   ON rc.contact_id = ac.contact_id
+      WHERE r.review_status = 'awaiting_review'
+      ORDER BY r.request_at ASC
+    `);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+/** POST /api/requests/:id/approve — flip a request from awaiting_review to approved. */
+requestsRouter.post('/:id/approve', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+
+    await withTransaction(async (tx) => {
+      const before = await tx.queryOne<Record<string, any>>(
+        `SELECT * FROM tbl_client_provisioning_request WHERE client_provisioning_request_id = $1`, [id],
+      );
+      if (!before) throw withStatus(404, 'Request not found');
+      if (before.review_status !== 'awaiting_review') {
+        throw withStatus(409, `Cannot approve — current status is "${before.review_status}"`);
+      }
+      const after = await tx.queryOne<Record<string, any>>(`
+        UPDATE tbl_client_provisioning_request
+           SET review_status = 'approved'
+         WHERE client_provisioning_request_id = $1
+         RETURNING *
+      `, [id]);
+      if (after) await auditUpdate(req, 'tbl_client_provisioning_request', id, before, after, tx);
+    });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+/** POST /api/requests/:id/reject — flip to rejected; appends optional note. */
+requestsRouter.post('/:id/reject', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+    const note = String(req.body?.note ?? '').trim();
+
+    await withTransaction(async (tx) => {
+      const before = await tx.queryOne<Record<string, any>>(
+        `SELECT * FROM tbl_client_provisioning_request WHERE client_provisioning_request_id = $1`, [id],
+      );
+      if (!before) throw withStatus(404, 'Request not found');
+      if (before.review_status !== 'awaiting_review') {
+        throw withStatus(409, `Cannot reject — current status is "${before.review_status}"`);
+      }
+      const stamped = note
+        ? `[Rejected ${new Date().toISOString().slice(0, 10)}] ${note}\n\n${before.client_request_note ?? ''}`.trim()
+        : before.client_request_note;
+      const after = await tx.queryOne<Record<string, any>>(`
+        UPDATE tbl_client_provisioning_request
+           SET review_status = 'rejected',
+               client_request_note = $2
+         WHERE client_provisioning_request_id = $1
+         RETURNING *
+      `, [id, stamped]);
+      if (after) await auditUpdate(req, 'tbl_client_provisioning_request', id, before, after, tx);
+    });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 /** GET /api/requests — list, optionally filtered to one client */
 requestsRouter.get('/', async (req, res, next) => {
   try {

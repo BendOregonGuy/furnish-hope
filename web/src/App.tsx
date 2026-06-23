@@ -15,6 +15,7 @@ import { ClientForm } from './pages/ClientForm.tsx';
 import { Requests } from './pages/Requests.tsx';
 import { RequestDetail } from './pages/RequestDetail.tsx';
 import { RequestForm } from './pages/RequestForm.tsx';
+import { RequestsReview } from './pages/RequestsReview.tsx';
 import { SignWaiver } from './pages/SignWaiver.tsx';
 import { Inventory } from './pages/Inventory.tsx';
 import { InventoryDetail } from './pages/InventoryDetail.tsx';
@@ -170,6 +171,7 @@ function AppShell() {
           <Route path="/clients/:id" element={<ClientDetail />} />
 
           <Route path="/requests" element={<Requests />} />
+          <Route path="/requests/review" element={<RequestsReview />} />
           <Route path="/requests/new" element={<RequestForm />} />
           <Route path="/requests/:id/edit" element={<RequestForm />} />
           <Route path="/requests/:id" element={<RequestDetail />} />
