@@ -109,10 +109,12 @@ export function ClientForm() {
   const [savedFlash, setSavedFlash] = useState(false);
   const savedFlashTimer = useRef<number | null>(null);
 
-  /* ---------- Household-type lookup (powers the checkbox group) ---------- */
-  const { data: clientTypes } = useQuery<{ client_type_id: number; client_type: string }[]>({
-    queryKey: ['lookup', 'lkp_client_type'],
-    queryFn: () => apiGet('/api/lookups/lkp_client_type'),
+  /* ---------- Household-type lookup (powers the checkbox group) ----------
+   * /api/lookups/:name returns rows as {id, label}; the whitelist key is the
+   * short name (no "lkp_" prefix). */
+  const { data: clientTypes } = useQuery<{ id: number; label: string }[]>({
+    queryKey: ['lookup', 'client_type'],
+    queryFn: () => apiGet('/api/lookups/client_type'),
     staleTime: 5 * 60_000,
   });
 
@@ -158,7 +160,7 @@ export function ClientForm() {
       county_id:          c.county_id ?? null,
       state_id:           c.state_id ?? null,
       postalcode:         c.postalcode ?? '',
-      client_type_id:     c.client_type_id ?? null,
+      // client_type_id intentionally omitted — handled by clientTypeIds state
       client_status_id:   c.client_status_id ?? null,
       start_date:         dateOnly(c.start_date),
       description:        c.description ?? '',
@@ -390,7 +392,7 @@ export function ClientForm() {
               label="Household type"
               required
               helpText="Check all that apply. A household can be more than one (e.g. Veteran + Natural Disaster)."
-              options={(clientTypes ?? []).map(t => ({ value: t.client_type_id, label: t.client_type }))}
+              options={(clientTypes ?? []).map(t => ({ value: t.id, label: t.label }))}
               value={clientTypeIds}
               onChange={ids => {
                 setClientTypeIds(ids);
