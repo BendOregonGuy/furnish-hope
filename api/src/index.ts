@@ -16,6 +16,7 @@ import { pickupsRouter } from './routes/pickups.js';
 import { volunteersRouter } from './routes/volunteers.js';
 import { lookupsRouter } from './routes/lookups.js';
 import { adminRouter } from './routes/admin.js';
+import { duplicatesRouter } from './routes/duplicates.js';
 import { activityRouter } from './routes/activity.js';
 import { authRouter } from './routes/auth.js';
 import { settingsRouter } from './routes/settings.js';
@@ -50,6 +51,8 @@ import {
 } from './routes/volunteerSignup.js';
 import { createSessionMiddleware } from './auth/session.js';
 import { runAuthMigrations } from './auth/migrations.js';
+import cron from 'node-cron';
+import { runScan } from './dedup/scan.js';
 import { requireUser, requireAdmin, requireStaff, requireDeveloper } from './auth/middleware.js';
 
 const app = express();
@@ -123,6 +126,7 @@ app.use('/api', requireUser);
 app.use('/api/admin/activity', requireAdmin, activityRouter);
 app.use('/api/admin/settings', requireAdmin, settingsRouter);
 app.use('/api/admin/volunteer-signups', requireAdmin, volunteerSignupsAdminRouter);
+app.use('/api/admin/duplicates', requireAdmin, duplicatesRouter);
 app.use('/api/admin', requireAdmin, adminRouter);
 
 // (Org-info is mounted above, BEFORE requireUser, so the public
@@ -283,6 +287,24 @@ runAuthMigrations()
       console.log(`Furnish Hope API listening on http://localhost:${PORT} (${NODE_ENV})`);
     });
     setupGracefulShutdown(server);
+
+    // Nightly client-dedup scan at 02:00 server time. Disable with
+    // DISABLE_DEDUP_CRON=1 (useful when iterating locally so the cron
+    // doesn't spam audit logs).
+    if (process.env.DISABLE_DEDUP_CRON !== '1') {
+      cron.schedule('0 2 * * *', async () => {
+        try {
+          const s = await runScan();
+          console.log(
+            `[dedup-cron] scanned ${s.scanned_pairs} pairs >= ${s.threshold}; ` +
+            `flagged ${s.newly_flagged} new in ${s.duration_ms}ms`,
+          );
+        } catch (err) {
+          console.error('[dedup-cron] scan failed:', err);
+        }
+      });
+      console.log('[dedup-cron] scheduled nightly client-dedup scan at 02:00 server time');
+    }
   })
   .catch((err) => {
     console.error('Auth migrations failed — aborting startup:', err);

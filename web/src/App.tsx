@@ -84,6 +84,7 @@ import { AdminQuickBooks } from './pages/admin/AdminQuickBooks.tsx';
 import { AdminAttachmentStorage } from './pages/admin/AdminAttachmentStorage.tsx';
 import { AdminShiftTemplates } from './pages/admin/AdminShiftTemplates.tsx';
 import { AdminHolidays } from './pages/admin/AdminHolidays.tsx';
+import { DuplicateClients } from './pages/admin/DuplicateClients.tsx';
 import { AgencyShell } from './pages/agency/AgencyShell.tsx';
 import { AgencyDashboard } from './pages/agency/AgencyDashboard.tsx';
 import { AgencyReferrals } from './pages/agency/AgencyReferrals.tsx';
@@ -272,6 +273,7 @@ function AppShell() {
           <Route path="/admin/attachment-storage" element={<RequireAdmin><AdminAttachmentStorage /></RequireAdmin>} />
           <Route path="/admin/shift-templates" element={<RequireAdmin><AdminShiftTemplates /></RequireAdmin>} />
           <Route path="/admin/holidays" element={<RequireAdmin><AdminHolidays /></RequireAdmin>} />
+          <Route path="/admin/duplicate-clients" element={<RequireAdmin><DuplicateClients /></RequireAdmin>} />
           <Route path="/admin/settings/quickbooks" element={<RequireAdmin><AdminQuickBooks /></RequireAdmin>} />
           <Route path="/admin/:table" element={<RequireAdmin><AdminList /></RequireAdmin>} />
           <Route path="/admin/:table/new" element={<RequireAdmin><AdminForm /></RequireAdmin>} />

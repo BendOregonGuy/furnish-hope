@@ -69,6 +69,7 @@ const sections: NavSection[] = [
       { to: '/admin/quickbooks', name: 'QuickBooks',     icon: 'sync',     adminOnly: true },
       { to: '/admin/shift-templates', name: 'Shift templates', icon: 'shift', adminOnly: true },
       { to: '/admin/holidays',   name: 'Holidays',       icon: 'calendar', adminOnly: true },
+      { to: '/admin/duplicate-clients', name: 'Duplicate clients', icon: 'users', adminOnly: true },
       { to: '/admin/attachment-storage', name: 'Attachment storage', icon: 'database', adminOnly: true },
       { to: '/admin/manual-screenshots', name: 'Manual screenshots', icon: 'book', adminOnly: true },
       { to: '/admin/activity',   name: 'Activity log',   icon: 'activity', adminOnly: true },
@@ -138,6 +139,18 @@ export function Sidebar() {
   });
   const reviewCount = reviewQ?.length ?? 0;
 
+  // Duplicate-clients queue size → badge on the admin Duplicates entry.
+  // Only fires for admins; non-admins won't see the entry anyway, but
+  // skipping the query saves a 403 round trip.
+  const { data: dupQ } = useQuery<unknown[]>({
+    queryKey: ['duplicate-queue'],
+    queryFn: () => apiGet('/api/admin/duplicates'),
+    enabled: !!user?.is_admin,
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: true,
+  });
+  const dupCount = dupQ?.length ?? 0;
+
   return (
     <aside className="w-[232px] bg-gradient-to-b from-[#1F1B16] to-[#2A241D] text-[#E8DFCD] py-5 flex flex-col">
       <div className="flex items-center gap-2.5 px-5 pb-5 border-b border-white/10">
@@ -190,6 +203,14 @@ export function Sidebar() {
                     title={`${reviewCount} awaiting review`}
                   >
                     {reviewCount > 99 ? '99+' : reviewCount}
+                  </span>
+                )}
+                {item.to === '/admin/duplicate-clients' && dupCount > 0 && (
+                  <span
+                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-terracotta text-paper text-[10px] font-medium leading-none"
+                    title={`${dupCount} potential duplicates awaiting review`}
+                  >
+                    {dupCount > 99 ? '99+' : dupCount}
                   </span>
                 )}
               </NavLink>

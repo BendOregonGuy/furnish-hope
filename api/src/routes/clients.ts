@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { query, queryOne, withTransaction } from '../db/pool.js';
 import { auditCreate, auditDelete, auditUpdate } from '../auth/audit.js';
 import { buildScoringSql } from '../dedup/scoring.js';
+import { scanOneClient } from '../dedup/scan.js';
 
 export const clientsRouter = Router();
 
@@ -153,6 +154,23 @@ clientsRouter.get('/search', async (req, res, next) => {
     `;
     const rows = await query(sql, [first, last, dob || null, phone || null, email || null, addrId]);
     res.json(rows.filter((r: any) => r.match_score >= 30));
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
+/*  Targeted dedup — "Check for duplicates" button on ClientDetail    */
+/* ----------------------------------------------------------------- */
+
+/** GET /api/clients/:id/check-duplicates — runs the scoring against ALL
+ *  other clients for this one client and returns top matches inline. Does
+ *  NOT write to the queue — staff decides which (if any) are real and
+ *  uses the merge UI from there. */
+clientsRouter.get('/:id/check-duplicates', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+    const rows = await scanOneClient(id);
+    res.json(rows);
   } catch (err) { next(err); }
 });
 
