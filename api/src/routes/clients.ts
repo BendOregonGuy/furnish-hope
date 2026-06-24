@@ -106,11 +106,14 @@ clientsRouter.get('/', async (req, res, next) => {
       ORDER BY c.client_id DESC, ref.referral_date DESC NULLS LAST
       LIMIT 200
     `, params);
-    // Re-sort by the user-visible order after DISTINCT ON's required ordering.
+    // Re-sort by the user-visible order (start_date DESC NULLS LAST, client_id DESC)
+    // after DISTINCT ON's required ordering. start_date arrives from pg as a
+    // Date object (not a string), so coerce to a numeric timestamp before
+    // comparing — .localeCompare doesn't exist on Date.
     rows.sort((a: any, b: any) => {
-      const ad = a.start_date ?? '';
-      const bd = b.start_date ?? '';
-      if (ad !== bd) return bd.localeCompare(ad);
+      const av = a.start_date ? new Date(a.start_date).getTime() : -Infinity;
+      const bv = b.start_date ? new Date(b.start_date).getTime() : -Infinity;
+      if (av !== bv) return bv - av;
       return b.client_id - a.client_id;
     });
     res.json(rows);
