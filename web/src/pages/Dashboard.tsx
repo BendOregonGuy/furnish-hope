@@ -57,6 +57,17 @@ export function Dashboard() {
     queryFn: () => apiGet('/api/dashboard'),
   });
 
+  // Admin-only: surface pending-duplicate count as a top-of-dashboard alert.
+  // The Sidebar already polls this same endpoint at the same key, so React
+  // Query will hand back the cached payload — no extra request.
+  const { data: dupQ } = useQuery<unknown[]>({
+    queryKey: ['duplicate-queue'],
+    queryFn: () => apiGet('/api/admin/duplicates'),
+    enabled: !!user?.is_admin,
+    refetchInterval: 5 * 60_000,
+  });
+  const dupCount = dupQ?.length ?? 0;
+
   if (isLoading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
   if (!data) return null;
@@ -79,6 +90,24 @@ export function Dashboard() {
           </>
         }
       />
+
+      {/* Admin-only alert: pending duplicate-client pairs from the nightly scan. */}
+      {user?.is_admin && dupCount > 0 && (
+        <div className="mb-5 p-3 bg-terracotta-soft border-l-4 border-terracotta rounded-r-md flex items-center justify-between gap-3">
+          <div className="text-sm">
+            <span className="font-medium text-terracotta-deep">
+              {dupCount} potential duplicate client {dupCount === 1 ? 'pair is' : 'pairs are'} awaiting review.
+            </span>
+            <span className="text-ink-soft"> Resolve them to keep household records clean.</span>
+          </div>
+          <Link
+            to="/admin/duplicate-clients"
+            className="shrink-0 px-3 py-1.5 bg-terracotta text-paper text-sm rounded hover:bg-terracotta-deep whitespace-nowrap"
+          >
+            Review queue →
+          </Link>
+        </div>
+      )}
 
       {/* Operations metrics */}
       <div className="grid grid-cols-4 gap-3.5 mb-5">

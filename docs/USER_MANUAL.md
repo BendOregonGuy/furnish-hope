@@ -249,6 +249,22 @@ Requests reach Furnish Hope two ways:
 1. **Staff-created** — you open the client detail page, click **+ New Request**, list items, save. These land approved and join the matching pipeline immediately.
 2. **Agency-submitted** — a caseworker fills in items on their referral form, which atomically creates the client + referral + request + items. These land with **review status = "Awaiting review"** so you can confirm them before matching starts.
 
+### Resolving duplicate clients
+
+The system runs a **nightly dedup scan** at 2:00 AM server time that compares every pair of clients on name, date of birth, phone, email, and address. Pairs scoring at or above the **threshold** (default 70%, admin-tunable in **Database Admin → App Settings → `dedupe_match_threshold`**) land in the review queue.
+
+Sidebar (admin-only) → **System → Duplicate clients** (red badge shows the pending count). The dashboard also shows a banner at the top when there are any.
+
+For each pair you'll see two options:
+
+- **Review →** opens a side-by-side compare. Each column has a **Keep** radio button at the top — the system defaults to whichever side has more referrals + requests + visits (more history = stronger anchor). Toggle if you'd rather keep the other. Fields that differ are shown in dark ink; identical ones are dimmed. Click **Merge X → Y** to move every referral, request, visit, and delivery to the kept client and delete the other. The operation cannot be undone; an audit-log row is written.
+- **Not a duplicate** if you've decided the two are actually different people. The pair is marked resolved and the nightly scan won't re-flag it.
+
+Two manual triggers exist for impatient cases:
+
+- **Run scan now** button on the queue page (top of the Duplicate Clients view). Runs the same scan immediately and shows the result counter.
+- **Check for duplicates** button on each client's detail page (admin-only, top-right of the header). Searches the rest of the database against THIS client and shows top matches inline so you can decide whether to merge.
+
 ### The review queue (agency-submitted requests)
 
 Sidebar → **Clients → Review queue** (red badge shows pending count). The queue lists every awaiting-review request oldest first.

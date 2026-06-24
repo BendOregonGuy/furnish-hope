@@ -14,14 +14,14 @@ Built specifically for a **non-technical primary user** (a nonprofit's database 
 
 | Metric | Count |
 |---|---:|
-| TypeScript LOC (api + web) | ~52,300 |
+| TypeScript LOC (api + web) | ~53,400 |
 | Schema migrations | 89 |
 | Database tables (`tbl_*` + `lkp_*`) | 77 + 65 = 142 |
 | Foreign keys | 220 |
-| API route files | 38 |
-| API endpoints | 222 |
-| Frontend pages | 81 |
-| Commits on `main` | 120 |
+| API route files | 39 |
+| API endpoints | 228 |
+| Frontend pages | 82 |
+| Commits on `main` | 124 |
 | Production bundle size | ~1.9 MB JS, 506 KB gzipped |
 
 ---
@@ -38,6 +38,7 @@ Built specifically for a **non-technical primary user** (a nonprofit's database 
 - **express-rate-limit + helmet** — login throttling + standard security headers
 - **AES-256-GCM** (via Node `crypto`) — encryption at rest for OAuth tokens + IMAP/SMTP passwords
 - **Idempotent startup migrations** — `api/src/auth/migrations.ts` runs every migration in order on every boot; safe to re-run
+- **`node-cron`** — schedules the nightly client-dedup scan at 02:00 server time (disable with `DISABLE_DEDUP_CRON=1`)
 
 ### Front end (`/web`)
 
@@ -114,7 +115,7 @@ Plus row-level scoping for agency caseworkers (they only see their own org's ref
 ## Feature domains (12 themes from the ERD)
 
 1. **Contacts & Addresses** — shared people + place rows; address dedupe + shared-edit confirmation modal
-2. **Clients & Households** — referral → intake → provisioning request → visit → waiver → delivery. Households can be multi-type (Veteran + Disaster + ...) via `tbl_client_client_type`. Multiple agencies can refer the same client; staff see the full referral history per client. Client-dedup search ("do you mean...?") surfaces likely matches before a new client is created, scoped per-agency in the partner portal. Agency-submitted requests land in a staff **review queue** with Approve / Edit / Reject actions before joining the matching pipeline. Fulfillment methods: home / walkout / container pickup.
+2. **Clients & Households** — referral → intake → provisioning request → visit → waiver → delivery. Households can be multi-type (Veteran + Disaster + ...) via `tbl_client_client_type`. Multiple agencies can refer the same client; staff see the full referral history per client. Client-dedup search ("do you mean...?") surfaces likely matches before a new client is created, scoped per-agency in the partner portal. A **nightly dedup scan** (`node-cron`) scores every pair of clients on name / DOB / phone / email / address and queues high-score pairs to `tbl_potential_duplicate`; admins resolve via a side-by-side compare + atomic merge that introspects every FK to `tbl_client` and reassigns rows from the merge side to the keep side in one transaction. Agency-submitted requests land in a staff **review queue** with Approve / Edit / Reject actions before joining the matching pipeline. Fulfillment methods: home / walkout / container pickup.
 3. **Donors, Donations & QuickBooks** — gifts, designations, pledges, full QBO sync (donations → Sales Receipts), 6 QBO tables for OAuth + mappings + sync log
 4. **Inventory & Storage** — items, reservations, container/lockbox flagging
 5. **Facilities & Vehicles** — corporate sites, vehicle fleet + maintenance log

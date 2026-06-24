@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiDelete, apiGet, formatShortDate, formatLongDate } from '../lib/api.ts';
+import { useAuth } from '../lib/auth.tsx';
 import { Avatar, Loading, ErrorBox, StatusPill } from '../components/ui.tsx';
 import { EmailWidget } from '../components/email/EmailWidget.tsx';
 import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
@@ -45,10 +47,29 @@ interface ReferralRow {
   }>;
 }
 
+interface DuplicateMatch {
+  client_id: number;
+  first_name: string;
+  last_name: string;
+  birth_date: string | null;
+  mobile_phone: string | null;
+  email: string | null;
+  address: string | null;
+  city: string | null;
+  match_score: number;
+  match_reasons: string;
+}
+
 export function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const [dupResults, setDupResults] = useState<DuplicateMatch[] | null>(null);
+  const dupCheckMut = useMutation({
+    mutationFn: () => apiGet<DuplicateMatch[]>(`/api/clients/${id}/check-duplicates`),
+    onSuccess: (rows) => setDupResults(rows),
+  });
 
   const { data, isLoading, error } = useQuery<ClientDetailData>({
     queryKey: ['client', id],
@@ -107,6 +128,16 @@ export function ClientDetail() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {user?.is_admin && (
+            <button
+              onClick={() => dupCheckMut.mutate()}
+              disabled={dupCheckMut.isPending}
+              className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta disabled:opacity-50"
+              title="Search the rest of the client database for likely duplicates of this household"
+            >
+              {dupCheckMut.isPending ? 'Checking…' : 'Check for duplicates'}
+            </button>
+          )}
           <Link
             to="/clients/new"
             className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta"
@@ -124,6 +155,38 @@ export function ClientDetail() {
       </div>
 
       {/* Header */}
+      {dupResults !== null && (
+        <div className={`mb-5 p-3 rounded border-l-4 ${dupResults.length === 0 ? 'bg-sage-soft border-sage' : 'bg-gold-soft border-gold'}`}>
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="text-sm">
+              {dupResults.length === 0 ? (
+                <span className="text-ink">No likely duplicates found in the rest of the database.</span>
+              ) : (
+                <>
+                  <span className="font-medium text-ink">
+                    {dupResults.length} possible duplicate{dupResults.length === 1 ? '' : 's'} found.
+                  </span>
+                  <ul className="mt-2 space-y-1">
+                    {dupResults.map(m => (
+                      <li key={m.client_id} className="text-xs">
+                        <Link to={`/clients/${m.client_id}`} className="text-terracotta">
+                          {m.first_name} {m.last_name}
+                        </Link>
+                        <span className="text-ink-soft"> · {m.match_score}% · {m.match_reasons}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="text-xs text-ink-soft mt-2">
+                    Tip: Run a scan from <Link to="/admin/duplicate-clients" className="text-terracotta hover:underline">Duplicate clients</Link> to queue these for merge.
+                  </div>
+                </>
+              )}
+            </div>
+            <button onClick={() => setDupResults(null)} className="text-ink-faint text-xs">Dismiss</button>
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-5 p-5 bg-cream border border-hairline rounded-[10px] mb-6">
         <Avatar name={fullName} size="lg" />
         <div className="flex-1">
