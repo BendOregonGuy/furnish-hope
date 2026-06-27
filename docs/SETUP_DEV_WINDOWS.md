@@ -6,6 +6,57 @@ deploying. **Written for non-technical staff** — no coding background
 assumed. Every step shows what to click, what to paste, and what
 you should see.
 
+---
+
+## ⚡ New-laptop quickstart (the impatient version)
+
+If you've done this before and just need the commands, here's the whole
+thing in 8 steps. Each is detailed below if you get stuck.
+
+```powershell
+# 1. Install tools (admin UAC will pop a couple times)
+winget install --id Git.Git -e --silent --accept-source-agreements --accept-package-agreements
+winget install --id OpenJS.NodeJS.LTS -e --silent --accept-source-agreements --accept-package-agreements
+winget install --id Python.Python.3.12 -e --silent --accept-source-agreements --accept-package-agreements
+winget install --id PostgreSQL.PostgreSQL.16 -e --silent --accept-source-agreements --accept-package-agreements
+winget install --id Microsoft.VisualStudioCode -e --silent --accept-source-agreements --accept-package-agreements
+
+# 2. CLOSE PowerShell and OPEN A NEW ONE so the new commands are on PATH.
+
+# 3. Confirm the Postgres password is `postgres` (reset if the installer set anything else)
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -c "ALTER USER postgres WITH PASSWORD 'postgres';"
+
+# 4. Identify yourself to git
+git config --global user.name "Preston Mitchell"
+git config --global user.email "preston@getreality.com"
+
+# 5. Clone + enter the repo
+cd C:\Users\$env:USERNAME
+git clone https://github.com/BendOregonGuy/furnish-hope.git
+cd furnish-hope
+
+# 6. Create DB + load schema + seed
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -c "CREATE DATABASE furnish_hope;"
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -d furnish_hope -f db\01_schema.sql
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -d furnish_hope -f db\02_seed.sql
+
+# 7. Install deps + copy the env template
+cd api;   npm install;   Copy-Item .env.example .env;   cd ..
+cd web;   npm install;                                  cd ..
+
+# 8. Run the app (TWO PowerShell windows side-by-side)
+#    Window 1:  cd api;  npm run dev
+#    Window 2:  cd web;  npm run dev
+#    Browser:   http://localhost:5173
+#    Look at window 1 for the initial admin password printed in a banner.
+```
+
+That's it. The full step-by-step below covers what each command does,
+what you should see, and how to recover from each thing that can go
+wrong.
+
+---
+
 ## What you'll have when you're done
 
 - The full Furnish Hope code on your laptop
@@ -199,6 +250,25 @@ install:
 winget install --id Graphviz.Graphviz --source winget -e --silent --accept-source-agreements --accept-package-agreements
 ```
 
+### 2.7 Install Pandoc + wkhtmltopdf (5 min, optional)
+
+Only needed if you want to regenerate the codebase summary PDF
+(`docs/CodebaseSummary.pdf`) via
+`python scripts/generate_codebase_summary_pdf.py`. Skip if you're
+just running the app.
+
+```powershell
+winget install --id JohnMacFarlane.Pandoc -e --silent --accept-source-agreements --accept-package-agreements
+winget install --id wkhtmltopdf.wkhtmltox -e --silent --accept-source-agreements --accept-package-agreements
+```
+
+The Python script also uses the `psycopg2-binary` package to read
+fresh DB stats:
+
+```powershell
+pip install psycopg2-binary
+```
+
 ---
 
 ## Part 3 — Clone the repo (5 min)
@@ -224,7 +294,7 @@ Decide where the code should live. The standard location is
 
 ```powershell
 cd C:\Users\$env:USERNAME
-git clone https://github.com/<your-github-username>/furnish-hope.git
+git clone https://github.com/BendOregonGuy/furnish-hope.git
 cd furnish-hope
 ```
 
@@ -310,35 +380,55 @@ Another 2–4 minutes.
 
 The API reads database credentials and other secrets from a file
 called `.env` in the `api/` folder. The repo doesn't include `.env`
-(it's gitignored to avoid leaking secrets), so you have to create one.
+(it's gitignored to avoid leaking secrets), but it includes a
+template called `.env.example` that you copy and customize.
 
-### 6.1 Create the .env file
+### 6.1 Copy the template
 
 In PowerShell:
 
 ```powershell
 cd C:\Users\$env:USERNAME\furnish-hope\api
+Copy-Item .env.example .env
+```
+
+That's it for most local-dev cases — the defaults work with the
+PostgreSQL install you set up in Part 2.4 (host=localhost,
+user=postgres, password=postgres, db=furnish_hope).
+
+### 6.2 Generate a real SESSION_SECRET (1 min)
+
+The placeholder secret in `.env.example` is intentionally a
+placeholder. Replace it with a real random value:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+That prints a 64-character hex string. Copy it.
+
+Now open `.env` in Notepad:
+
+```powershell
 notepad .env
 ```
 
-Notepad opens with an empty file. Paste this:
+Find the `SESSION_SECRET=` line and replace the value with what you
+just copied. Save (Ctrl+S) and close Notepad.
 
-```ini
-# Local development environment
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/furnish_hope
-SESSION_SECRET=local-dev-secret-do-not-use-in-prod
-SESSION_SECURE=false
-ATTACHMENT_ENCRYPTION_KEY=any-32-char-string-only-for-local-dev
-PORT=4000
-WEB_ORIGIN=http://localhost:5173
-NODE_ENV=development
-```
+> **🛟 You can skip step 6.2 for the very first run** — the app
+> will still start. But if you check your work into git later,
+> the placeholder value flagged by `git diff` is a useful
+> reminder that this secret is meant to be unique per machine.
 
-Save (Ctrl+S) and close Notepad.
+> **⚠️ Don't commit `.env` to git.** The repo's `.gitignore`
+> already excludes it. The `.env.example` file IS committed
+> (it's a template with no real secrets).
 
-> **⚠️ Don't commit `.env` to git.** The repo's `.gitignore` already
-> excludes it, but be aware. The values above are intentionally
-> weak and ONLY safe on localhost.
+> **🛟 Optional locally: silence the nightly dedup cron.** If
+> seeing `[dedup-cron] scanned N pairs...` in your API console
+> every night gets annoying, uncomment `DISABLE_DEDUP_CRON=1` in
+> the `.env` file. Production should leave it commented.
 
 ---
 

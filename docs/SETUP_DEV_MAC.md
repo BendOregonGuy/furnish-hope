@@ -263,7 +263,7 @@ The standard location is `~/furnish-hope` (your home folder). Run:
 
 ```bash
 cd ~
-git clone https://github.com/<your-github-username>/furnish-hope.git
+git clone https://github.com/BendOregonGuy/furnish-hope.git
 cd furnish-hope
 ```
 
@@ -344,37 +344,53 @@ Another 2–4 minutes.
 
 ## Part 6 — Configure your environment (5 min)
 
-The API reads database credentials and secrets from a `.env` file.
+The API reads database credentials and secrets from a `.env` file in
+the `api/` folder. The repo ships an `.env.example` template you copy
+and customize.
 
-### 6.1 Create the .env file
-
-In Terminal:
+### 6.1 Copy the template
 
 ```bash
 cd ~/furnish-hope/api
+cp .env.example .env
+```
+
+That's it for most local-dev cases — the defaults work with the
+PostgreSQL install from Part 2.4 (host=localhost, user=postgres,
+password=postgres, db=furnish_hope).
+
+### 6.2 Generate a real SESSION_SECRET (1 min)
+
+The placeholder secret in `.env.example` is intentionally a
+placeholder. Replace it with a real random value:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+That prints a 64-character hex string. Copy it.
+
+Edit `.env`:
+
+```bash
 nano .env
 ```
 
-(`nano` is a simple text editor that runs in Terminal. Type the
-contents below, then save with Ctrl+O → Enter → Ctrl+X.)
+Find the `SESSION_SECRET=` line and replace the value with what you
+just copied. Save with **Ctrl+O → Enter → Ctrl+X**.
 
-Paste this:
+> **🛟 You can skip step 6.2 for the very first run** — the app
+> will still start. But it's a useful safety habit to make per-
+> machine secrets unique.
 
-```ini
-# Local development environment
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/furnish_hope
-SESSION_SECRET=local-dev-secret-do-not-use-in-prod
-SESSION_SECURE=false
-ATTACHMENT_ENCRYPTION_KEY=any-32-char-string-only-for-local-dev
-PORT=4000
-WEB_ORIGIN=http://localhost:5173
-NODE_ENV=development
-```
+> **⚠️ Don't commit `.env` to git.** The repo's `.gitignore`
+> already excludes it. The `.env.example` file IS committed
+> (template, no real secrets).
 
-Save and exit:
-- Press **Ctrl+O** (write out).
-- Press **Enter** to confirm the filename.
-- Press **Ctrl+X** to exit nano.
+> **🛟 Optional locally: silence the nightly dedup cron.** If
+> seeing `[dedup-cron] scanned N pairs...` in your API console
+> every night gets annoying, uncomment `DISABLE_DEDUP_CRON=1` in
+> `.env`. Production should leave it commented.
 
 Confirm the file exists:
 
@@ -568,7 +584,7 @@ psql postgres -c "CREATE ROLE postgres WITH SUPERUSER LOGIN PASSWORD 'postgres';
 psql -U $USER -d postgres -c "CREATE DATABASE furnish_hope;"
 ```
 
-(and adjust the `.env` `DATABASE_URL` to use `$USER` instead of
+(and adjust the `.env` `PGUSER=` line to your username instead of
 `postgres`).
 
 ### "npm install fails with EACCES"
