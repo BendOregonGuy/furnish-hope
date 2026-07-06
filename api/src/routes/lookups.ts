@@ -29,6 +29,9 @@ const LOOKUP_WHITELIST: Record<string, { table: string; id: string; label: strin
   volunteer_activity_type:    { table: 'lkp_volunteer_activity_type',    id: 'volunteer_activity_type_id',    label: 'volunteer_activity_type' },
   skill:                      { table: 'lkp_skill',                      id: 'skill_id',                      label: 'skill' },
   staff_role:                 { table: 'lkp_staff_role',                 id: 'staff_role_id',                 label: 'staff_role' },
+  vendor_type:                { table: 'lkp_vendor_type',                id: 'vendor_type_id',                label: 'vendor_type' },
+  vendor_specialty:           { table: 'lkp_vendor_specialty',           id: 'vendor_specialty_id',           label: 'vendor_specialty' },
+  vendor_service_status:      { table: 'lkp_vendor_service_status',      id: 'vendor_service_status_id',      label: 'vendor_service_status' },
 };
 
 /** GET /api/lookups/:name — fetch the entries of a lookup table */

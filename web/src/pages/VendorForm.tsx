@@ -11,8 +11,7 @@ import { apiGet, apiPost, apiPut } from '../lib/api.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges.ts';
 
-interface VendorTypeRow { vendor_type_id: number; vendor_type: string }
-interface VendorSpecialtyRow { vendor_specialty_id: number; vendor_specialty: string }
+interface LookupRow { id: number; label: string }
 
 interface FormState {
   // Contact
@@ -58,13 +57,13 @@ export function VendorForm() {
     enabled: !isNew,
   });
 
-  const { data: types } = useQuery<VendorTypeRow[]>({
+  const { data: types } = useQuery<LookupRow[]>({
     queryKey: ['lookup', 'vendor_type'],
-    queryFn: () => apiGet('/api/lookups/lkp_vendor_type'),
+    queryFn: () => apiGet('/api/lookups/vendor_type'),
   });
-  const { data: specialties } = useQuery<VendorSpecialtyRow[]>({
+  const { data: specialties } = useQuery<LookupRow[]>({
     queryKey: ['lookup', 'vendor_specialty'],
-    queryFn: () => apiGet('/api/lookups/lkp_vendor_specialty'),
+    queryFn: () => apiGet('/api/lookups/vendor_specialty'),
   });
 
   const [values, setValues] = useState<FormState>(initial);
@@ -177,14 +176,14 @@ export function VendorForm() {
               <label className="field-label">Type *</label>
               <select className="field-input" value={values.vendor_type_id} onChange={e => setValues(s => ({ ...s, vendor_type_id: e.target.value ? Number(e.target.value) : '' }))}>
                 <option value="">Choose…</option>
-                {types?.map(t => <option key={t.vendor_type_id} value={t.vendor_type_id}>{t.vendor_type}</option>)}
+                {types?.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
             </div>
             <div>
               <label className="field-label">Specialty</label>
               <select className="field-input" value={values.vendor_specialty_id} onChange={e => setValues(s => ({ ...s, vendor_specialty_id: e.target.value ? Number(e.target.value) : '' }))}>
                 <option value="">—</option>
-                {specialties?.map(sp => <option key={sp.vendor_specialty_id} value={sp.vendor_specialty_id}>{sp.vendor_specialty}</option>)}
+                {specialties?.map(sp => <option key={sp.id} value={sp.id}>{sp.label}</option>)}
               </select>
             </div>
           </div>

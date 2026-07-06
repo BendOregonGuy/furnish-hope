@@ -14,8 +14,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api.ts';
 
-interface StateRow { state_id: number; state: string }
-interface HeardFromRow { howtheyfoundus_id: number; howtheyfoundus: string }
+interface LookupRow { id: number; label: string }
 interface OrgInfo { org_name: string; has_logo: boolean; logo_updated_at: string | null }
 
 type Frequency = 'one_time' | 'recurring' | 'on_call';
@@ -33,17 +32,18 @@ export function VolunteerSignup() {
     retry: false,
   });
 
-  // Lookups for the state + heard-from dropdowns. These endpoints
-  // require login, so on the public page they'll fail — fall back
-  // to a free-text state input if so.
-  const { data: states, isError: statesErr } = useQuery<StateRow[]>({
+  // Lookups for the state + heard-from dropdowns. /api/public/lookups/*
+  // is deliberately unauthenticated for public forms. `statesErr`
+  // (kept from earlier fallback logic) triggers the free-text state
+  // input if the endpoint ever fails — belt-and-suspenders.
+  const { data: states, isError: statesErr } = useQuery<LookupRow[]>({
     queryKey: ['public-states'],
-    queryFn: () => apiGet('/api/lookups/lkp_state'),
+    queryFn: () => apiGet('/api/public/lookups/state'),
     retry: false,
   });
-  const { data: heardFrom } = useQuery<HeardFromRow[]>({
+  const { data: heardFrom } = useQuery<LookupRow[]>({
     queryKey: ['public-heard-from'],
-    queryFn: () => apiGet('/api/lookups/lkp_howtheyfoundus'),
+    queryFn: () => apiGet('/api/public/lookups/howtheyfoundus'),
     retry: false,
   });
 
@@ -216,7 +216,7 @@ export function VolunteerSignup() {
                 {states && !statesErr ? (
                   <select className="field-input" value={stateId ?? ''} onChange={e => setStateId(e.target.value ? Number(e.target.value) : null)}>
                     <option value="">—</option>
-                    {states.map(s => <option key={s.state_id} value={s.state_id}>{s.state}</option>)}
+                    {states.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                   </select>
                 ) : (
                   <input type="text" className="field-input" placeholder="e.g., Oregon" value={stateText} onChange={e => setStateText(e.target.value)} />
@@ -325,7 +325,7 @@ export function VolunteerSignup() {
               {heardFrom ? (
                 <select className="field-input" value={heardFromId ?? ''} onChange={e => setHeardFromId(e.target.value ? Number(e.target.value) : null)}>
                   <option value="">—</option>
-                  {heardFrom.map(h => <option key={h.howtheyfoundus_id} value={h.howtheyfoundus_id}>{h.howtheyfoundus}</option>)}
+                  {heardFrom.map(h => <option key={h.id} value={h.id}>{h.label}</option>)}
                 </select>
               ) : (
                 <input type="text" className="field-input" placeholder="word of mouth, social media, etc." />

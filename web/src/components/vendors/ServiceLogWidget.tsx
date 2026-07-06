@@ -29,7 +29,7 @@ interface ServiceRow {
   logged_by: string | null;
 }
 
-interface StatusRow { vendor_service_status_id: number; vendor_service_status: string; sort_order: number }
+interface StatusRow { id: number; label: string }
 
 export function ServiceLogWidget({ vendorId }: { vendorId: number }) {
   const qc = useQueryClient();
@@ -42,7 +42,7 @@ export function ServiceLogWidget({ vendorId }: { vendorId: number }) {
 
   const { data: statuses } = useQuery<StatusRow[]>({
     queryKey: ['lookup', 'vendor_service_status'],
-    queryFn: () => apiGet('/api/lookups/lkp_vendor_service_status'),
+    queryFn: () => apiGet('/api/lookups/vendor_service_status'),
   });
 
   const deleteMut = useMutation({
@@ -165,8 +165,8 @@ function ServiceEditor({
 }) {
   const isNew = !initial;
   const today = new Date().toISOString().slice(0, 10);
-  const defaultStatus = statuses.find(s => s.vendor_service_status === 'Completed')?.vendor_service_status_id
-                     ?? statuses[0]?.vendor_service_status_id ?? 1;
+  const defaultStatus = statuses.find(s => s.label === 'Completed')?.id
+                     ?? statuses[0]?.id ?? 1;
 
   const [serviceDate, setServiceDate]   = useState(initial?.service_date?.slice(0, 10) ?? today);
   const [startTime, setStartTime]       = useState(initial?.start_time?.slice(0, 5) ?? '');
@@ -233,7 +233,7 @@ function ServiceEditor({
         <div>
           <label className="field-label">Status *</label>
           <select className="field-input" value={statusId} onChange={e => setStatusId(Number(e.target.value))}>
-            {statuses.map(s => <option key={s.vendor_service_status_id} value={s.vendor_service_status_id}>{s.vendor_service_status}</option>)}
+            {statuses.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </div>
         <div>

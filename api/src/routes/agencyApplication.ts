@@ -29,10 +29,14 @@ export const publicAgencyApplicationRouter = Router();
  *  operational reference tables through a shared endpoint. Returns
  *  {id, label} rows sorted by label. */
 const PUBLIC_LOOKUP_ALLOWLIST: Record<string, { table: string; id: string; label: string }> = {
-  client_type: { table: 'lkp_client_type', id: 'client_type_id', label: 'client_type' },
-  state:       { table: 'lkp_state',       id: 'state_id',       label: 'state' },
-  county:      { table: 'lkp_county',      id: 'county_id',      label: 'county' },
-  city:        { table: 'lkp_city',        id: 'city_id',        label: 'city' },
+  client_type:    { table: 'lkp_client_type',    id: 'client_type_id',    label: 'client_type' },
+  state:          { table: 'lkp_state',          id: 'state_id',          label: 'state' },
+  county:         { table: 'lkp_county',         id: 'county_id',         label: 'county' },
+  city:           { table: 'lkp_city',           id: 'city_id',           label: 'city' },
+  // Referenced by the public /volunteer signup form's "how did you hear
+  // about us?" dropdown. Adding here rather than exposing the internal
+  // lookups router to anonymous users.
+  howtheyfoundus: { table: 'lkp_howtheyfoundus', id: 'howtheyfoundus_id', label: 'howtheyfoundus' },
 };
 
 publicAgencyApplicationRouter.get('/lookups/:name', async (req, res, next) => {

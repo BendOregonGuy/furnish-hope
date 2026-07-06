@@ -30,8 +30,7 @@ export interface VendorListRow {
   home_phone: string | null;
 }
 
-interface VendorTypeRow { vendor_type_id: number; vendor_type: string }
-interface VendorSpecialtyRow { vendor_specialty_id: number; vendor_specialty: string }
+interface LookupRow { id: number; label: string }
 
 export function Vendors() {
   const [search, setSearch] = useState('');
@@ -49,13 +48,13 @@ export function Vendors() {
     }),
   });
 
-  const { data: types } = useQuery<VendorTypeRow[]>({
+  const { data: types } = useQuery<LookupRow[]>({
     queryKey: ['lookup', 'vendor_type'],
-    queryFn: () => apiGet('/api/lookups/lkp_vendor_type'),
+    queryFn: () => apiGet('/api/lookups/vendor_type'),
   });
-  const { data: specialties } = useQuery<VendorSpecialtyRow[]>({
+  const { data: specialties } = useQuery<LookupRow[]>({
     queryKey: ['lookup', 'vendor_specialty'],
-    queryFn: () => apiGet('/api/lookups/lkp_vendor_specialty'),
+    queryFn: () => apiGet('/api/lookups/vendor_specialty'),
   });
 
   return (
@@ -80,11 +79,11 @@ export function Vendors() {
         />
         <select value={typeId} onChange={e => setTypeId(e.target.value)} className="field-input max-w-xs">
           <option value="">All types</option>
-          {types?.map(t => <option key={t.vendor_type_id} value={t.vendor_type_id}>{t.vendor_type}</option>)}
+          {types?.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>
         <select value={specialtyId} onChange={e => setSpecialtyId(e.target.value)} className="field-input max-w-xs">
           <option value="">All specialties</option>
-          {specialties?.map(s => <option key={s.vendor_specialty_id} value={s.vendor_specialty_id}>{s.vendor_specialty}</option>)}
+          {specialties?.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
         <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
           <input type="checkbox" checked={activeOnly} onChange={e => setActiveOnly(e.target.checked)} className="w-4 h-4 accent-terracotta" />
