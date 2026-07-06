@@ -208,6 +208,11 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
       is_approved:        { label: 'Approved to refer', helpText: 'When true, this agency appears in referral dropdowns and on the public /referring-agencies page. Legacy seed rows default to true.' },
       public_description: { type: 'textarea', label: 'Public description', helpText: 'One-liner shown on the /referring-agencies page.' },
       needs_filled:       { type: 'textarea', label: 'Needs typically filled' },
+      // The introspection layer promotes VARCHAR(>100) to textarea by default.
+      // These are all single-line in practice — force text so the admin form
+      // renders the right input.
+      main_email:         { type: 'text' },
+      website:            { type: 'text' },
     },
   },
   tbl_agency_contact: {
@@ -238,6 +243,10 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
       needs_filled:      { type: 'textarea' },
       other_info:        { type: 'textarea' },
       rejection_note:    { type: 'textarea' },
+      // Force single-line for VARCHAR(>100) that would otherwise become textarea.
+      legal_name:        { type: 'text' },
+      main_email:        { type: 'text' },
+      website:           { type: 'text' },
     },
   },
   tbl_agency_application_caseworker: {
@@ -247,6 +256,9 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
     displaySql: "t.first_name || ' ' || t.last_name || ' (' || t.email || ')'",
     listColumns: ['agency_application_caseworker_id', 'agency_application_id', 'first_name', 'last_name', 'email'],
     searchColumns: ['first_name', 'last_name', 'email'],
+    columns: {
+      email: { type: 'text' },
+    },
   },
   tbl_agency_application_client_type: {
     group: 'Partner Agencies',
@@ -266,6 +278,7 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
     columns: {
       status: { label: 'Status', enumValues: ['pending', 'sent', 'accepted', 'expired', 'revoked'] },
       token:  { helpText: 'One-time signup token; do not share.' },
+      email:  { type: 'text' },
     },
   },
 
