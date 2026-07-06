@@ -17,6 +17,7 @@ import { volunteersRouter } from './routes/volunteers.js';
 import { lookupsRouter } from './routes/lookups.js';
 import { adminRouter } from './routes/admin.js';
 import { duplicatesRouter } from './routes/duplicates.js';
+import { publicAgencyApplicationRouter } from './routes/agencyApplication.js';
 import { activityRouter } from './routes/activity.js';
 import { authRouter } from './routes/auth.js';
 import { settingsRouter } from './routes/settings.js';
@@ -104,6 +105,11 @@ app.get('/api/health', async (_req, res) => res.json({ ok: true }));
 // Auth endpoints — login/logout/me/password. Login is unauthenticated by
 // definition; the rest handle "no user" themselves.
 app.use('/api/auth', authRouter);
+
+// Public agency-partner application flow — anyone can hit these
+// without logging in. Mounted BEFORE requireUser. Rate-limited +
+// honeypot inside the router.
+app.use('/api/public', publicAgencyApplicationRouter);
 
 // Public volunteer signup — anyone can hit this without logging in.
 // Mounted BEFORE the requireUser middleware. Honeypot + IP capture
