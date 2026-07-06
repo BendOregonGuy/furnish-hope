@@ -236,11 +236,18 @@ THEMES: list[tuple[str, str, list[str]]] = [
     ),
     (
         "Partner Agencies",
-        "Outside agencies that refer households to Furnish Hope, plus the "
-        "caseworker contacts attached to each agency.",
+        "Outside agencies that refer households to Furnish Hope. Includes the "
+        "self-serve application queue (pending → approved → agency), the "
+        "populations-served join, and the one-time caseworker invitations that "
+        "seed agency user accounts.",
         [
             "tbl_agency",
             "tbl_agency_contact",
+            "tbl_agency_client_type",
+            "tbl_agency_application",
+            "tbl_agency_application_caseworker",
+            "tbl_agency_application_client_type",
+            "tbl_caseworker_invitation",
             "lkp_agency_type",
         ],
     ),

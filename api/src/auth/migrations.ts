@@ -2873,6 +2873,167 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: 'agency application + program manager role + caseworker invitations',
+    async run() {
+      // 1) Program Manager role. Separate from is_admin so a staff member can
+      //    review agency applications without full admin powers. Admins keep
+      //    PM access implicitly (checked in requireProgramManager middleware).
+      await query(`
+        ALTER TABLE tbl_user_account
+          ADD COLUMN IF NOT EXISTS is_program_manager BOOLEAN NOT NULL DEFAULT false
+      `);
+
+      // 2) Approval flags on tbl_agency. Existing seed rows are grandfathered
+      //    as approved so the existing referral pipeline keeps working.
+      await query(`
+        ALTER TABLE tbl_agency
+          ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT true,
+          ADD COLUMN IF NOT EXISTS approval_date TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS approved_by_user_account_id INTEGER
+            REFERENCES tbl_user_account(user_account_id) ON DELETE SET NULL,
+          ADD COLUMN IF NOT EXISTS public_description VARCHAR(300),
+          ADD COLUMN IF NOT EXISTS service_area VARCHAR(120),
+          ADD COLUMN IF NOT EXISTS website VARCHAR(200),
+          ADD COLUMN IF NOT EXISTS ein VARCHAR(20),
+          ADD COLUMN IF NOT EXISTS main_phone VARCHAR(30),
+          ADD COLUMN IF NOT EXISTS main_email VARCHAR(200),
+          ADD COLUMN IF NOT EXISTS executive_director_name VARCHAR(100),
+          ADD COLUMN IF NOT EXISTS needs_filled TEXT,
+          ADD COLUMN IF NOT EXISTS approx_clients_per_month INTEGER
+      `);
+
+      // 3) tbl_agency_client_type — many-to-many between an approved agency
+      //    and the populations they serve. Powers the public /referring-agencies
+      //    page's filter chips and the review UI.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_agency_client_type (
+          agency_id      INTEGER NOT NULL REFERENCES tbl_agency(agency_id) ON DELETE CASCADE,
+          client_type_id INTEGER NOT NULL REFERENCES lkp_client_type(client_type_id),
+          PRIMARY KEY (agency_id, client_type_id)
+        )
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_agency_client_type_type
+          ON tbl_agency_client_type (client_type_id)
+      `);
+
+      // 4) tbl_agency_application — a submission from a prospective referring
+      //    partner. Copied FROM at approval time into tbl_agency + related
+      //    contact rows; retained for audit and future re-review.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_agency_application (
+          agency_application_id  SERIAL PRIMARY KEY,
+          agency_name            VARCHAR(100) NOT NULL,
+          legal_name             VARCHAR(150),
+          ein                    VARCHAR(20),
+          website                VARCHAR(200),
+          main_phone             VARCHAR(30),
+          main_email             VARCHAR(200) NOT NULL,
+          address_line1          VARCHAR(120) NOT NULL,
+          address_line2          VARCHAR(60),
+          city                   VARCHAR(80) NOT NULL,
+          state                  VARCHAR(60) NOT NULL,
+          postalcode             VARCHAR(20) NOT NULL,
+          service_area           VARCHAR(120),
+          public_description     VARCHAR(300),
+          needs_filled           TEXT,
+          approx_clients_per_month INTEGER,
+          executive_director_name  VARCHAR(100),
+          other_info             TEXT,
+          status                 VARCHAR(20) NOT NULL DEFAULT 'pending'
+                                    CHECK (status IN ('pending','approved','rejected')),
+          submitted_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          reviewed_at            TIMESTAMPTZ,
+          reviewed_by_user_account_id INTEGER
+            REFERENCES tbl_user_account(user_account_id) ON DELETE SET NULL,
+          rejection_note         TEXT,
+          approved_agency_id     INTEGER REFERENCES tbl_agency(agency_id) ON DELETE SET NULL
+        )
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_agency_application_pending
+          ON tbl_agency_application (submitted_at DESC)
+         WHERE status = 'pending'
+      `);
+
+      // 5) tbl_agency_application_caseworker — the list of caseworkers the
+      //    applicant provides. On approval each row becomes a tbl_agency_contact
+      //    plus a tbl_caseworker_invitation.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_agency_application_caseworker (
+          agency_application_caseworker_id SERIAL PRIMARY KEY,
+          agency_application_id INTEGER NOT NULL
+            REFERENCES tbl_agency_application(agency_application_id) ON DELETE CASCADE,
+          first_name  VARCHAR(50)  NOT NULL,
+          last_name   VARCHAR(50)  NOT NULL,
+          title       VARCHAR(80),
+          email       VARCHAR(200) NOT NULL,
+          phone       VARCHAR(30),
+          agency_contact_id INTEGER
+            REFERENCES tbl_agency_contact(agency_contact_id) ON DELETE SET NULL
+        )
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_agency_application_caseworker_app
+          ON tbl_agency_application_caseworker (agency_application_id)
+      `);
+
+      // 6) tbl_agency_application_client_type — populations served, per
+      //    application. Copied into tbl_agency_client_type on approval.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_agency_application_client_type (
+          agency_application_id INTEGER NOT NULL
+            REFERENCES tbl_agency_application(agency_application_id) ON DELETE CASCADE,
+          client_type_id        INTEGER NOT NULL
+            REFERENCES lkp_client_type(client_type_id),
+          PRIMARY KEY (agency_application_id, client_type_id)
+        )
+      `);
+
+      // 7) tbl_caseworker_invitation — one-time signup token issued when an
+      //    agency is approved. Caseworker uses it to set username/password
+      //    and creates their tbl_user_account.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_caseworker_invitation (
+          caseworker_invitation_id SERIAL PRIMARY KEY,
+          token                    VARCHAR(64) NOT NULL UNIQUE,
+          agency_id                INTEGER NOT NULL
+            REFERENCES tbl_agency(agency_id) ON DELETE CASCADE,
+          agency_contact_id        INTEGER NOT NULL
+            REFERENCES tbl_agency_contact(agency_contact_id) ON DELETE CASCADE,
+          email                    VARCHAR(200) NOT NULL,
+          issued_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          expires_at               TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '14 days'),
+          sent_at                  TIMESTAMPTZ,
+          accepted_at              TIMESTAMPTZ,
+          user_account_id          INTEGER
+            REFERENCES tbl_user_account(user_account_id) ON DELETE SET NULL,
+          status                   VARCHAR(20) NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending','sent','accepted','expired','revoked'))
+        )
+      `);
+      await query(`
+        CREATE INDEX IF NOT EXISTS idx_tbl_caseworker_invitation_pending
+          ON tbl_caseworker_invitation (issued_at DESC)
+         WHERE status IN ('pending','sent')
+      `);
+
+      // 8) App setting: the sender address for system-generated onboarding
+      //    email drafts. Program Manager can override in Database Admin;
+      //    Preston plans a Google group "Agency_Onboarding@Furnish-Hope.com"
+      //    on the first push to production.
+      await query(`
+        INSERT INTO tbl_app_setting (setting_key, setting_value, description)
+        VALUES (
+          'agency_onboarding_from_email',
+          'Agency_Onboarding@Furnish-Hope.com',
+          'From-address on system-generated caseworker invitation emails and other agency onboarding communications. Point at your onboarding Google group. Emails are drafted into the Program Manager''s outbox until an FH mailbox is connected in production.'
+        )
+        ON CONFLICT (setting_key) DO NOTHING
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */
