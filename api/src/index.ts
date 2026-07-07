@@ -17,7 +17,8 @@ import { volunteersRouter } from './routes/volunteers.js';
 import { lookupsRouter } from './routes/lookups.js';
 import { adminRouter } from './routes/admin.js';
 import { duplicatesRouter } from './routes/duplicates.js';
-import { publicAgencyApplicationRouter } from './routes/agencyApplication.js';
+import { publicAgencyApplicationRouter, agencyApplicationsReviewRouter } from './routes/agencyApplication.js';
+import { requireProgramManager } from './auth/middleware.js';
 import { activityRouter } from './routes/activity.js';
 import { authRouter } from './routes/auth.js';
 import { settingsRouter } from './routes/settings.js';
@@ -134,6 +135,9 @@ app.use('/api/admin/settings', requireAdmin, settingsRouter);
 app.use('/api/admin/volunteer-signups', requireAdmin, volunteerSignupsAdminRouter);
 app.use('/api/admin/duplicates', requireAdmin, duplicatesRouter);
 app.use('/api/admin', requireAdmin, adminRouter);
+
+// Agency-application review queue — Program Manager (or Admin) only.
+app.use('/api/agencies/applications', requireProgramManager, agencyApplicationsReviewRouter);
 
 // (Org-info is mounted above, BEFORE requireUser, so the public
 // volunteer-signup form can render org name + logo without login.)

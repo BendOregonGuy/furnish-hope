@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth.tsx';
 import { apiGet, initials } from '../lib/api.ts';
 
-interface NavItem { to: string; name: string; icon: string; adminOnly?: boolean; developerOnly?: boolean; }
+interface NavItem { to: string; name: string; icon: string; adminOnly?: boolean; developerOnly?: boolean; programManagerOnly?: boolean; }
 interface NavSection { label: string; items: NavItem[]; }
 
 const sections: NavSection[] = [
@@ -30,6 +30,12 @@ const sections: NavSection[] = [
       { to: '/requests',  name: 'Provisioning Requests', icon: 'list-check' },
       { to: '/requests/review', name: 'Review queue',  icon: 'list-check' },
       { to: '/visits',    name: 'Visits',              icon: 'schedule' },
+    ],
+  },
+  {
+    label: 'Partner Agencies',
+    items: [
+      { to: '/agencies/applications', name: 'Applications', icon: 'list-check', programManagerOnly: true },
     ],
   },
   {
@@ -151,6 +157,17 @@ export function Sidebar() {
   });
   const dupCount = dupQ?.length ?? 0;
 
+  // Agency-applications pending count → badge on the Applications entry.
+  // Only fetches for Program Managers (and Admins).
+  const { data: applicationsQ } = useQuery<unknown[]>({
+    queryKey: ['agency-applications', 'pending'],
+    queryFn: () => apiGet('/api/agencies/applications', { status: 'pending' }),
+    enabled: !!(user?.is_admin || user?.is_program_manager),
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: true,
+  });
+  const applicationsCount = applicationsQ?.length ?? 0;
+
   return (
     <aside className="w-[232px] bg-gradient-to-b from-[#1F1B16] to-[#2A241D] text-[#E8DFCD] py-5 flex flex-col">
       <div className="flex items-center gap-2.5 px-5 pb-5 border-b border-white/10">
@@ -167,6 +184,7 @@ export function Sidebar() {
         const items = section.items.filter(i => {
           if (i.adminOnly && !user?.is_admin) return false;
           if (i.developerOnly && !(user?.is_admin && user?.is_developer)) return false;
+          if (i.programManagerOnly && !(user?.is_admin || user?.is_program_manager)) return false;
           return true;
         });
         if (items.length === 0) return null;
@@ -211,6 +229,14 @@ export function Sidebar() {
                     title={`${dupCount} potential duplicates awaiting review`}
                   >
                     {dupCount > 99 ? '99+' : dupCount}
+                  </span>
+                )}
+                {item.to === '/agencies/applications' && applicationsCount > 0 && (
+                  <span
+                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-terracotta text-paper text-[10px] font-medium leading-none"
+                    title={`${applicationsCount} agency application${applicationsCount === 1 ? '' : 's'} awaiting review`}
+                  >
+                    {applicationsCount > 99 ? '99+' : applicationsCount}
                   </span>
                 )}
               </NavLink>

@@ -31,6 +31,15 @@ export function RequireDeveloper({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** Program Manager route guard — admin implicitly qualifies. */
+export function RequireProgramManager({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <Loading />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!user.is_admin && !user.is_program_manager) return <ForbiddenScreen />;
+  return <>{children}</>;
+}
+
 function ForbiddenScreen() {
   return (
     <div className="p-10 max-w-lg mx-auto">

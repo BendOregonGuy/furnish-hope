@@ -3,7 +3,7 @@ import { Sidebar } from './components/Sidebar.tsx';
 import { ScrollToTop } from './components/ScrollToTop.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { BroadcastBanner } from './components/BroadcastBanner.tsx';
-import { RequireAuth, RequireAdmin, RequireDeveloper } from './components/RequireAuth.tsx';
+import { RequireAuth, RequireAdmin, RequireDeveloper, RequireProgramManager } from './components/RequireAuth.tsx';
 import { AuthProvider, useAuth } from './lib/auth.tsx';
 import { Login } from './pages/Login.tsx';
 import { Settings } from './pages/Settings.tsx';
@@ -52,6 +52,7 @@ import { AgencyHelp } from './pages/help/AgencyHelp.tsx';
 import { ManualScreenshots } from './pages/admin/ManualScreenshots.tsx';
 import { VolunteerSignup } from './pages/VolunteerSignup.tsx';
 import { ApplyToRefer } from './pages/ApplyToRefer.tsx';
+import { AgencyApplications } from './pages/AgencyApplications.tsx';
 import { VolunteerAgreement } from './pages/VolunteerAgreement.tsx';
 import { VolunteerSignups, VolunteerSignupDetail } from './pages/admin/VolunteerSignups.tsx';
 import { DevIssues } from './pages/dev/DevIssues.tsx';
@@ -176,6 +177,7 @@ function AppShell() {
 
           <Route path="/requests" element={<Requests />} />
           <Route path="/requests/review" element={<RequestsReview />} />
+          <Route path="/agencies/applications" element={<RequireProgramManager><AgencyApplications /></RequireProgramManager>} />
           <Route path="/requests/new" element={<RequestForm />} />
           <Route path="/requests/:id/edit" element={<RequestForm />} />
           <Route path="/requests/:id" element={<RequestDetail />} />

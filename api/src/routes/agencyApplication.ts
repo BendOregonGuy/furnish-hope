@@ -1,13 +1,24 @@
 /**
- * Public agency-partner application flow.
+ * Agency-partner application flow — both public submission and staff
+ * review live here.
  *
  * Two routers:
- *  - publicApplicationRouter — mounted BEFORE requireUser.
+ *  - publicAgencyApplicationRouter — mounted BEFORE requireUser.
  *      POST /api/public/agency-applications  — anonymous submission
  *      GET  /api/public/lookups/:name         — allowlisted reference data
  *                                                (client types, states)
- *  - Approve / reject / queue endpoints live in a Program-Manager router
- *    (see routes/agencyApplications.ts in Phase C).
+ *  - agencyApplicationsReviewRouter — Program Manager (or Admin) only.
+ *      GET  /api/agencies/applications           — pending queue
+ *      GET  /api/agencies/applications/:id       — full detail w/ caseworkers
+ *      POST /api/agencies/applications/:id/approve
+ *          Atomic: address + agency (is_approved=true) + tbl_agency_client_type
+ *          + per caseworker (contact, agency_contact, caseworker_invitation).
+ *      POST /api/agencies/applications/:id/reject { note }
+ *      GET  /api/agencies/applications/:id/invitation-preview/:cwId
+ *          Returns the invitation email body (plaintext + HTML). Until an
+ *          FH mailbox is connected in production, the Program Manager uses
+ *          this to copy/paste into the Agency_Onboarding@Furnish-Hope.com
+ *          Google group.
  *
  * The public endpoint is a DOS + spam target — rate-limited to 5 posts
  * per IP per 15 min, plus an invisible honeypot field ("company_slogan")
@@ -15,8 +26,10 @@
  */
 
 import { Router } from 'express';
+import { randomBytes } from 'node:crypto';
 import rateLimit from 'express-rate-limit';
-import { query, withTransaction } from '../db/pool.js';
+import { query, queryOne, withTransaction } from '../db/pool.js';
+import { auditCreate, auditUpdate } from '../auth/audit.js';
 
 export const publicAgencyApplicationRouter = Router();
 
@@ -226,4 +239,361 @@ function dedupInts(arr: number[] | null | undefined): number[] {
     if (Number.isInteger(n) && n > 0) seen.add(n);
   }
   return Array.from(seen);
+}
+
+// ====================================================================== //
+//  Program-Manager review queue (approve / reject / invite)              //
+// ====================================================================== //
+
+export const agencyApplicationsReviewRouter = Router();
+
+/** GET /api/agencies/applications
+ *  Pending queue by default; ?status=all|approved|rejected to see others.
+ *  Each row includes counts + a compact summary; full detail comes from
+ *  /:id. */
+agencyApplicationsReviewRouter.get('/', async (req, res, next) => {
+  try {
+    const status = String(req.query.status ?? 'pending');
+    const where = status === 'all' ? '' : `WHERE aa.status = $1`;
+    const params = status === 'all' ? [] : [status];
+    const rows = await query(`
+      SELECT
+        aa.agency_application_id,
+        aa.agency_name,
+        aa.legal_name,
+        aa.main_email,
+        aa.main_phone,
+        aa.city, aa.state,
+        aa.service_area,
+        aa.public_description,
+        aa.approx_clients_per_month,
+        aa.status,
+        aa.submitted_at,
+        aa.reviewed_at,
+        aa.rejection_note,
+        aa.approved_agency_id,
+        (SELECT COUNT(*)::int FROM tbl_agency_application_caseworker cw
+          WHERE cw.agency_application_id = aa.agency_application_id) AS caseworker_count,
+        (SELECT COUNT(*)::int FROM tbl_agency_application_client_type ct
+          WHERE ct.agency_application_id = aa.agency_application_id) AS population_count
+      FROM tbl_agency_application aa
+      ${where}
+      ORDER BY aa.submitted_at ASC
+    `, params);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+/** GET /api/agencies/applications/:id
+ *  Full detail — application row, its caseworkers, its populations
+ *  (with lkp_client_type names hydrated), and any already-issued
+ *  invitations (only present after approval). */
+agencyApplicationsReviewRouter.get('/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+
+    const application = await queryOne(`
+      SELECT * FROM tbl_agency_application WHERE agency_application_id = $1
+    `, [id]);
+    if (!application) return res.status(404).json({ error: 'Not found' });
+
+    const caseworkers = await query(`
+      SELECT * FROM tbl_agency_application_caseworker
+       WHERE agency_application_id = $1
+       ORDER BY agency_application_caseworker_id
+    `, [id]);
+
+    const populations = await query(`
+      SELECT ct.client_type_id, ct.client_type
+        FROM tbl_agency_application_client_type acp
+        JOIN lkp_client_type ct ON ct.client_type_id = acp.client_type_id
+       WHERE acp.agency_application_id = $1
+       ORDER BY ct.client_type
+    `, [id]);
+
+    // Invitations only exist after approval; empty array for pending / rejected.
+    const invitations = await query(`
+      SELECT ci.caseworker_invitation_id, ci.email, ci.status,
+             ci.issued_at, ci.expires_at, ci.sent_at, ci.accepted_at,
+             ci.agency_contact_id, ci.user_account_id
+        FROM tbl_caseworker_invitation ci
+       WHERE ci.agency_id = (SELECT approved_agency_id FROM tbl_agency_application WHERE agency_application_id = $1)
+       ORDER BY ci.issued_at DESC
+    `, [id]);
+
+    res.json({ application, caseworkers, populations, invitations });
+  } catch (err) { next(err); }
+});
+
+/** POST /api/agencies/applications/:id/approve
+ *  Atomic — see the router-level docstring for the exact row plan. */
+agencyApplicationsReviewRouter.post('/:id/approve', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+
+    const result = await withTransaction(async (tx) => {
+      // 1) Snapshot the application under FOR UPDATE so two Program
+      //    Managers approving simultaneously don't both create agencies.
+      const app = await tx.queryOne<any>(`
+        SELECT * FROM tbl_agency_application
+         WHERE agency_application_id = $1
+         FOR UPDATE
+      `, [id]);
+      if (!app) { const e: any = new Error('Application not found'); e.status = 404; throw e; }
+      if (app.status !== 'pending') {
+        const e: any = new Error(`Application is already ${app.status}`); e.status = 409; throw e;
+      }
+
+      // 2) Resolve lookup FKs for the address. City/county/state come as
+      //    text on the form; use the closest existing lookup row or fall
+      //    back to id=1 so the FK is always satisfied. This is optimistic —
+      //    Program Manager can correct it later in the admin form.
+      const cityRow    = await tx.queryOne<{ city_id: number }>(   `SELECT city_id FROM lkp_city WHERE LOWER(city) = LOWER($1) LIMIT 1`, [app.city]);
+      const stateRow   = await tx.queryOne<{ state_id: number }>(  `SELECT state_id FROM lkp_state WHERE LOWER(state) = LOWER($1) OR LOWER(state) = LOWER($1) LIMIT 1`, [app.state]);
+      const countyRow  = await tx.queryOne<{ county_id: number }>( `SELECT county_id FROM lkp_county ORDER BY county_id LIMIT 1`);
+      const cityId    = cityRow?.city_id    ?? 1;
+      const stateId   = stateRow?.state_id  ?? 1;
+      const countyId  = countyRow?.county_id ?? 1;
+
+      // Pick the agency-type row. Applicants don't specify one; use "Nonprofit"
+      // if present, else the first available row.
+      const typeRow = await tx.queryOne<{ agency_type_id: number }>(`
+        SELECT agency_type_id FROM lkp_agency_type
+         ORDER BY CASE WHEN agency_type ILIKE 'Nonprofit' THEN 0 ELSE 1 END, agency_type_id
+         LIMIT 1
+      `);
+      if (!typeRow) { const e: any = new Error('lkp_agency_type is empty — cannot create agency'); e.status = 500; throw e; }
+
+      // 3) Address
+      const address = await tx.queryOne<{ address_id: number }>(`
+        INSERT INTO tbl_address
+          (address_type_id, address_name, address, address2,
+           city_id, county_id, state_id, postalcode)
+        VALUES (1, 'Main office', $1, $2, $3, $4, $5, $6)
+        RETURNING address_id
+      `, [app.address_line1, app.address_line2, cityId, countyId, stateId, app.postalcode]);
+
+      // 4) Agency row — approval + application-derived fields
+      const agency = await tx.queryOne<{ agency_id: number }>(`
+        INSERT INTO tbl_agency
+          (agency_name, address_id, agency_type_id, description,
+           is_approved, approval_date, approved_by_user_account_id,
+           public_description, service_area, website, ein, main_phone,
+           main_email, executive_director_name, needs_filled,
+           approx_clients_per_month)
+        VALUES ($1, $2, $3, $4,
+                true, NOW(), $5,
+                $6, $7, $8, $9, $10,
+                $11, $12, $13, $14)
+        RETURNING agency_id
+      `, [
+        app.agency_name, address!.address_id, typeRow.agency_type_id,
+        app.public_description ?? app.agency_name,
+        req.user?.user_account_id ?? null,
+        app.public_description, app.service_area, app.website, app.ein, app.main_phone,
+        app.main_email, app.executive_director_name, app.needs_filled,
+        app.approx_clients_per_month,
+      ]);
+      const agencyId = agency!.agency_id;
+
+      // 5) Populations served — copy from application to the join
+      await tx.query(`
+        INSERT INTO tbl_agency_client_type (agency_id, client_type_id)
+        SELECT $1, client_type_id
+          FROM tbl_agency_application_client_type
+         WHERE agency_application_id = $2
+      `, [agencyId, id]);
+
+      // 6) Caseworkers — one contact + agency_contact + invitation per row
+      const caseworkers = await tx.query<any>(`
+        SELECT * FROM tbl_agency_application_caseworker
+         WHERE agency_application_id = $1
+      `, [id]);
+
+      const clientContactTypeRow = await tx.queryOne<{ contact_type_id: number }>(`
+        SELECT contact_type_id FROM lkp_contact_type
+         ORDER BY CASE WHEN contact_type ILIKE 'Caseworker' THEN 0
+                       WHEN contact_type ILIKE 'Agency' THEN 1
+                       ELSE 2 END, contact_type_id LIMIT 1
+      `);
+      const contactTypeId = clientContactTypeRow?.contact_type_id ?? 1;
+
+      const invitations: Array<{
+        caseworker_invitation_id: number;
+        agency_contact_id: number;
+        email: string;
+        first_name: string;
+        last_name: string;
+        token: string;
+      }> = [];
+
+      for (const cw of caseworkers) {
+        // Contact
+        const contact = await tx.queryOne<{ contact_id: number }>(`
+          INSERT INTO tbl_contact (contact_type_id, first_name, last_name, email, mobile_phone)
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING contact_id
+        `, [contactTypeId, cw.first_name, cw.last_name, cw.email, cw.phone]);
+
+        // Agency contact
+        const agencyContact = await tx.queryOne<{ agency_contact_id: number }>(`
+          INSERT INTO tbl_agency_contact (agency_id, contact_id, description)
+          VALUES ($1, $2, $3)
+          RETURNING agency_contact_id
+        `, [agencyId, contact!.contact_id, cw.title || null]);
+
+        // Backfill the caseworker row on the application with the newly
+        // minted agency_contact_id (audit trail for later reference).
+        await tx.query(`
+          UPDATE tbl_agency_application_caseworker
+             SET agency_contact_id = $2
+           WHERE agency_application_caseworker_id = $1
+        `, [cw.agency_application_caseworker_id, agencyContact!.agency_contact_id]);
+
+        // Invitation with a secure random 32-byte hex token
+        const token = randomBytes(32).toString('hex');
+        const invitation = await tx.queryOne<{ caseworker_invitation_id: number }>(`
+          INSERT INTO tbl_caseworker_invitation
+            (token, agency_id, agency_contact_id, email, status)
+          VALUES ($1, $2, $3, $4, 'pending')
+          RETURNING caseworker_invitation_id
+        `, [token, agencyId, agencyContact!.agency_contact_id, cw.email]);
+
+        invitations.push({
+          caseworker_invitation_id: invitation!.caseworker_invitation_id,
+          agency_contact_id: agencyContact!.agency_contact_id,
+          email: cw.email,
+          first_name: cw.first_name,
+          last_name: cw.last_name,
+          token,
+        });
+      }
+
+      // 7) Flip the application to approved + link the created agency
+      await tx.query(`
+        UPDATE tbl_agency_application
+           SET status = 'approved',
+               reviewed_at = NOW(),
+               reviewed_by_user_account_id = $2,
+               approved_agency_id = $3
+         WHERE agency_application_id = $1
+      `, [id, req.user?.user_account_id ?? null, agencyId]);
+
+      // Audit — a single CREATE per major entity keeps the log readable.
+      await auditCreate(req, 'tbl_agency', agencyId, {
+        agency_name: app.agency_name,
+        approved_from_application_id: id,
+        caseworker_invitations_issued: invitations.length,
+      }, tx);
+
+      return { agency_id: agencyId, invitations };
+    });
+
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+/** POST /api/agencies/applications/:id/reject { note } */
+agencyApplicationsReviewRouter.post('/:id/reject', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+    const note = String(req.body?.note ?? '').trim() || null;
+
+    await withTransaction(async (tx) => {
+      const app = await tx.queryOne<any>(`
+        SELECT * FROM tbl_agency_application WHERE agency_application_id = $1 FOR UPDATE
+      `, [id]);
+      if (!app) { const e: any = new Error('Application not found'); e.status = 404; throw e; }
+      if (app.status !== 'pending') {
+        const e: any = new Error(`Application is already ${app.status}`); e.status = 409; throw e;
+      }
+
+      const after = await tx.queryOne<any>(`
+        UPDATE tbl_agency_application
+           SET status = 'rejected',
+               reviewed_at = NOW(),
+               reviewed_by_user_account_id = $2,
+               rejection_note = $3
+         WHERE agency_application_id = $1
+         RETURNING *
+      `, [id, req.user?.user_account_id ?? null, note]);
+      if (after) await auditUpdate(req, 'tbl_agency_application', id, app, after, tx);
+    });
+
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+/** GET /api/agencies/applications/:id/invitation-preview/:cwId
+ *  Returns { subject, plaintext, html, url } — the Program Manager copies
+ *  this into the Agency_Onboarding@Furnish-Hope.com Google group email
+ *  until FH's mailbox is connected in production. */
+agencyApplicationsReviewRouter.get('/:id/invitation-preview/:cwId', async (req, res, next) => {
+  try {
+    const id   = Number(req.params.id);
+    const cwId = Number(req.params.cwId);
+    if (!Number.isInteger(id) || !Number.isInteger(cwId)) return res.status(400).json({ error: 'Invalid ids' });
+
+    const invitation = await queryOne<any>(`
+      SELECT ci.token, ci.email, ci.expires_at, ci.status,
+             cnt.first_name, cnt.last_name,
+             ag.agency_name,
+             (SELECT setting_value FROM tbl_app_setting WHERE setting_key = 'agency_onboarding_from_email') AS from_email
+        FROM tbl_caseworker_invitation ci
+        JOIN tbl_agency_contact ac ON ac.agency_contact_id = ci.agency_contact_id
+        JOIN tbl_contact cnt       ON cnt.contact_id       = ac.contact_id
+        JOIN tbl_agency ag         ON ag.agency_id         = ci.agency_id
+       WHERE ci.caseworker_invitation_id = $1
+    `, [cwId]);
+    if (!invitation) return res.status(404).json({ error: 'Invitation not found' });
+
+    const appBaseUrl = process.env.APP_BASE_URL ?? `${req.protocol}://${req.get('host')}`;
+    const signupUrl = `${appBaseUrl}/caseworker-register/${invitation.token}`;
+    const fromEmail = invitation.from_email || 'Agency_Onboarding@Furnish-Hope.com';
+    const expiresLabel = new Date(invitation.expires_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+    const subject = `Welcome to Furnish Hope — set up your ${invitation.agency_name} referral account`;
+    const plaintext = `Hi ${invitation.first_name},
+
+Great news — Furnish Hope has approved ${invitation.agency_name} as a
+referring partner. You've been listed as a caseworker on your agency's
+application, and you can now set up your own portal login so you can
+start submitting referrals for the families you serve.
+
+Click the link below to create your username and password. It's good
+until ${expiresLabel}.
+
+  ${signupUrl}
+
+If the link doesn't work or expires, reply to this email and someone
+from ${fromEmail} will send you a fresh invitation.
+
+Welcome aboard,
+The Furnish Hope team`;
+
+    const html = `<p>Hi ${escapeHtml(invitation.first_name)},</p>
+<p>Great news — Furnish Hope has approved <strong>${escapeHtml(invitation.agency_name)}</strong> as a referring partner. You've been listed as a caseworker on your agency's application, and you can now set up your own portal login so you can start submitting referrals for the families you serve.</p>
+<p>Click the link below to create your username and password. It's good until <strong>${escapeHtml(expiresLabel)}</strong>.</p>
+<p><a href="${signupUrl}">${signupUrl}</a></p>
+<p>If the link doesn't work or expires, reply to this email and someone from <a href="mailto:${escapeHtml(fromEmail)}">${escapeHtml(fromEmail)}</a> will send you a fresh invitation.</p>
+<p>Welcome aboard,<br>The Furnish Hope team</p>`;
+
+    res.json({
+      to: invitation.email,
+      from: fromEmail,
+      subject, plaintext, html, url: signupUrl,
+      expires_at: invitation.expires_at,
+      status: invitation.status,
+    });
+  } catch (err) { next(err); }
+});
+
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
