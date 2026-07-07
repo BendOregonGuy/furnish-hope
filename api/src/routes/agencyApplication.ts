@@ -27,9 +27,11 @@
 
 import { Router } from 'express';
 import { randomBytes } from 'node:crypto';
+import bcrypt from 'bcrypt';
 import rateLimit from 'express-rate-limit';
 import { query, queryOne, withTransaction } from '../db/pool.js';
 import { auditCreate, auditUpdate } from '../auth/audit.js';
+import { loadUser } from '../auth/middleware.js';
 
 export const publicAgencyApplicationRouter = Router();
 
@@ -74,6 +76,146 @@ publicAgencyApplicationRouter.get('/agencies', async (_req, res, next) => {
       ORDER BY ag.agency_name ASC
     `);
     res.json(rows);
+  } catch (err) { next(err); }
+});
+
+/** GET /api/public/invitations/:token
+ *  Returns { agency_name, first_name, last_name, email, expires_at, status }
+ *  when the token is usable ('pending' or 'sent' AND not past expires_at).
+ *  Anything else — including tokens the DB doesn't recognize — returns a
+ *  404 with a friendly error the signup page can render. Deliberately
+ *  vague on the failure reason so a scanner can't distinguish "unknown
+ *  token" from "expired token." */
+publicAgencyApplicationRouter.get('/invitations/:token', async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? '');
+    if (token.length !== 64) {
+      return res.status(404).json({ error: 'This invitation link is invalid or has expired.' });
+    }
+    const row = await queryOne<any>(`
+      SELECT ci.status, ci.expires_at,
+             ci.email,
+             cnt.first_name, cnt.last_name,
+             ag.agency_name
+        FROM tbl_caseworker_invitation ci
+        JOIN tbl_agency_contact ac ON ac.agency_contact_id = ci.agency_contact_id
+        JOIN tbl_contact cnt       ON cnt.contact_id       = ac.contact_id
+        JOIN tbl_agency ag         ON ag.agency_id         = ci.agency_id
+       WHERE ci.token = $1
+    `, [token]);
+    if (!row) return res.status(404).json({ error: 'This invitation link is invalid or has expired.' });
+
+    const usable = (row.status === 'pending' || row.status === 'sent') && new Date(row.expires_at) > new Date();
+    if (!usable) {
+      return res.status(404).json({
+        error: row.status === 'accepted'
+          ? 'This invitation was already used. Sign in from the login page.'
+          : 'This invitation link is invalid or has expired.',
+      });
+    }
+    res.json({
+      agency_name: row.agency_name,
+      first_name: row.first_name,
+      last_name:  row.last_name,
+      email:      row.email,
+      expires_at: row.expires_at,
+      status:     row.status,
+    });
+  } catch (err) { next(err); }
+});
+
+// The accept endpoint touches the session + creates an account, so it's
+// worth throttling per-IP even though the token is 64 hex chars.
+const acceptLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts from this IP. Please try again in a few minutes.' },
+});
+
+/** POST /api/public/invitations/:token/accept { username, password }
+ *  Atomic: creates tbl_user_account with agency_contact_id, flips the
+ *  invitation to 'accepted', and regenerates the session so the caseworker
+ *  is signed in and can be redirected straight to /agency. */
+publicAgencyApplicationRouter.post('/invitations/:token/accept', acceptLimiter, async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? '');
+    if (token.length !== 64) {
+      return res.status(404).json({ error: 'This invitation link is invalid or has expired.' });
+    }
+    const { username, password } = req.body ?? {};
+    if (typeof username !== 'string' || !username.trim()) {
+      return res.status(400).json({ error: 'Please choose a username.' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
+    if (!/^[a-zA-Z0-9_.-]{3,50}$/.test(username.trim())) {
+      return res.status(400).json({
+        error: 'Username can be 3–50 characters — letters, numbers, dot, dash, underscore.',
+      });
+    }
+    const cleanUsername = username.trim();
+
+    const userId = await withTransaction(async (tx) => {
+      const invitation = await tx.queryOne<any>(`
+        SELECT * FROM tbl_caseworker_invitation
+         WHERE token = $1
+         FOR UPDATE
+      `, [token]);
+      if (!invitation) { const e: any = new Error('This invitation link is invalid or has expired.'); e.status = 404; throw e; }
+      const usable = (invitation.status === 'pending' || invitation.status === 'sent') && new Date(invitation.expires_at) > new Date();
+      if (!usable) {
+        const e: any = new Error(
+          invitation.status === 'accepted'
+            ? 'This invitation was already used. Sign in from the login page.'
+            : 'This invitation link is invalid or has expired.',
+        );
+        e.status = 409; throw e;
+      }
+
+      // Username collision check — surfaced up front so the caseworker
+      // can pick a different one instead of getting a generic 500.
+      const clash = await tx.queryOne<{ user_account_id: number }>(
+        `SELECT user_account_id FROM tbl_user_account WHERE LOWER(username) = LOWER($1)`,
+        [cleanUsername],
+      );
+      if (clash) {
+        const e: any = new Error('That username is already taken. Try another.');
+        e.status = 409; throw e;
+      }
+
+      const hash = await bcrypt.hash(password, 10);
+      const user = await tx.queryOne<{ user_account_id: number }>(`
+        INSERT INTO tbl_user_account
+          (username, password_hash, is_active, is_admin, agency_contact_id)
+        VALUES ($1, $2, true, false, $3)
+        RETURNING user_account_id
+      `, [cleanUsername, hash, invitation.agency_contact_id]);
+
+      await tx.query(`
+        UPDATE tbl_caseworker_invitation
+           SET status = 'accepted',
+               accepted_at = NOW(),
+               user_account_id = $2
+         WHERE caseworker_invitation_id = $1
+      `, [invitation.caseworker_invitation_id, user!.user_account_id]);
+
+      return user!.user_account_id;
+    });
+
+    // Regenerate the session so any prior anonymous session id is
+    // rotated — same protection as /api/auth/login uses. Then load the
+    // user and return the same payload the login endpoint does so the
+    // frontend can drop straight into /agency without a second call.
+    req.session.regenerate(async (err) => {
+      if (err) return next(err);
+      req.session.userId = userId;
+      await query(`UPDATE tbl_user_account SET last_login_at = NOW() WHERE user_account_id = $1`, [userId]);
+      const user = await loadUser(userId);
+      res.json({ user });
+    });
   } catch (err) { next(err); }
 });
 

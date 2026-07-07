@@ -54,6 +54,7 @@ import { VolunteerSignup } from './pages/VolunteerSignup.tsx';
 import { ApplyToRefer } from './pages/ApplyToRefer.tsx';
 import { AgencyApplications } from './pages/AgencyApplications.tsx';
 import { ReferringAgencies } from './pages/ReferringAgencies.tsx';
+import { CaseworkerRegister } from './pages/CaseworkerRegister.tsx';
 import { VolunteerAgreement } from './pages/VolunteerAgreement.tsx';
 import { VolunteerSignups, VolunteerSignupDetail } from './pages/admin/VolunteerSignups.tsx';
 import { DevIssues } from './pages/dev/DevIssues.tsx';
@@ -108,6 +109,8 @@ export function App() {
         <Route path="/apply-to-refer" element={<ApplyToRefer />} />
         {/* Public list of approved referring partners. */}
         <Route path="/referring-agencies" element={<ReferringAgencies />} />
+        {/* One-time caseworker signup link emailed by the Program Manager. */}
+        <Route path="/caseworker-register/:token" element={<CaseworkerRegister />} />
         {/* Agency-caseworker routes get their own shell (no staff
             sidebar). Wrapped in RequireAuth which redirects to login
             if not signed in. RoleGate inside redirects staff away. */}
