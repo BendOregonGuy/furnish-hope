@@ -178,13 +178,23 @@ adminRouter.get('/fk-options/:table', async (req, res, next) => {
     const search = (req.query.search as string | undefined)?.trim();
     const limit = Math.min(Number(req.query.limit ?? 50), MAX_LIMIT);
 
-    // Build: SELECT pk AS id, (displaySql) AS label FROM table t [WHERE label ILIKE $1] ORDER BY label LIMIT N
+    // Build: SELECT pk AS id, (displaySql) AS label FROM table t
+    //        [WHERE fkOptionsFilter] [AND label ILIKE $1]
+    //        ORDER BY label LIMIT N
+    //
+    // `fkOptionsFilter` (e.g. `t.is_approved = true` on tbl_agency)
+    // restricts what can be picked without affecting label lookups on
+    // existing rows in list/detail views — those go through the
+    // separate labels endpoint and stay unfiltered so historical FK
+    // references still resolve.
     const params: any[] = [];
-    let where = '';
+    const conds: string[] = [];
+    if (meta.fkOptionsFilter) conds.push(`(${meta.fkOptionsFilter})`);
     if (search) {
       params.push(`%${search}%`);
-      where = `WHERE (${meta.displaySql}) ILIKE $${params.length}`;
+      conds.push(`(${meta.displaySql}) ILIKE $${params.length}`);
     }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     params.push(limit);
 
     const rows = await query<{ id: number; label: string }>(

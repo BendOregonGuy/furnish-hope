@@ -21,6 +21,11 @@ export interface TableOverride {
   defaultSort?: { column: string; direction: 'asc' | 'desc' };
   /** Per-column overrides keyed by column name. */
   columns?: Record<string, ColumnOverride>;
+  /** SQL predicate applied ONLY to the /fk-options dropdown query so
+   *  the table can restrict what's pickable going forward without
+   *  hiding existing rows from list/detail views. `t` aliases the row.
+   *  Example: `t.is_approved = true`. */
+  fkOptionsFilter?: string;
 }
 
 export interface ColumnOverride {
@@ -204,6 +209,10 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
     listColumns: ['agency_id', 'agency_name', 'is_approved', 'agency_type_id', 'address_id'],
     searchColumns: ['agency_name'],
     defaultSort: { column: 'agency_name', direction: 'asc' },
+    // Phase G: pickers on new records only see approved agencies.
+    // Existing rows referencing a since-unapproved agency still resolve
+    // labels correctly on list/detail — this filter is options-only.
+    fkOptionsFilter: 't.is_approved = true',
     columns: {
       is_approved:        { label: 'Approved to refer', helpText: 'When true, this agency appears in referral dropdowns and on the public /referring-agencies page. Legacy seed rows default to true.' },
       public_description: { type: 'textarea', label: 'Public description', helpText: 'One-liner shown on the /referring-agencies page.' },
@@ -221,6 +230,9 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
     singular: 'Agency Contact',
     displaySql: "(SELECT a.agency_name FROM tbl_agency a WHERE a.agency_id = t.agency_id) || ' — ' || (SELECT c.first_name || ' ' || c.last_name FROM tbl_contact c WHERE c.contact_id = t.contact_id)",
     listColumns: ['agency_contact_id', 'agency_id', 'contact_id'],
+    // Phase G: only surface contacts belonging to an approved agency in
+    // the referral dropdown. Matches the tbl_agency filter above.
+    fkOptionsFilter: 'EXISTS (SELECT 1 FROM tbl_agency a WHERE a.agency_id = t.agency_id AND a.is_approved = true)',
   },
   tbl_agency_client_type: {
     group: 'Partner Agencies',

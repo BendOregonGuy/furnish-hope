@@ -58,6 +58,11 @@ export interface TableMeta {
   /** Postgres expression returning the row's display text. `t` aliases the row. */
   displaySql: string;
   defaultSort: { column: string; direction: 'asc' | 'desc' };
+  /** Optional SQL predicate applied ONLY to /fk-options/:table dropdown
+   *  queries. Lets a table restrict what can be *picked* going forward
+   *  without hiding existing rows from list/detail views. `t` aliases
+   *  the row. */
+  fkOptionsFilter?: string;
 }
 
 /** Server-side schema map keyed by raw table name. */

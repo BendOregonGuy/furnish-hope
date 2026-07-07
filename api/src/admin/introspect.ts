@@ -248,6 +248,7 @@ export async function introspectSchema(): Promise<SchemaMap> {
       searchColumns,
       displaySql,
       defaultSort,
+      fkOptionsFilter: override?.fkOptionsFilter,
     };
   }
 
