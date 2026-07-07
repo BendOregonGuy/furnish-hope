@@ -43,16 +43,33 @@ agencyRouter.get('/me', (req, res) => {
 });
 
 /* ----------------------------------------------------------------- */
-/*  /dashboard — counts the caseworker sees on their landing page     */
+/*  /dashboard — the caseworker's landing page bundle                  */
+/*                                                                    */
+/*  Returns everything the /agency page renders in a single round     */
+/*  trip:                                                              */
+/*    - counts         KPI cards (total/this-month/open/delivered)     */
+/*    - recent_referrals    last 5 referrals (existing)                */
+/*    - status_breakdown    request review-status distribution         */
+/*    - activity            merged event stream (referral+request+     */
+/*                          delivery) capped at 10 rows                */
+/*    - team               caseworkers at this agency +                */
+/*                          still-pending invitations                  */
+/*                                                                    */
+/*  Every SQL statement is scoped to req.user.agency_id so a           */
+/*  caseworker can never see another agency's data.                   */
 /* ----------------------------------------------------------------- */
 
 agencyRouter.get('/dashboard', async (req, res, next) => {
   try {
     const agencyId = req.user!.agency_id!;
-    // Count my referrals (this caseworker's agency only) and broadly
-    // bucket their request statuses for at-a-glance comprehension.
+
+    // ---- KPI counts -------------------------------------------------
+    // "This month" = same calendar month as CURRENT_DATE. Uses date_trunc
+    // rather than an interval so mid-month totals reflect what the
+    // caseworker has actually submitted in the current month.
     const counts = await queryOne<{
       total_referrals: string;
+      this_month_referrals: string;
       open_requests: string;
       delivered_requests: string;
     }>(`
@@ -64,6 +81,11 @@ agencyRouter.get('/dashboard', async (req, res, next) => {
       )
       SELECT
         (SELECT COUNT(*)::text FROM my_clients) AS total_referrals,
+        (SELECT COUNT(DISTINCT r.client_id)::text
+           FROM tbl_referral r
+           JOIN tbl_agency_contact ac ON ac.agency_contact_id = r.agency_contact_id
+           WHERE ac.agency_id = $1
+             AND r.referral_date >= date_trunc('month', CURRENT_DATE)) AS this_month_referrals,
         (SELECT COUNT(*)::text
            FROM tbl_client_provisioning_request pr
            JOIN my_clients mc ON mc.client_id = pr.client_id
@@ -80,6 +102,7 @@ agencyRouter.get('/dashboard', async (req, res, next) => {
            WHERE ds.delivery_status ILIKE 'Completed') AS delivered_requests
     `, [agencyId]);
 
+    // ---- Recent referrals (unchanged shape) -------------------------
     const recent = await query<any>(`
       SELECT
         r.client_id,
@@ -96,11 +119,161 @@ agencyRouter.get('/dashboard', async (req, res, next) => {
       LIMIT 5
     `, [agencyId]);
 
+    // ---- Review-status breakdown across this agency's requests -------
+    // Groups by review_status enum (awaiting_review, in_progress, etc.).
+    // Zero-count buckets are omitted; the UI shows only what's present.
+    const statusBreakdown = await query<{ status: string; count: number }>(`
+      SELECT
+        COALESCE(pr.review_status, 'unknown')::text AS status,
+        COUNT(*)::int                                AS count
+      FROM tbl_client_provisioning_request pr
+      JOIN tbl_referral r          ON r.client_id = pr.client_id
+      JOIN tbl_agency_contact ac   ON ac.agency_contact_id = r.agency_contact_id
+      WHERE ac.agency_id = $1
+      GROUP BY 1
+      ORDER BY count DESC, status
+    `, [agencyId]);
+
+    // ---- Unified activity feed (last 10 events for this agency) -----
+    // Three sources merged via UNION ALL:
+    //   'referral'   = new household referred
+    //   'request'    = new provisioning request submitted
+    //   'delivery'   = delivery reached its latest status
+    // The UI colour-codes by `event_type`.
+    const activity = await query<{
+      event_type: 'referral' | 'request' | 'delivery';
+      event_at: string;
+      client_id: number;
+      client_name: string;
+      label: string;
+    }>(`
+      WITH agency_clients AS (
+        SELECT DISTINCT r.client_id
+        FROM tbl_referral r
+        JOIN tbl_agency_contact ac ON ac.agency_contact_id = r.agency_contact_id
+        WHERE ac.agency_id = $1
+      )
+      SELECT event_type, event_at, client_id, client_name, label
+      FROM (
+        -- New referrals
+        SELECT
+          'referral'::text                              AS event_type,
+          r.referral_date::timestamptz                  AS event_at,
+          r.client_id,
+          ctc.first_name || ' ' || ctc.last_name        AS client_name,
+          'Household referred'::text                    AS label
+        FROM tbl_referral r
+        JOIN tbl_client c   ON c.client_id = r.client_id
+        JOIN tbl_contact ctc ON ctc.contact_id = c.contact_id
+        JOIN tbl_agency_contact ac ON ac.agency_contact_id = r.agency_contact_id
+        WHERE ac.agency_id = $1
+
+        UNION ALL
+
+        -- New requests submitted
+        SELECT
+          'request'::text                               AS event_type,
+          pr.request_at                                 AS event_at,
+          pr.client_id,
+          ctc.first_name || ' ' || ctc.last_name        AS client_name,
+          'Request submitted (' || COALESCE(pr.review_status, 'pending') || ')'::text AS label
+        FROM tbl_client_provisioning_request pr
+        JOIN agency_clients ac ON ac.client_id = pr.client_id
+        JOIN tbl_client c      ON c.client_id  = pr.client_id
+        JOIN tbl_contact ctc   ON ctc.contact_id = c.contact_id
+
+        UNION ALL
+
+        -- Deliveries (any status change surfaces the latest date)
+        SELECT
+          'delivery'::text                              AS event_type,
+          d.delivery_date::timestamptz                  AS event_at,
+          pr.client_id,
+          ctc.first_name || ' ' || ctc.last_name        AS client_name,
+          'Delivery ' || ds.delivery_status             AS label
+        FROM tbl_client_deliveries d
+        JOIN tbl_client_provisioning_request pr ON pr.client_provisioning_request_id = d.client_provisioning_request_id
+        JOIN agency_clients ac ON ac.client_id = pr.client_id
+        JOIN tbl_client c      ON c.client_id  = pr.client_id
+        JOIN tbl_contact ctc   ON ctc.contact_id = c.contact_id
+        JOIN lkp_delivery_status ds ON ds.delivery_status_id = d.delivery_status_id
+      ) events
+      ORDER BY event_at DESC
+      LIMIT 10
+    `, [agencyId]);
+
+    // ---- Team at this agency (accepted users + pending invitations) --
+    // Two-source union, each side deliberately non-overlapping:
+    //   Side A: agency_contacts that HAVE a live user_account (Active)
+    //   Side B: latest invitation per agency_contact that does NOT have
+    //           a live user_account (Invited / Expired / Revoked)
+    // If a caseworker has multiple invitations (e.g. one expired then
+    // reissued), we surface only the most recent one via DISTINCT ON.
+    const team = await query<{
+      caseworker_id: number | null;
+      full_name: string;
+      email: string;
+      status: 'active' | 'invited' | 'expired' | 'revoked';
+      expires_at: string | null;
+      referrals: number;
+    }>(`
+      WITH latest_invitation AS (
+        SELECT DISTINCT ON (ci.agency_contact_id)
+               ci.agency_contact_id, ci.email, ci.status, ci.expires_at
+        FROM tbl_caseworker_invitation ci
+        WHERE ci.agency_id = $1
+        ORDER BY ci.agency_contact_id, ci.issued_at DESC
+      )
+      -- Side A: caseworkers with an active user account
+      SELECT
+        ac.agency_contact_id                             AS caseworker_id,
+        c.first_name || ' ' || c.last_name               AS full_name,
+        c.email                                          AS email,
+        'active'::text                                   AS status,
+        NULL::timestamptz                                AS expires_at,
+        (SELECT COUNT(*)::int
+           FROM tbl_referral r
+           WHERE r.agency_contact_id = ac.agency_contact_id) AS referrals
+      FROM tbl_agency_contact ac
+      JOIN tbl_contact c        ON c.contact_id = ac.contact_id
+      JOIN tbl_user_account ua
+             ON ua.agency_contact_id = ac.agency_contact_id AND ua.is_active = true
+      WHERE ac.agency_id = $1
+
+      UNION ALL
+
+      -- Side B: caseworkers with a pending / expired / revoked invitation
+      -- and NO active user account (mutually exclusive with Side A).
+      SELECT
+        ac.agency_contact_id                             AS caseworker_id,
+        COALESCE(NULLIF(TRIM(c.first_name || ' ' || c.last_name), ''), li.email) AS full_name,
+        li.email                                          AS email,
+        CASE WHEN li.expires_at < NOW() THEN 'expired'
+             WHEN li.status = 'revoked'  THEN 'revoked'
+             ELSE 'invited'
+        END::text                                        AS status,
+        li.expires_at                                    AS expires_at,
+        0                                                AS referrals
+      FROM latest_invitation li
+      JOIN tbl_agency_contact ac ON ac.agency_contact_id = li.agency_contact_id
+      JOIN tbl_contact c         ON c.contact_id = ac.contact_id
+      WHERE NOT EXISTS (
+        SELECT 1 FROM tbl_user_account ua
+        WHERE ua.agency_contact_id = li.agency_contact_id AND ua.is_active = true
+      )
+
+      ORDER BY 4, 2
+    `, [agencyId]);
+
     res.json({
-      total_referrals:    Number(counts?.total_referrals ?? 0),
-      open_requests:      Number(counts?.open_requests ?? 0),
-      delivered_requests: Number(counts?.delivered_requests ?? 0),
-      recent_referrals:   recent,
+      total_referrals:      Number(counts?.total_referrals ?? 0),
+      this_month_referrals: Number(counts?.this_month_referrals ?? 0),
+      open_requests:        Number(counts?.open_requests ?? 0),
+      delivered_requests:   Number(counts?.delivered_requests ?? 0),
+      recent_referrals:     recent,
+      status_breakdown:     statusBreakdown,
+      activity,
+      team,
     });
   } catch (err) { next(err); }
 });
