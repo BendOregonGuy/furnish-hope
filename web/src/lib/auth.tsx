@@ -60,16 +60,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { void refresh(); }, [refresh]);
 
   // Hook up the 401 handler so background requests can boot us to /login.
+  // Guard: only redirect if the user WAS signed in — otherwise the initial
+  // `/api/auth/me` probe on public pages (e.g. /apply-to-refer, /volunteer,
+  // /referring-agencies, /caseworker-register/:token) would kick anonymous
+  // visitors to /login before the intended page even renders.
   useEffect(() => {
     registerSessionLostHandler(() => {
+      const wasSignedIn = user !== null;
       setUser(null);
-      // Only navigate if we're not already on /login.
-      if (window.location.pathname !== '/login') {
+      if (wasSignedIn && window.location.pathname !== '/login') {
         navigate('/login', { replace: true });
       }
     });
     return () => registerSessionLostHandler(null);
-  }, [navigate]);
+  }, [navigate, user]);
 
   const login = useCallback(async (username: string, password: string) => {
     const { user } = await apiPost<{ user: CurrentUser }>('/api/auth/login', { username, password });
