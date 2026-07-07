@@ -234,19 +234,30 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
     label: 'Agency Applications',
     singular: 'Agency Application',
     displaySql: "t.agency_name || ' (' || t.status || ')'",
-    listColumns: ['agency_application_id', 'agency_name', 'main_email', 'status', 'submitted_at'],
+    listColumns: ['agency_application_id', 'agency_name', 'main_email', 'status', 'submitted_at', 'approved_agency_id'],
     searchColumns: ['agency_name', 'main_email', 'legal_name'],
     defaultSort: { column: 'submitted_at', direction: 'desc' },
     columns: {
-      status:            { label: 'Status', enumValues: ['pending', 'approved', 'rejected'] },
+      status: {
+        label: 'Status',
+        enumValues: ['pending', 'approved', 'rejected'],
+        helpText: 'Managed by the Applications review queue at /agencies/applications. Changing this here does NOT create the agency, send caseworker invites, or record a reviewer — use the review queue to approve or reject.',
+      },
       public_description: { type: 'textarea' },
       needs_filled:      { type: 'textarea' },
       other_info:        { type: 'textarea' },
-      rejection_note:    { type: 'textarea' },
+      rejection_note:    { type: 'textarea', helpText: 'Reason shown to Program Managers in the review queue. Set automatically when Reject is used there.' },
       // Force single-line for VARCHAR(>100) that would otherwise become textarea.
       legal_name:        { type: 'text' },
       main_email:        { type: 'text' },
       website:           { type: 'text' },
+      // System-set fields — populated by the approve/reject transaction, not
+      // meant to be edited by hand. Kept visible in the list column so admins
+      // can see the outcome at a glance.
+      submitted_at:                { label: 'Submitted at', hideInForm: true },
+      reviewed_at:                 { label: 'Reviewed at', hideInForm: true },
+      reviewed_by_user_account_id: { label: 'Reviewed by', hideInForm: true },
+      approved_agency_id:          { label: 'Approved as agency', hideInForm: true },
     },
   },
   tbl_agency_application_caseworker: {
