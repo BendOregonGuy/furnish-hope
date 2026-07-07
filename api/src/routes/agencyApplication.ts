@@ -52,6 +52,31 @@ const PUBLIC_LOOKUP_ALLOWLIST: Record<string, { table: string; id: string; label
   howtheyfoundus: { table: 'lkp_howtheyfoundus', id: 'howtheyfoundus_id', label: 'howtheyfoundus' },
 };
 
+/** GET /api/public/agencies — anonymous list of approved referring
+ *  partners for the /referring-agencies marketing page. Only public-safe
+ *  fields go out. EIN, main_email, executive_director_name, address
+ *  detail, and applicant-only fields are deliberately not exposed. */
+publicAgencyApplicationRouter.get('/agencies', async (_req, res, next) => {
+  try {
+    const rows = await query(`
+      SELECT
+        ag.agency_id,
+        ag.agency_name,
+        ag.public_description,
+        ag.service_area,
+        ag.website,
+        (SELECT COALESCE(JSON_AGG(ct.client_type ORDER BY ct.client_type), '[]'::json)
+           FROM tbl_agency_client_type acp
+           JOIN lkp_client_type ct ON ct.client_type_id = acp.client_type_id
+          WHERE acp.agency_id = ag.agency_id) AS client_types
+      FROM tbl_agency ag
+      WHERE ag.is_approved = true
+      ORDER BY ag.agency_name ASC
+    `);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
 publicAgencyApplicationRouter.get('/lookups/:name', async (req, res, next) => {
   try {
     const spec = PUBLIC_LOOKUP_ALLOWLIST[req.params.name];
