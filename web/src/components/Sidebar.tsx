@@ -11,7 +11,8 @@ const sections: NavSection[] = [
     label: 'Overview',
     items: [
       { to: '/',          name: 'Dashboard',           icon: 'home' },
-      { to: '/reports',   name: 'Reports',             icon: 'chart' },
+      { to: '/reports',        name: 'Reports',             icon: 'chart' },
+      { to: '/reports/impact',  name: 'Impact Data',         icon: 'chart' },
     ],
   },
   {
