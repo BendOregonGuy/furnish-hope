@@ -1,6 +1,6 @@
 # Furnish Hope — Codebase Summary
 
-*Last regenerated: 2026-06-23*
+*Last regenerated: 2026-07-06*
 
 ## What it is
 
@@ -14,14 +14,14 @@ Built specifically for a **non-technical primary user** (a nonprofit's database 
 
 | Metric | Count |
 |---|---:|
-| TypeScript LOC (api + web) | ~53,400 |
-| Schema migrations | 89 |
-| Database tables (`tbl_*` + `lkp_*`) | 77 + 65 = 142 |
-| Foreign keys | 220 |
-| API route files | 39 |
-| API endpoints | 228 |
-| Frontend pages | 82 |
-| Commits on `main` | 124 |
+| TypeScript LOC (api + web) | ~56,000 |
+| Schema migrations | 90 |
+| Database tables (`tbl_*` + `lkp_*`) | 82 + 65 = 147 |
+| Foreign keys | 232 |
+| API route files | 40 |
+| API endpoints | 238 |
+| Frontend pages | 86 |
+| Commits on `main` | 138 |
 | Production bundle size | ~1.9 MB JS, 506 KB gzipped |
 
 ---
@@ -43,7 +43,7 @@ Built specifically for a **non-technical primary user** (a nonprofit's database 
 ### Front end (`/web`)
 
 - **React 18** + **TypeScript** + **Vite 5** (build + dev server)
-- **React Router 6** — three "shells": staff (main app), agency caseworker portal, public volunteer signup
+- **React Router 6** — four "shells": staff (main app), agency caseworker portal, public volunteer signup, and the unauthenticated agency-onboarding pages (/apply-to-refer, /referring-agencies, /caseworker-register/:token)
 - **Tailwind CSS** + custom design tokens (terracotta / sage / gold / paper palette + serif display font + sans-serif body)
 - **TanStack React Query** — every server interaction is a query/mutation with optimistic invalidation
 - **FullCalendar** (6 packages) for the unified ops calendar (pickups, deliveries, visits, events, shifts, vendor services)
@@ -87,26 +87,29 @@ Built specifically for a **non-technical primary user** (a nonprofit's database 
                             +-----------------------+
 ```
 
-**Three shells served by the same app:**
+**Four shells served by the same app:**
 
 1. `/login`, `/*` — staff app (default)
 2. `/agency/*` — partner-agency caseworker portal (no internal data visible)
-3. `/volunteer`, `/volunteer-agreement` — public (unauthenticated) signup
+3. `/volunteer`, `/volunteer-agreement` — public volunteer signup (unauthenticated)
+4. `/apply-to-refer`, `/referring-agencies`, `/caseworker-register/:token` — public partner-agency application, marketing list, and caseworker self-serve signup (unauthenticated; token IS the auth on the register page)
 
 ---
 
 ## Auth + permissions
 
-Three role tiers enforced by middleware on every route:
+Role tiers enforced by middleware on every route:
 
 | Middleware | What |
 |---|---|
 | `requireUser` | Session must be authenticated |
 | `requireStaff` | Excludes agency users (`role === 'agency'`) |
+| `requireAgency` | Only partner-agency caseworkers |
+| `requireProgramManager` | `is_admin = true OR is_program_manager = true` (approve/reject agency applications) |
 | `requireAdmin` | `is_admin = true` |
 | `requireDeveloper` | `is_admin = true AND is_developer = true` |
 
-Plus row-level scoping for agency caseworkers (they only see their own org's referrals) and per-user scoping for email accounts and mailbox (you only see your own mail).
+Plus row-level scoping for agency caseworkers (they only see their own org's referrals) and per-user scoping for email accounts and mailbox (you only see your own mail). Public router families (`/api/public/*`) are mounted BEFORE `requireUser`, are rate-limited + honeypot-guarded, and expose only the specific endpoints the unauthenticated pages need.
 
 **Audit log** records every mutation (`tbl_audit_log`) with field-level diffs. Sensitive fields (passwords, OAuth tokens, encrypted IMAP creds, screenshot blobs, lock codes, DOB, tax IDs) are masked to `***`.
 
@@ -122,7 +125,7 @@ Plus row-level scoping for agency caseworkers (they only see their own org's ref
 6. **Staff, Volunteers & Shifts** — public signup queue, approval flow, profile prefs (availability / activity / physical), shift templates + generated shifts, preference-aware shift signup picker
 7. **Fundraising** — campaigns, events with attendees + sponsors, grants
 8. **Vendors** — outside service providers + service log
-9. **Partner Agencies** — agency contacts referring households
+9. **Partner Agencies** — self-serve agency onboarding pipeline: public `/apply-to-refer` form → PM review queue at `/agencies/applications` → atomic approval creates the agency + caseworker invitation tokens → caseworker signs up at `/caseworker-register/:token` → lands in `/agency/*`. The enhanced caseworker dashboard shows KPIs (this-month referrals + total + open + delivered), request status pills, a merged activity feed (referrals + requests + deliveries), and a team table with Active / Invited-until-DATE / Expired / Revoked pills. Every `/api/agency/*` endpoint scopes by `req.user.agency_id`; admin dropdowns use a table-level `fkOptionsFilter` so unapproved agencies (and their contacts) can't be picked for new referrals even while existing rows continue to display their agency name.
 10. **Communications, Files & Notes** — per-user email accounts (IMAP/SMTP), Mailbox view, email templates, generic per-entity attachments
 11. **System** — user accounts, audit log, app settings, in-app issue tracker, broadcast banner, org branding, user-manual screenshots
 

@@ -281,6 +281,54 @@ The badge clears when the queue is empty.
 
 ---
 
+## Partner agency onboarding
+
+The self-serve flow that turns a curious agency into a caseworker who can submit referrals directly. Full details in `docs/AGENCY_ONBOARDING.md`; this section covers what a Furnish Hope staff member needs to know.
+
+### The public application form
+
+Any agency can visit `https://<host>/apply-to-refer` (linked from the Furnish Hope website) and fill out a short form: their name, address, populations served (Veteran, Domestic violence survivor, etc.), typical needs, and one or more initial caseworkers. No login required. Submissions land in **Applications** with `status = pending`.
+
+The form is rate-limited (5 per 15 minutes per IP) and honeypot-guarded, so bot fills are dropped silently.
+
+### The Applications review queue
+
+Sidebar → **Partner Agencies → Applications** (badge shows pending count). This is visible to anyone whose account has **Administrator** OR **Program Manager** checked.
+
+Clicking a pending row shows the full application detail. Three actions:
+
+- **Approve** — atomically creates the `tbl_agency` row (flagged `is_approved = true`), inserts contacts + `agency_contact` links for each initial caseworker, and generates a 14-day one-time invitation token per caseworker. The application flips to `approved` and back-links the newly created agency.
+- **Reject** — writes `status = rejected` + a required note. No agency is created. The applicant is not auto-notified.
+- **Copy invitation** — for each caseworker on an approved application, returns the invitation URL, an email subject, and both plaintext and HTML email bodies. Paste into your regular mail client (Gmail / Outlook / whatever) and send to the caseworker.
+
+We don't auto-send emails yet. Once the shared `Agency_Onboarding@Furnish-Hope.com` inbox is connected, the review page will offer a "Send now" button; until then, copy-paste is the interim.
+
+### Caseworker signup
+
+The caseworker clicks the invitation link, lands on `/caseworker-register/<token>`, sees their name/email/agency pre-filled, chooses a username + password, and is logged in on the spot at `/agency`. No temporary passwords, no follow-up admin steps.
+
+Tokens are single-use and expire after 14 days. Reissue from the review page if a caseworker misses the window.
+
+### Program Manager role
+
+Grant via `/admin/tbl_user_account` — check the **Program Manager** box on any staff account. Program Managers see the Applications queue and the approve/reject/preview actions. Administrators have PM powers implicitly.
+
+### The public agencies list
+
+Approved agencies appear at `https://<host>/referring-agencies` — a public marketing page showing agency name, service area, populations served, and website. Filter chips let visitors narrow by population.
+
+Agencies whose applications are rejected, or which an admin later marks `is_approved = false`, disappear from this page immediately.
+
+### What happens if you flip is_approved back to false
+
+- The agency vanishes from `/referring-agencies`
+- New referrals cannot be created against it (its caseworkers no longer appear in the referral form's dropdown thanks to the `fkOptionsFilter` on `tbl_agency_contact`)
+- Existing referrals continue to display the agency name correctly — this is options-side filtering only
+
+Use this to pause an agency temporarily. To permanently revoke access, also flip each caseworker's `is_active = false`.
+
+---
+
 ## Pickups
 
 Covered in **Daily Tasks** above. A few extras:
