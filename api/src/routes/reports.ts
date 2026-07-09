@@ -18,6 +18,11 @@
 
 import { Router } from 'express';
 import { query, queryOne } from '../db/pool.js';
+import {
+  buildImpactBundle, buildInventoryBundle,
+  type Period as ExportPeriod, type InventoryStatus, type InventoryQuery,
+} from '../reports/bundle.js';
+import { toPdf, toXlsx, toDocx } from '../reports/exporters.js';
 
 export const reportsRouter = Router();
 
@@ -529,5 +534,84 @@ reportsRouter.get('/impact', async (req, res, next) => {
         boxspring: bedding?.boxspring ?? 0,
       },
     });
+  } catch (err) { next(err); }
+});
+
+/* ------------------------------------------------------------------ */
+/*  GET /api/reports/inventory — warehouse snapshot                    */
+/*                                                                    */
+/*  ?period=daily|monthly|yearly (default monthly)                    */
+/*  ?status=all|in_stock|delivered|received|other (default all)       */
+/*  ?sort=category|warehouse|value|date_added|condition|size          */
+/*  ?dir=asc|desc                                                     */
+/*                                                                    */
+/*  Returns the same ExportBundle shape the PDF/XLSX/DOCX writers      */
+/*  consume — the frontend renders it directly, no shape adaptation.  */
+/* ------------------------------------------------------------------ */
+
+const INV_STATUSES: InventoryStatus[] = ['all','in_stock','delivered','received','other'];
+const INV_SORTS: InventoryQuery['sort'][] = ['category','warehouse','value','date_added','condition','size'];
+
+function parseInventoryQuery(qs: any): InventoryQuery {
+  const period = (['daily','monthly','yearly'] as const).includes(String(qs.period).toLowerCase() as any)
+    ? String(qs.period).toLowerCase() as ExportPeriod
+    : 'monthly';
+  const status = INV_STATUSES.includes(String(qs.status).toLowerCase() as any)
+    ? String(qs.status).toLowerCase() as InventoryStatus
+    : 'all';
+  const sort = INV_SORTS.includes(String(qs.sort).toLowerCase() as any)
+    ? String(qs.sort).toLowerCase() as InventoryQuery['sort']
+    : 'category';
+  const dir: 'asc' | 'desc' = String(qs.dir).toLowerCase() === 'asc' ? 'asc' : 'desc';
+  return { period, status, sort, dir };
+}
+
+reportsRouter.get('/inventory', async (req, res, next) => {
+  try {
+    const bundle = await buildInventoryBundle(parseInventoryQuery(req.query));
+    res.json(bundle);
+  } catch (err) { next(err); }
+});
+
+/* ------------------------------------------------------------------ */
+/*  GET /api/reports/export/:report.:format — file download            */
+/*                                                                    */
+/*  :report ∈ {impact, inventory}                                     */
+/*  :format ∈ {pdf, xlsx, docx}                                        */
+/*                                                                    */
+/*  Passes through the same query params the /impact and /inventory   */
+/*  endpoints accept, builds the bundle, hands to the format writer,  */
+/*  and streams the buffer with a friendly filename.                  */
+/* ------------------------------------------------------------------ */
+
+reportsRouter.get('/export/:report.:format', async (req, res, next) => {
+  try {
+    const report = req.params.report;
+    const format = req.params.format;
+
+    // Build the bundle
+    let bundle;
+    if (report === 'impact') {
+      const period = (['daily','monthly','yearly'] as const).includes(String(req.query.period).toLowerCase() as any)
+        ? String(req.query.period).toLowerCase() as ExportPeriod
+        : 'monthly';
+      bundle = await buildImpactBundle(period);
+    } else if (report === 'inventory') {
+      bundle = await buildInventoryBundle(parseInventoryQuery(req.query));
+    } else {
+      return res.status(404).json({ error: 'Unknown report' });
+    }
+
+    // Render to the requested format
+    let file;
+    if      (format === 'pdf')  file = await toPdf(bundle);
+    else if (format === 'xlsx') file = await toXlsx(bundle);
+    else if (format === 'docx') file = await toDocx(bundle);
+    else return res.status(400).json({ error: 'Format must be pdf, xlsx, or docx' });
+
+    res.setHeader('Content-Type', file.mime);
+    res.setHeader('Content-Disposition',
+      `attachment; filename="${bundle.filenameBase}.${file.ext}"`);
+    res.send(file.buffer);
   } catch (err) { next(err); }
 });

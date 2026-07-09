@@ -10,6 +10,7 @@ import { Settings } from './pages/Settings.tsx';
 import { Dashboard } from './pages/Dashboard.tsx';
 import { Reports } from './pages/Reports.tsx';
 import { ImpactData } from './pages/ImpactData.tsx';
+import { InventoryReport } from './pages/InventoryReport.tsx';
 import { Clients } from './pages/Clients.tsx';
 import { ClientDetail } from './pages/ClientDetail.tsx';
 import { ClientForm } from './pages/ClientForm.tsx';
@@ -170,6 +171,7 @@ function AppShell() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/reports/impact" element={<ImpactData />} />
+          <Route path="/reports/inventory" element={<InventoryReport />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/calendar" element={<CalendarView />} />
 

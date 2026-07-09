@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api.ts';
 import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
+import { ExportMenu } from '../components/ExportMenu.tsx';
 
 type Period = 'daily' | 'monthly' | 'yearly';
 
@@ -59,7 +60,12 @@ export function ImpactData() {
         title="Impact Data"
         emphasis="& recipient reach"
         subtitle={`How many households, from which places, of which situations, and what we delivered — ${rangeLabel}.`}
-        actions={<PeriodToggle period={period} onChange={setPeriod} />}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <PeriodToggle period={period} onChange={setPeriod} />
+            <ExportMenu report="impact" params={{ period }} />
+          </div>
+        }
       />
 
       {isLoading && !data && <Loading />}
