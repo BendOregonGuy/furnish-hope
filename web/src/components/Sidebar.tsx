@@ -11,9 +11,8 @@ const sections: NavSection[] = [
     label: 'Overview',
     items: [
       { to: '/',          name: 'Dashboard',           icon: 'home' },
-      { to: '/reports',            name: 'Reports',             icon: 'chart' },
-      { to: '/reports/impact',      name: 'Impact Data',         icon: 'chart' },
-      { to: '/reports/inventory',   name: 'Inventory Report',    icon: 'chart' },
+      { to: '/reports',            name: 'Reports & Insights',  icon: 'chart' },
+      { to: '/reports/impact',     name: 'Impact Data',         icon: 'chart' },
     ],
   },
   {
@@ -47,6 +46,7 @@ const sections: NavSection[] = [
       { to: '/deliveries',name: 'Deliveries',          icon: 'truck' },
       { to: '/pickups',   name: 'Donation Pickups',    icon: 'package' },
       { to: '/inventory', name: 'Inventory',           icon: 'box' },
+      { to: '/reports/inventory', name: 'Inventory Report', icon: 'chart' },
       { to: '/vendors',   name: 'Vendors',             icon: 'users' },
     ],
   },
