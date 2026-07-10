@@ -20,6 +20,7 @@ import {
 } from 'recharts';
 import { apiGet, formatMoney } from '../lib/api.ts';
 import { PageHeader, Loading, ErrorBox, AnonPill } from '../components/ui.tsx';
+import { ExportMenu } from '../components/ExportMenu.tsx';
 
 type Period = 'monthly' | 'quarterly' | 'yearly';
 
@@ -86,7 +87,12 @@ export function Reports() {
         title="Reports"
         emphasis="& insights"
         subtitle="The numbers behind the work — fundraising, operations, community engagement."
-        actions={<PeriodToggle period={period} onChange={setPeriod} />}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <PeriodToggle period={period} onChange={setPeriod} />
+            <ExportMenu report="reports" params={{ period }} />
+          </div>
+        }
       />
 
       {isLoading && !data && <Loading />}

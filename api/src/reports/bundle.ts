@@ -460,3 +460,536 @@ export async function buildInventoryBundle(q: InventoryQuery): Promise<ExportBun
     ],
   };
 }
+
+/* ================================================================= */
+/*  Reports & Insights bundle — mirrors the /reports JSON payload      */
+/*                                                                    */
+/*  Uses a different bucketing model from Impact + Inventory: the      */
+/*  Reports page runs on monthly / quarterly / yearly trailing         */
+/*  windows via DATE_TRUNC + INTERVAL, not the current-calendar-       */
+/*  period model. Every dataset is expressed once here; the endpoint   */
+/*  and the export both call fetchReportsData so they can't drift.     */
+/* ================================================================= */
+
+export type ReportsPeriod = 'monthly' | 'quarterly' | 'yearly';
+
+interface ReportsBucketConfig {
+  trunc: 'month' | 'quarter' | 'year';
+  interval: string;
+  kpiInterval: string;
+  /** Step size for generate_series — Postgres won't take "1 quarter"
+   *  as an interval, so quarterly uses "3 months". */
+  stepInterval: string;
+}
+
+function reportsConfig(period: ReportsPeriod): ReportsBucketConfig {
+  switch (period) {
+    case 'quarterly':
+      return { trunc: 'quarter', interval: '24 months', kpiInterval: '3 months', stepInterval: '3 months' };
+    case 'yearly':
+      return { trunc: 'year',    interval: '5 years',   kpiInterval: '1 year',   stepInterval: '1 year' };
+    case 'monthly':
+    default:
+      return { trunc: 'month',   interval: '12 months', kpiInterval: '1 month',  stepInterval: '1 month' };
+  }
+}
+
+export interface ReportsDataset {
+  period: ReportsPeriod;
+  kpis: any;
+  revenueTrend: any[];
+  revenueByFund: any[];
+  donorMix: any[];
+  campaigns: any[];
+  pickupsDeliveries: any[];
+  cycleTime: any[];
+  inventoryFlow: any[];
+  donorPipeline: any[];
+  volunteerHours: any[];
+  topDonors: any[];
+  avgGift: any[];
+  pledges: any[];
+  shiftFillRate: any[];
+  inventoryByCategory: any[];
+  ackTurnaround: any[];
+  donationTypes: any[];
+}
+
+/**
+ * fetchReportsData — the single source of truth for the /api/reports
+ * payload. The endpoint returns this verbatim; the bundle builder
+ * maps it into ExportBundle sections.
+ */
+export async function fetchReportsData(period: ReportsPeriod): Promise<ReportsDataset> {
+  const cfg = reportsConfig(period);
+  // Safe: trunc / interval / step come from a fixed whitelist above.
+  const T = cfg.trunc;
+  const I = cfg.interval;
+  const S = cfg.stepInterval;
+
+  const kpis = await queryOne<any>(`
+    SELECT
+      COALESCE((SELECT SUM(total_value) FROM tbl_donation
+                 WHERE donation_date >= DATE_TRUNC('${T}', NOW())), 0)::numeric(12,2) AS revenue,
+      (SELECT COUNT(DISTINCT donor_id) FROM tbl_donation
+        WHERE donation_date >= DATE_TRUNC('${T}', NOW()))::int AS active_donors,
+      (SELECT COUNT(*) FROM (
+          SELECT donor_id, MIN(donation_date) AS first_gift
+            FROM tbl_donation GROUP BY donor_id
+        ) g WHERE g.first_gift >= DATE_TRUNC('${T}', NOW()))::int AS new_donors,
+      (SELECT COUNT(DISTINCT r.client_id) FROM tbl_client_deliveries d
+          JOIN tbl_client_provisioning_request r ON r.client_provisioning_request_id = d.client_provisioning_request_id
+        WHERE d.delivery_date >= DATE_TRUNC('${T}', NOW()))::int AS households_served,
+      (SELECT COUNT(*) FROM tbl_donation_pickup
+        WHERE scheduled_date >= DATE_TRUNC('${T}', NOW())
+          AND pickup_status_id IN (SELECT pickup_status_id FROM lkp_pickup_status WHERE pickup_status IN ('Completed','Picked up')))::int AS pickups_completed,
+      (SELECT COUNT(*) FROM tbl_client_deliveries
+        WHERE delivery_date >= DATE_TRUNC('${T}', NOW())
+          AND delivery_status_id IN (SELECT delivery_status_id FROM lkp_delivery_status WHERE delivery_status IN ('Delivered','Completed')))::int AS deliveries_completed,
+      COALESCE((SELECT SUM(hours_logged) FROM tbl_volunteer_hours
+                 WHERE activity_date >= DATE_TRUNC('${T}', NOW())), 0)::numeric(10,2) AS volunteer_hours,
+      (SELECT COUNT(*) FROM tbl_donation_item di
+          JOIN tbl_donation d ON d.donation_id = di.donation_id
+        WHERE d.donation_date >= DATE_TRUNC('${T}', NOW()))::int AS items_in,
+      (SELECT COUNT(*) FROM tbl_delivery_items di
+          JOIN tbl_client_deliveries cd ON cd.client_deliveries_id = di.client_deliveries_id
+        WHERE cd.delivery_date >= DATE_TRUNC('${T}', NOW()))::int AS items_out
+  `);
+
+  const revenueTrend = await query(`
+    SELECT DATE_TRUNC('${T}', donation_date) AS bucket,
+           COALESCE(SUM(total_value), 0)::numeric(12,2) AS revenue
+    FROM tbl_donation
+    WHERE donation_date >= NOW() - INTERVAL '${I}'
+    GROUP BY bucket
+    ORDER BY bucket
+  `);
+
+  const revenueByFund = await query(`
+    SELECT
+      DATE_TRUNC('${T}', d.donation_date) AS bucket,
+      COALESCE(f.fund_name, 'Undesignated') AS fund_name,
+      SUM(COALESCE(dd.amount, d.total_value))::numeric(12,2) AS revenue
+    FROM tbl_donation d
+    LEFT JOIN tbl_donation_designation dd ON dd.donation_id = d.donation_id
+    LEFT JOIN lkp_fund f ON f.fund_id = dd.fund_id
+    WHERE d.donation_date >= NOW() - INTERVAL '${I}'
+    GROUP BY bucket, fund_name
+    ORDER BY bucket, fund_name
+  `);
+
+  const donorMix = await query(`
+    WITH gifts_with_first AS (
+      SELECT
+        d.donor_id,
+        DATE_TRUNC('${T}', d.donation_date) AS bucket,
+        MIN(d.donation_date) OVER (PARTITION BY d.donor_id) AS first_gift_ever
+      FROM tbl_donation d
+      WHERE d.donation_date >= NOW() - INTERVAL '${I}'
+    )
+    SELECT
+      bucket,
+      COUNT(DISTINCT donor_id) FILTER (WHERE DATE_TRUNC('${T}', first_gift_ever) = bucket)::int AS new_donors,
+      COUNT(DISTINCT donor_id) FILTER (WHERE DATE_TRUNC('${T}', first_gift_ever) < bucket)::int AS returning_donors
+    FROM gifts_with_first
+    GROUP BY bucket
+    ORDER BY bucket
+  `);
+
+  const campaigns = await query(`
+    SELECT
+      c.campaign_id, c.campaign_name, cs.campaign_status, c.goal_amount,
+      COALESCE((SELECT SUM(total_value) FROM tbl_donation WHERE campaign_id = c.campaign_id), 0)::numeric(12,2) AS raised
+    FROM tbl_campaign c
+    JOIN lkp_campaign_status cs ON cs.campaign_status_id = c.campaign_status_id
+    WHERE cs.campaign_status IN ('Active','Planning')
+    ORDER BY c.start_date NULLS LAST
+    LIMIT 8
+  `);
+
+  const pickupsDeliveries = await query(`
+    WITH buckets AS (
+      SELECT DATE_TRUNC('${T}', dd::date) AS bucket
+      FROM generate_series(
+        DATE_TRUNC('${T}', NOW() - INTERVAL '${I}'),
+        DATE_TRUNC('${T}', NOW()),
+        INTERVAL '${S}'
+      ) AS dd
+    )
+    SELECT b.bucket,
+      (SELECT COUNT(*) FROM tbl_donation_pickup p
+        WHERE DATE_TRUNC('${T}', p.scheduled_date) = b.bucket)::int AS pickups,
+      (SELECT COUNT(*) FROM tbl_client_deliveries d
+        WHERE DATE_TRUNC('${T}', d.delivery_date) = b.bucket)::int AS deliveries
+    FROM buckets b
+    ORDER BY b.bucket
+  `);
+
+  const cycleTime = await query(`
+    SELECT
+      DATE_TRUNC('${T}', d.delivery_date) AS bucket,
+      ROUND(AVG(d.delivery_date - r.request_at::date)::numeric, 1) AS avg_days
+    FROM tbl_client_deliveries d
+    JOIN tbl_client_provisioning_request r ON r.client_provisioning_request_id = d.client_provisioning_request_id
+    WHERE d.delivery_date >= NOW() - INTERVAL '${I}'
+    GROUP BY bucket
+    ORDER BY bucket
+  `);
+
+  const inventoryFlow = await query(`
+    WITH buckets AS (
+      SELECT DATE_TRUNC('${T}', dd::date) AS bucket
+      FROM generate_series(
+        DATE_TRUNC('${T}', NOW() - INTERVAL '${I}'),
+        DATE_TRUNC('${T}', NOW()),
+        INTERVAL '${S}'
+      ) AS dd
+    )
+    SELECT b.bucket,
+      (SELECT COUNT(*) FROM tbl_donation_item di
+          JOIN tbl_donation d ON d.donation_id = di.donation_id
+        WHERE DATE_TRUNC('${T}', d.donation_date) = b.bucket)::int AS received,
+      (SELECT COUNT(*) FROM tbl_delivery_items dti
+          JOIN tbl_client_deliveries cd ON cd.client_deliveries_id = dti.client_deliveries_id
+        WHERE DATE_TRUNC('${T}', cd.delivery_date) = b.bucket)::int AS distributed
+    FROM buckets b
+    ORDER BY b.bucket
+  `);
+
+  const donorPipeline = await query(`
+    SELECT ds.donor_stage AS stage, ds.stage_order, COUNT(d.donor_id)::int AS count
+    FROM lkp_donor_stage ds
+    LEFT JOIN tbl_donor d ON d.donor_stage_id = ds.donor_stage_id
+    GROUP BY ds.donor_stage, ds.stage_order
+    ORDER BY ds.stage_order
+  `);
+
+  const volunteerHours = await query(`
+    SELECT DATE_TRUNC('${T}', activity_date) AS bucket,
+           COALESCE(SUM(hours_logged), 0)::numeric(10,2) AS hours
+    FROM tbl_volunteer_hours
+    WHERE activity_date >= NOW() - INTERVAL '${I}'
+    GROUP BY bucket
+    ORDER BY bucket
+  `);
+
+  const topDonors = await query(`
+    SELECT
+      donor.donor_id,
+      contact.first_name || ' ' || contact.last_name AS donor_name,
+      donor.is_anonymous,
+      SUM(d.total_value)::numeric(12,2) AS total,
+      COUNT(d.donation_id)::int AS gift_count,
+      MAX(d.donation_date) AS last_gift_date
+    FROM tbl_donation d
+    JOIN tbl_donor donor ON donor.donor_id = d.donor_id
+    JOIN tbl_contact contact ON contact.contact_id = donor.contact_id
+    WHERE d.donation_date >= NOW() - INTERVAL '${I}'
+    GROUP BY donor.donor_id, contact.first_name, contact.last_name, donor.is_anonymous
+    ORDER BY total DESC
+    LIMIT 10
+  `);
+
+  const avgGift = await query(`
+    SELECT DATE_TRUNC('${T}', donation_date) AS bucket,
+           ROUND(AVG(total_value)::numeric, 2) AS avg_gift,
+           COUNT(*)::int AS gift_count
+    FROM tbl_donation
+    WHERE donation_date >= NOW() - INTERVAL '${I}'
+    GROUP BY bucket
+    ORDER BY bucket
+  `);
+
+  const pledges = await query(`
+    SELECT DATE_TRUNC('${T}', p.pledge_date) AS bucket,
+           SUM(p.total_pledged_amount)::numeric(12,2) AS pledged,
+           SUM(p.amount_fulfilled)::numeric(12,2) AS fulfilled,
+           SUM(p.total_pledged_amount - p.amount_fulfilled)::numeric(12,2) AS outstanding
+    FROM tbl_pledge p
+    WHERE p.pledge_date >= NOW() - INTERVAL '${I}'
+    GROUP BY bucket
+    ORDER BY bucket
+  `);
+
+  const shiftFillRate = await query(`
+    WITH per_shift AS (
+      SELECT
+        DATE_TRUNC('${T}', s.shift_date) AS bucket,
+        s.capacity_needed,
+        (SELECT COUNT(*) FROM tbl_volunteer_shift_signup su
+          WHERE su.shift_id = s.shift_id
+            AND su.signup_status IN ('signed_up','attended'))::int AS filled
+      FROM tbl_volunteer_shift s
+      WHERE s.shift_date >= NOW() - INTERVAL '${I}'
+    )
+    SELECT bucket,
+           SUM(capacity_needed)::int AS capacity_needed,
+           SUM(LEAST(filled, capacity_needed))::int AS filled,
+           CASE WHEN SUM(capacity_needed) > 0
+                THEN ROUND(100.0 * SUM(LEAST(filled, capacity_needed))::numeric / SUM(capacity_needed)::numeric, 1)
+                ELSE 0 END AS fill_rate_pct
+    FROM per_shift
+    GROUP BY bucket
+    ORDER BY bucket
+  `);
+
+  const inventoryByCategory = await query(`
+    SELECT cat.item_category AS category, COUNT(*)::int AS count
+    FROM tbl_corp_facility_inventory_item inv
+    JOIN lkp_item_category cat ON cat.item_category_id = inv.item_category_id
+    GROUP BY cat.item_category
+    ORDER BY count DESC
+    LIMIT 12
+  `);
+
+  const ackTurnaround = await query(`
+    SELECT DATE_TRUNC('${T}', donation_date) AS bucket,
+           ROUND(AVG(acknowledgement_sent_date - donation_date)::numeric, 1) AS avg_days
+    FROM tbl_donation
+    WHERE donation_date >= NOW() - INTERVAL '${I}'
+      AND acknowledgement_sent_date IS NOT NULL
+    GROUP BY bucket
+    ORDER BY bucket
+  `);
+
+  const donationTypes = await query(`
+    SELECT
+      dt.donation_type AS type,
+      COUNT(*)::int AS count,
+      SUM(d.total_value)::numeric(12,2) AS total
+    FROM tbl_donation d
+    JOIN lkp_donation_type dt ON dt.donation_type_id = d.donation_type_id
+    WHERE d.donation_date >= NOW() - INTERVAL '${I}'
+    GROUP BY dt.donation_type
+    ORDER BY total DESC
+  `);
+
+  return {
+    period, kpis,
+    revenueTrend, revenueByFund, donorMix, campaigns,
+    pickupsDeliveries, cycleTime, inventoryFlow, donorPipeline,
+    volunteerHours, topDonors, avgGift, pledges,
+    shiftFillRate, inventoryByCategory, ackTurnaround, donationTypes,
+  };
+}
+
+/**
+ * buildReportsBundle — turns the reports dataset into one KPI section
+ * plus one TableSection per time-series / breakdown. Each dataset ends
+ * up on its own sheet (XLSX) or its own section (PDF, DOCX).
+ */
+export async function buildReportsBundle(period: ReportsPeriod): Promise<ExportBundle> {
+  const d = await fetchReportsData(period);
+  const label = period[0].toUpperCase() + period.slice(1);
+
+  const dateStr = (raw: any): string => {
+    if (!raw) return '';
+    const dd = new Date(String(raw));
+    return isNaN(dd.getTime()) ? String(raw) : dd.toISOString().slice(0, 10);
+  };
+
+  return {
+    title: 'Reports & Insights',
+    subtitle: `${label} view — fundraising, operations, community engagement`,
+    filenameBase: `reports-${period}-${new Date().toISOString().slice(0,10)}`,
+    headerMeta: [{ label: 'Period', value: label }],
+    sections: [
+      {
+        kind: 'kpi',
+        title: 'Headline KPIs',
+        items: [
+          { label: 'Revenue',              value: `$${Number(d.kpis?.revenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+          { label: 'Active donors',        value: d.kpis?.active_donors ?? 0 },
+          { label: 'New donors',           value: d.kpis?.new_donors ?? 0 },
+          { label: 'Households served',    value: d.kpis?.households_served ?? 0 },
+          { label: 'Pickups completed',    value: d.kpis?.pickups_completed ?? 0 },
+          { label: 'Deliveries completed', value: d.kpis?.deliveries_completed ?? 0 },
+          { label: 'Volunteer hours',      value: Number(d.kpis?.volunteer_hours ?? 0) },
+          { label: 'Items received',       value: d.kpis?.items_in ?? 0 },
+          { label: 'Items distributed',    value: d.kpis?.items_out ?? 0 },
+        ],
+      },
+      {
+        kind: 'table',
+        title: 'Revenue trend',
+        columns: [
+          { key: 'bucket', label: 'Period', format: 'date' },
+          { key: 'revenue', label: 'Revenue', align: 'right', format: 'money' },
+        ],
+        rows: d.revenueTrend.map((r: any) => ({ bucket: dateStr(r.bucket), revenue: Number(r.revenue) })),
+      },
+      {
+        kind: 'table',
+        title: 'Revenue by fund',
+        columns: [
+          { key: 'bucket', label: 'Period', format: 'date' },
+          { key: 'fund_name', label: 'Fund' },
+          { key: 'revenue', label: 'Revenue', align: 'right', format: 'money' },
+        ],
+        rows: d.revenueByFund.map((r: any) => ({ bucket: dateStr(r.bucket), fund_name: r.fund_name, revenue: Number(r.revenue) })),
+      },
+      {
+        kind: 'table',
+        title: 'Donor mix',
+        subtitle: 'New (first-ever gift in bucket) vs returning',
+        columns: [
+          { key: 'bucket', label: 'Period', format: 'date' },
+          { key: 'new_donors', label: 'New', align: 'right', format: 'number' },
+          { key: 'returning_donors', label: 'Returning', align: 'right', format: 'number' },
+        ],
+        rows: d.donorMix.map((r: any) => ({ bucket: dateStr(r.bucket), new_donors: r.new_donors, returning_donors: r.returning_donors })),
+      },
+      {
+        kind: 'table',
+        title: 'Active + planning campaigns',
+        columns: [
+          { key: 'campaign_name', label: 'Campaign' },
+          { key: 'campaign_status', label: 'Status' },
+          { key: 'goal_amount', label: 'Goal', align: 'right', format: 'money' },
+          { key: 'raised', label: 'Raised', align: 'right', format: 'money' },
+        ],
+        rows: d.campaigns.map((r: any) => ({
+          campaign_name: r.campaign_name,
+          campaign_status: r.campaign_status,
+          goal_amount: r.goal_amount === null ? null : Number(r.goal_amount),
+          raised: Number(r.raised),
+        })),
+      },
+      {
+        kind: 'table',
+        title: 'Pickups vs deliveries',
+        columns: [
+          { key: 'bucket', label: 'Period', format: 'date' },
+          { key: 'pickups',    label: 'Pickups',    align: 'right', format: 'number' },
+          { key: 'deliveries', label: 'Deliveries', align: 'right', format: 'number' },
+        ],
+        rows: d.pickupsDeliveries.map((r: any) => ({ bucket: dateStr(r.bucket), pickups: r.pickups, deliveries: r.deliveries })),
+      },
+      {
+        kind: 'table',
+        title: 'Cycle time',
+        subtitle: 'Average days from request to delivery',
+        columns: [
+          { key: 'bucket', label: 'Period', format: 'date' },
+          { key: 'avg_days', label: 'Avg days', align: 'right', format: 'number' },
+        ],
+        rows: d.cycleTime.map((r: any) => ({ bucket: dateStr(r.bucket), avg_days: r.avg_days === null ? null : Number(r.avg_days) })),
+      },
+      {
+        kind: 'table',
+        title: 'Inventory flow',
+        columns: [
+          { key: 'bucket', label: 'Period', format: 'date' },
+          { key: 'received',    label: 'Received',    align: 'right', format: 'number' },
+          { key: 'distributed', label: 'Distributed', align: 'right', format: 'number' },
+        ],
+        rows: d.inventoryFlow.map((r: any) => ({ bucket: dateStr(r.bucket), received: r.received, distributed: r.distributed })),
+      },
+      {
+        kind: 'table',
+        title: 'Donor pipeline',
+        columns: [
+          { key: 'stage', label: 'Stage' },
+          { key: 'count', label: 'Donors', align: 'right', format: 'number' },
+        ],
+        rows: d.donorPipeline.map((r: any) => ({ stage: r.stage, count: r.count })),
+      },
+      {
+        kind: 'table',
+        title: 'Volunteer hours',
+        columns: [
+          { key: 'bucket', label: 'Period', format: 'date' },
+          { key: 'hours', label: 'Hours', align: 'right', format: 'number' },
+        ],
+        rows: d.volunteerHours.map((r: any) => ({ bucket: dateStr(r.bucket), hours: Number(r.hours) })),
+      },
+      {
+        kind: 'table',
+        title: 'Top donors',
+        columns: [
+          { key: 'donor_name', label: 'Donor' },
+          { key: 'total',      label: 'Total',       align: 'right', format: 'money' },
+          { key: 'gift_count', label: 'Gifts',       align: 'right', format: 'number' },
+          { key: 'last_gift_date', label: 'Last gift', format: 'date' },
+        ],
+        rows: d.topDonors.map((r: any) => ({
+          donor_name: r.is_anonymous ? 'Anonymous' : r.donor_name,
+          total: Number(r.total),
+          gift_count: r.gift_count,
+          last_gift_date: dateStr(r.last_gift_date),
+        })),
+      },
+      {
+        kind: 'table',
+        title: 'Average gift',
+        columns: [
+          { key: 'bucket', label: 'Period', format: 'date' },
+          { key: 'avg_gift',   label: 'Avg gift',  align: 'right', format: 'money' },
+          { key: 'gift_count', label: 'Gifts',     align: 'right', format: 'number' },
+        ],
+        rows: d.avgGift.map((r: any) => ({ bucket: dateStr(r.bucket), avg_gift: Number(r.avg_gift), gift_count: r.gift_count })),
+      },
+      {
+        kind: 'table',
+        title: 'Pledges',
+        columns: [
+          { key: 'bucket', label: 'Period', format: 'date' },
+          { key: 'pledged',     label: 'Pledged',     align: 'right', format: 'money' },
+          { key: 'fulfilled',   label: 'Fulfilled',   align: 'right', format: 'money' },
+          { key: 'outstanding', label: 'Outstanding', align: 'right', format: 'money' },
+        ],
+        rows: d.pledges.map((r: any) => ({
+          bucket: dateStr(r.bucket),
+          pledged: Number(r.pledged),
+          fulfilled: Number(r.fulfilled),
+          outstanding: Number(r.outstanding),
+        })),
+      },
+      {
+        kind: 'table',
+        title: 'Shift fill rate',
+        columns: [
+          { key: 'bucket', label: 'Period', format: 'date' },
+          { key: 'capacity_needed', label: 'Needed', align: 'right', format: 'number' },
+          { key: 'filled',          label: 'Filled', align: 'right', format: 'number' },
+          { key: 'fill_rate_pct',   label: 'Fill %', align: 'right', format: 'number' },
+        ],
+        rows: d.shiftFillRate.map((r: any) => ({
+          bucket: dateStr(r.bucket),
+          capacity_needed: r.capacity_needed,
+          filled: r.filled,
+          fill_rate_pct: Number(r.fill_rate_pct),
+        })),
+      },
+      {
+        kind: 'table',
+        title: 'Inventory by category',
+        columns: [
+          { key: 'category', label: 'Category' },
+          { key: 'count', label: 'Items', align: 'right', format: 'number' },
+        ],
+        rows: d.inventoryByCategory.map((r: any) => ({ category: r.category, count: r.count })),
+      },
+      {
+        kind: 'table',
+        title: 'Acknowledgement turnaround',
+        subtitle: 'Average days from gift date to acknowledgement sent',
+        columns: [
+          { key: 'bucket', label: 'Period', format: 'date' },
+          { key: 'avg_days', label: 'Avg days', align: 'right', format: 'number' },
+        ],
+        rows: d.ackTurnaround.map((r: any) => ({ bucket: dateStr(r.bucket), avg_days: r.avg_days === null ? null : Number(r.avg_days) })),
+      },
+      {
+        kind: 'table',
+        title: 'Donation types',
+        columns: [
+          { key: 'type',  label: 'Type' },
+          { key: 'count', label: 'Gifts', align: 'right', format: 'number' },
+          { key: 'total', label: 'Total', align: 'right', format: 'money' },
+        ],
+        rows: d.donationTypes.map((r: any) => ({ type: r.type, count: r.count, total: Number(r.total) })),
+      },
+    ],
+  };
+}
