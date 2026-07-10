@@ -226,7 +226,10 @@ export async function toXlsx(bundle: ExportBundle): Promise<WrittenFile> {
 /* ================================================================= */
 
 export async function toDocx(bundle: ExportBundle): Promise<WrittenFile> {
-  const children: Paragraph[] | any[] = [];
+  // Section children accept both block-level Paragraphs and Tables.
+  // A plain `Paragraph[] | any[]` is a union that TS collapses to
+  // `Paragraph[]`, which rejected the Table push at compile time.
+  const children: Array<Paragraph | Table> = [];
 
   children.push(new Paragraph({
     heading: HeadingLevel.HEADING_1,
