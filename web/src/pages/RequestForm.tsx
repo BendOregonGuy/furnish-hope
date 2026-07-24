@@ -102,6 +102,9 @@ export function RequestForm() {
       client_request_creator_facility_staff_id: r.client_request_creator_facility_staff_id,
       request_at:                               datetimeLocal(r.request_at),
       client_request_note:                      r.client_request_note ?? '',
+      child_count:                              r.child_count ?? '',
+      adult_female_count:                       r.adult_female_count ?? '',
+      adult_male_count:                         r.adult_male_count ?? '',
     };
     const apiItems: RequestItem[] = existing.items.map((i: any) => ({
       client_request_items_id: i.client_request_items_id,
@@ -206,6 +209,9 @@ export function RequestForm() {
       client_request_creator_facility_staff_id: Number(values.client_request_creator_facility_staff_id),
       request_at:                               toDatetimeIso(values.request_at),
       client_request_note:                      values.client_request_note || null,
+      child_count:        values.child_count === '' || values.child_count == null ? null : Number(values.child_count),
+      adult_female_count: values.adult_female_count === '' || values.adult_female_count == null ? null : Number(values.adult_female_count),
+      adult_male_count:   values.adult_male_count === '' || values.adult_male_count == null ? null : Number(values.adult_male_count),
       items: items.map(it => ({
         client_request_items_id: it.client_request_items_id ?? null,
         item_category_id: Number(it.item_category_id),
@@ -291,6 +297,26 @@ export function RequestForm() {
               );
             })}
           </FieldGrid>
+        </Section>
+
+        <Section title="Household composition" hint="Optional — counts of children and adults served. Powers the Impact Data 'individuals served' report.">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="field-label">Children</label>
+              <input type="number" min={0} className="field-input" value={values.child_count ?? ''}
+                onChange={e => setField('child_count', e.target.value)} />
+            </div>
+            <div>
+              <label className="field-label">Female adults</label>
+              <input type="number" min={0} className="field-input" value={values.adult_female_count ?? ''}
+                onChange={e => setField('adult_female_count', e.target.value)} />
+            </div>
+            <div>
+              <label className="field-label">Male adults</label>
+              <input type="number" min={0} className="field-input" value={values.adult_male_count ?? ''}
+                onChange={e => setField('adult_male_count', e.target.value)} />
+            </div>
+          </div>
         </Section>
 
         <Section
@@ -392,6 +418,9 @@ function blankFormState(): Record<string, any> {
     client_request_creator_facility_staff_id: null,
     request_at: '',
     client_request_note: '',
+    child_count: '',
+    adult_female_count: '',
+    adult_male_count: '',
   };
 }
 

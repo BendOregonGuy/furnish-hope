@@ -3210,6 +3210,119 @@ const MIGRATIONS: Migration[] = [
       await query(`CREATE INDEX IF NOT EXISTS idx_message_undeliverable_open ON tbl_message_undeliverable (resolved_at, attempted_at DESC)`);
     },
   },
+  // ============================================================
+  // Impact reporting — Overview reports (2026-07-24)
+  // Adds the reference data the Landfill Diversion + Value of Goods
+  // reports need (per-category weight/volume + a per-year value rate
+  // card), recipient demographics on the provisioning request, and
+  // seeds volunteer "teams" as activity types. All idempotent; seeds
+  // never overwrite admin edits (guarded on IS NULL / ON CONFLICT).
+  // ============================================================
+  {
+    name: 'impact reporting reference data',
+    async run() {
+      // Landfill reference: avg weight (lbs) + volume (cu ft) per category.
+      await query(`
+        ALTER TABLE lkp_item_category
+          ADD COLUMN IF NOT EXISTS avg_weight_lbs  NUMERIC(8,2),
+          ADD COLUMN IF NOT EXISTS avg_volume_cuft NUMERIC(8,2)
+      `);
+      // Recipient demographics captured per provisioning request (household
+      // served). Nullable — historical rows stay "not entered".
+      await query(`
+        ALTER TABLE tbl_client_provisioning_request
+          ADD COLUMN IF NOT EXISTS child_count        INTEGER,
+          ADD COLUMN IF NOT EXISTS adult_female_count INTEGER,
+          ADD COLUMN IF NOT EXISTS adult_male_count   INTEGER
+      `);
+      // Standardized value rate card — unit value per category per year.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_item_category_value (
+          item_category_value_id SERIAL PRIMARY KEY,
+          item_category_id       INTEGER NOT NULL REFERENCES lkp_item_category(item_category_id) ON DELETE CASCADE,
+          year                   INTEGER NOT NULL,
+          unit_value             NUMERIC(12,2) NOT NULL,
+          UNIQUE (item_category_id, year)
+        )
+      `);
+
+      // Seed weight/volume defaults — only where not already set, so admin
+      // edits in the generic table editor are never clobbered on reboot.
+      await query(`
+        UPDATE lkp_item_category ic
+           SET avg_weight_lbs = v.w, avg_volume_cuft = v.vol
+          FROM (VALUES
+            ('Sofa',150,35),('Sectional',250,55),('Loveseat',120,28),('Armchair',60,15),
+            ('Coffee table',75,10),('End table',45,3),('Dining table',100,30),('Dining chairs',20,5),
+            ('Bed frame',40,12),('Mattress',65,32),('Box spring',65,30),('Crib',40,15),
+            ('Dresser',100,30),('Nightstand',45,3),('Wardrobe',130,40),
+            ('Lamp',5,2),('Floor lamp',12,4),('Lighting fixture',6,2),
+            ('Kitchen essentials kit',25,6),('Dishware',10,2),('Cookware',15,3),
+            ('Bath linens',6,2),('Bedding',12,4),('Curtains',5,2),
+            ('Storage / shelving',75,20),('Desk',100,12),('Bookcase',75,20),
+            ('Childrens items',15,5),('Toys',8,3),('Highchair',15,6),('Stroller',20,8)
+          ) AS v(cat, w, vol)
+         WHERE ic.item_category = v.cat AND ic.avg_weight_lbs IS NULL
+      `);
+
+      // Seed the value rate card (2022–2026), expanding a compact
+      // per-category array. ON CONFLICT keeps any existing/edited rows.
+      await query(`
+        INSERT INTO tbl_item_category_value (item_category_id, year, unit_value)
+        SELECT ic.item_category_id, y.yr, r.vals[y.idx]
+          FROM (VALUES
+            ('Sofa',                   ARRAY[150,150,150,200,200]::numeric[]),
+            ('Sectional',              ARRAY[200,200,250,300,300]::numeric[]),
+            ('Loveseat',               ARRAY[100,100,100,150,150]::numeric[]),
+            ('Armchair',               ARRAY[50,50,50,80,80]::numeric[]),
+            ('Coffee table',           ARRAY[50,50,50,60,60]::numeric[]),
+            ('End table',              ARRAY[40,40,40,50,50]::numeric[]),
+            ('Dining table',           ARRAY[60,60,60,80,80]::numeric[]),
+            ('Dining chairs',          ARRAY[20,20,20,40,40]::numeric[]),
+            ('Bed frame',              ARRAY[50,50,50,120,120]::numeric[]),
+            ('Mattress',               ARRAY[100,100,150,80,80]::numeric[]),
+            ('Box spring',             ARRAY[40,40,75,75,75]::numeric[]),
+            ('Crib',                   ARRAY[40,40,40,50,50]::numeric[]),
+            ('Dresser',                ARRAY[80,80,80,80,80]::numeric[]),
+            ('Nightstand',             ARRAY[30,30,30,40,40]::numeric[]),
+            ('Wardrobe',               ARRAY[80,80,80,100,100]::numeric[]),
+            ('Lamp',                   ARRAY[20,20,20,20,20]::numeric[]),
+            ('Floor lamp',             ARRAY[20,20,40,40,40]::numeric[]),
+            ('Lighting fixture',       ARRAY[20,20,20,20,20]::numeric[]),
+            ('Kitchen essentials kit', ARRAY[25,30,30,30,30]::numeric[]),
+            ('Dishware',               ARRAY[5,5,5,5,5]::numeric[]),
+            ('Cookware',               ARRAY[20,20,20,20,20]::numeric[]),
+            ('Bath linens',            ARRAY[10,10,10,10,10]::numeric[]),
+            ('Bedding',                ARRAY[60,60,60,110,110]::numeric[]),
+            ('Curtains',               ARRAY[10,10,10,10,10]::numeric[]),
+            ('Storage / shelving',     ARRAY[40,40,40,40,40]::numeric[]),
+            ('Desk',                   ARRAY[60,60,60,60,60]::numeric[]),
+            ('Bookcase',               ARRAY[40,40,40,40,40]::numeric[]),
+            ('Childrens items',        ARRAY[20,20,20,20,20]::numeric[]),
+            ('Toys',                   ARRAY[10,10,10,10,10]::numeric[]),
+            ('Highchair',              ARRAY[20,20,20,20,20]::numeric[]),
+            ('Stroller',               ARRAY[30,30,30,30,30]::numeric[])
+          ) AS r(cat, vals)
+          JOIN lkp_item_category ic ON ic.item_category = r.cat
+          CROSS JOIN (VALUES (2022,1),(2023,2),(2024,3),(2025,4),(2026,5)) AS y(yr, idx)
+        ON CONFLICT (item_category_id, year) DO NOTHING
+      `);
+
+      // Seed volunteer "teams" as activity types (no unique constraint on the
+      // label, so guard with NOT EXISTS). Admins can rename/remove these.
+      await query(`
+        INSERT INTO lkp_volunteer_activity_type (volunteer_activity_type)
+        SELECT t FROM (VALUES
+          ('Admin'),('Board of Directors'),('Events/Procurement'),
+          ('Marketing and Communications'),('New Property'),
+          ('Furnish Hope & Home'),('Donation Center')
+        ) AS x(t)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM lkp_volunteer_activity_type a WHERE a.volunteer_activity_type = x.t
+        )
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

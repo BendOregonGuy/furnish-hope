@@ -13,6 +13,8 @@ const sections: NavSection[] = [
       { to: '/',          name: 'Dashboard',           icon: 'home' },
       { to: '/reports',            name: 'Reports & Insights',  icon: 'chart' },
       { to: '/reports/impact',     name: 'Impact Data',         icon: 'chart' },
+      { to: '/reports/landfill',   name: 'Landfill Diversion',  icon: 'box' },
+      { to: '/reports/valuation',  name: 'Value of Goods',      icon: 'gift' },
     ],
   },
   {

@@ -10,6 +10,7 @@
  */
 
 import { query, queryOne } from '../db/pool.js';
+import { getVolunteerHours, getDemographics } from './communityImpact.js';
 
 export type Period = 'daily' | 'monthly' | 'yearly';
 
@@ -165,6 +166,8 @@ export async function buildImpactBundle(period: Period): Promise<ExportBundle> {
   `);
 
   const label = periodLabel(period);
+  const volunteerHours = await getVolunteerHours(period);
+  const demo = await getDemographics(period);
   const totalHouseholdsCity   = byCity.reduce((s, r) => s + r.households, 0);
   const totalHouseholdsSit    = situations.reduce((s, r) => s + r.households, 0);
   const totalHouseholdsAgency = byAgency.reduce((s, r) => s + r.households, 0);
@@ -188,6 +191,17 @@ export async function buildImpactBundle(period: Period): Promise<ExportBundle> {
           { label: 'Warehouse pickups',             value: kpis?.warehouse_pickups ?? 0 },
           { label: 'Guest selection appointments',  value: kpis?.guest_selection_appointments ?? 0 },
           { label: 'Partnering agency requests',    value: kpis?.partnering_agency_requests ?? 0 },
+        ],
+      },
+      {
+        kind: 'kpi',
+        title: 'Individuals served',
+        subtitle: demo.entered > 0 ? undefined : 'Not yet entered for this period',
+        items: [
+          { label: 'Children',          value: demo.entered > 0 ? demo.children : '—' },
+          { label: 'Female adults',     value: demo.entered > 0 ? demo.female_adults : '—' },
+          { label: 'Male adults',       value: demo.entered > 0 ? demo.male_adults : '—' },
+          { label: 'Total individuals', value: demo.entered > 0 ? demo.total_individuals : '—' },
         ],
       },
       {
@@ -221,6 +235,17 @@ export async function buildImpactBundle(period: Period): Promise<ExportBundle> {
         ],
         rows: byAgency.map(r => ({ agency: r.agency_name, households: r.households })),
         totalRow: { agency: 'Total', households: totalHouseholdsAgency },
+      },
+      {
+        kind: 'table',
+        title: 'Volunteer hours by team',
+        subtitle: 'Logged volunteer/staff hours by activity team',
+        columns: [
+          { key: 'team', label: 'Team' },
+          { key: 'hours', label: 'Hours', align: 'right', format: 'number' },
+        ],
+        rows: volunteerHours.byTeam.map(t => ({ team: t.team, hours: t.hours })),
+        totalRow: { team: 'Total', hours: volunteerHours.total },
       },
       {
         kind: 'table',

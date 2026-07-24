@@ -25,6 +25,11 @@ import {
   type ReportsPeriod,
 } from '../reports/bundle.js';
 import { toPdf, toXlsx, toDocx } from '../reports/exporters.js';
+import {
+  parseReportPeriod, isTrend, getImpactTrend, getVolunteerHours, getDemographics,
+  getLandfill, getValuation, type SinglePeriod,
+} from '../reports/communityImpact.js';
+import { buildLandfillBundle, buildValuationBundle, buildImpactTrendBundle } from '../reports/overviewBundles.js';
 
 export const reportsRouter = Router();
 
@@ -70,9 +75,13 @@ function impactWindowSql(period: ImpactPeriod): string {
 
 reportsRouter.get('/impact', async (req, res, next) => {
   try {
-    const raw = String(req.query.period ?? 'monthly').toLowerCase();
-    const period: ImpactPeriod = (['daily','monthly','yearly'] as const).includes(raw as ImpactPeriod)
-      ? (raw as ImpactPeriod) : 'monthly';
+    const periodParam = parseReportPeriod(req.query.period);
+    // Trend modes return a bucketed series (months of this year, or the last
+    // six years) instead of a single-window snapshot.
+    if (isTrend(periodParam)) {
+      return res.json(await getImpactTrend(periodParam));
+    }
+    const period: SinglePeriod = periodParam;
     // Start of the window (inclusive). End is always CURRENT_DATE (inclusive) so
     // "today" for daily means CURRENT_DATE = CURRENT_DATE, and "this month" for
     // monthly runs from the 1st through today.
@@ -205,7 +214,16 @@ reportsRouter.get('/impact', async (req, res, next) => {
         AND ds.delivery_status IN ('Delivered','Completed')
     `);
 
+    // Volunteer hours by team + recipient demographics — new sections that
+    // round out the "2026 Summary" tab. Demographics come from the new
+    // per-request columns; if none were entered for the window we send null
+    // so the UI keeps its "not tracked" hint instead of showing zeros.
+    const volunteerHours = await getVolunteerHours(period);
+    const demo = await getDemographics(period);
+    const tracked = demo.entered > 0;
+
     res.json({
+      mode: 'single',
       period,
       kpis: {
         households:                      kpis?.households ?? 0,
@@ -213,15 +231,13 @@ reportsRouter.get('/impact', async (req, res, next) => {
         warehouse_pickups:               kpis?.warehouse_pickups ?? 0,
         guest_selection_appointments:    kpis?.guest_selection_appointments ?? 0,
         partnering_agency_requests:      kpis?.partnering_agency_requests ?? 0,
-        // These four demographic KPIs mirror the ED's spreadsheet but the
-        // schema doesn't track head-of-household demographics yet. Surface
-        // them as null so the UI can render an inline "not tracked" hint
-        // rather than a misleading zero.
-        children:                        null,
-        female_adults:                   null,
-        male_adults:                     null,
-        total_individuals:               null,
+        children:            tracked ? demo.children : null,
+        female_adults:       tracked ? demo.female_adults : null,
+        male_adults:         tracked ? demo.male_adults : null,
+        total_individuals:   tracked ? demo.total_individuals : null,
       },
+      demographicsEntered: demo.entered,
+      volunteerHours,
       byCity,
       situations,
       byAgency,
@@ -234,6 +250,24 @@ reportsRouter.get('/impact', async (req, res, next) => {
       },
     });
   } catch (err) { next(err); }
+});
+
+/* ------------------------------------------------------------------ */
+/*  GET /api/reports/landfill — landfill-diversion report              */
+/*  ?period=daily|monthly|yearly|monthly_trend|annual_trend            */
+/* ------------------------------------------------------------------ */
+reportsRouter.get('/landfill', async (req, res, next) => {
+  try { res.json(await getLandfill(parseReportPeriod(req.query.period))); }
+  catch (err) { next(err); }
+});
+
+/* ------------------------------------------------------------------ */
+/*  GET /api/reports/valuation — value-of-goods report (rate card)     */
+/*  ?period=daily|monthly|yearly|monthly_trend|annual_trend            */
+/* ------------------------------------------------------------------ */
+reportsRouter.get('/valuation', async (req, res, next) => {
+  try { res.json(await getValuation(parseReportPeriod(req.query.period))); }
+  catch (err) { next(err); }
 });
 
 /* ------------------------------------------------------------------ */
@@ -291,10 +325,12 @@ reportsRouter.get('/export/:report.:format', async (req, res, next) => {
     // Build the bundle
     let bundle;
     if (report === 'impact') {
-      const period = (['daily','monthly','yearly'] as const).includes(String(req.query.period).toLowerCase() as any)
-        ? String(req.query.period).toLowerCase() as ExportPeriod
-        : 'monthly';
-      bundle = await buildImpactBundle(period);
+      const rp = parseReportPeriod(req.query.period);
+      bundle = isTrend(rp) ? await buildImpactTrendBundle(rp) : await buildImpactBundle(rp);
+    } else if (report === 'landfill') {
+      bundle = await buildLandfillBundle(parseReportPeriod(req.query.period));
+    } else if (report === 'valuation') {
+      bundle = await buildValuationBundle(parseReportPeriod(req.query.period));
     } else if (report === 'inventory') {
       bundle = await buildInventoryBundle(parseInventoryQuery(req.query));
     } else if (report === 'reports') {

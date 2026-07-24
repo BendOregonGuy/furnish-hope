@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 interface Props {
-  report: 'impact' | 'inventory' | 'reports';
+  report: 'impact' | 'inventory' | 'reports' | 'landfill' | 'valuation';
   /** Query params to pass through to the export endpoint (period, status, etc.). */
   params: Record<string, string>;
 }

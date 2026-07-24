@@ -23,6 +23,10 @@ interface RequestWritePayload {
   client_request_creator_facility_staff_id: number;
   client_request_note?: string | null;
   request_at: string; // ISO datetime
+  // Recipient demographics (optional) — power the Impact Data "individuals served" report.
+  child_count?: number | null;
+  adult_female_count?: number | null;
+  adult_male_count?: number | null;
   items: RequestItemPayload[];
 }
 
@@ -169,6 +173,9 @@ requestsRouter.get('/:id', async (req, res, next) => {
         r.fulfillment_corp_facility_id,
         r.request_receipt_origin_id,
         r.client_request_creator_facility_staff_id,
+        r.child_count,
+        r.adult_female_count,
+        r.adult_male_count,
         contact.first_name || ' ' || contact.last_name AS client_name,
         ct.client_type,
         addr.address,
@@ -279,12 +286,14 @@ requestsRouter.post('/', async (req, res, next) => {
       const r = await tx.queryOne<Record<string, any>>(`
         INSERT INTO tbl_client_provisioning_request
           (client_id, client_request_note, fulfillment_corp_facility_id,
-           request_receipt_origin_id, client_request_creator_facility_staff_id, request_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+           request_receipt_origin_id, client_request_creator_facility_staff_id, request_at,
+           child_count, adult_female_count, adult_male_count)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING *
       `, [
         body.client_id, body.client_request_note ?? null, body.fulfillment_corp_facility_id,
         body.request_receipt_origin_id, body.client_request_creator_facility_staff_id, body.request_at,
+        intOrNull(body.child_count), intOrNull(body.adult_female_count), intOrNull(body.adult_male_count),
       ]);
 
       for (const item of body.items ?? []) {
@@ -330,12 +339,13 @@ requestsRouter.put('/:id', async (req, res, next) => {
         UPDATE tbl_client_provisioning_request
            SET client_id = $1, client_request_note = $2, fulfillment_corp_facility_id = $3,
                request_receipt_origin_id = $4, client_request_creator_facility_staff_id = $5,
-               request_at = $6
-         WHERE client_provisioning_request_id = $7
+               request_at = $6, child_count = $7, adult_female_count = $8, adult_male_count = $9
+         WHERE client_provisioning_request_id = $10
          RETURNING *
       `, [
         body.client_id, body.client_request_note ?? null, body.fulfillment_corp_facility_id,
-        body.request_receipt_origin_id, body.client_request_creator_facility_staff_id, body.request_at, id,
+        body.request_receipt_origin_id, body.client_request_creator_facility_staff_id, body.request_at,
+        intOrNull(body.child_count), intOrNull(body.adult_female_count), intOrNull(body.adult_male_count), id,
       ]);
       if (after) await auditUpdate(req, 'tbl_client_provisioning_request', id, before, after, tx);
 
@@ -410,6 +420,13 @@ function withStatus(status: number, message: string): Error {
   const e: any = new Error(message);
   e.status = status;
   return e;
+}
+
+/** Coerce an optional numeric-ish demographic field to an integer or null. */
+function intOrNull(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
 function validateWritePayload(body: RequestWritePayload): string[] {

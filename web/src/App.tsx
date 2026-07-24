@@ -10,6 +10,8 @@ import { Settings } from './pages/Settings.tsx';
 import { Dashboard } from './pages/Dashboard.tsx';
 import { Reports } from './pages/Reports.tsx';
 import { ImpactData } from './pages/ImpactData.tsx';
+import { LandfillDiversion } from './pages/LandfillDiversion.tsx';
+import { ValueOfGoods } from './pages/ValueOfGoods.tsx';
 import { InventoryReport } from './pages/InventoryReport.tsx';
 import { Clients } from './pages/Clients.tsx';
 import { ClientDetail } from './pages/ClientDetail.tsx';
@@ -176,6 +178,8 @@ function AppShell() {
           <Route path="/reports" element={<Reports />} />
           <Route path="/reports/impact" element={<ImpactData />} />
           <Route path="/reports/inventory" element={<InventoryReport />} />
+          <Route path="/reports/landfill" element={<LandfillDiversion />} />
+          <Route path="/reports/valuation" element={<ValueOfGoods />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/calendar" element={<CalendarView />} />
 
