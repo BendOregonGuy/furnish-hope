@@ -74,6 +74,7 @@ const sections: NavSection[] = [
     items: [
       { to: '/help',             name: 'User Manual',    icon: 'book' },
       { to: '/admin/settings',   name: 'Settings',       icon: 'gear',     adminOnly: true },
+      { to: '/settings/communications', name: 'Communications', icon: 'mail', adminOnly: true },
       { to: '/admin/quickbooks', name: 'QuickBooks',     icon: 'sync',     adminOnly: true },
       { to: '/admin/shift-templates', name: 'Shift templates', icon: 'shift', adminOnly: true },
       { to: '/admin/holidays',   name: 'Holidays',       icon: 'calendar', adminOnly: true },

@@ -47,6 +47,9 @@ import { manualRouter } from './routes/manual.js';
 import { visitsRouter } from './routes/visits.js';
 import { issuesRouter } from './routes/issues.js';
 import { broadcastsRouter } from './routes/broadcasts.js';
+import { messagesRouter } from './routes/messages.js';
+import { twilioWebhooksRouter } from './routes/webhooks.js';
+import { communicationsSettingsRouter } from './routes/communicationsSettings.js';
 import {
   volunteerSignupPublicRouter,
   volunteerSignupsAdminRouter,
@@ -124,6 +127,12 @@ app.use('/api/volunteer-signup', volunteerSignupPublicRouter);
 // exposed here.
 app.use('/api/org-info',   orgInfoRouter);
 
+// Provider webhooks (Twilio SMS inbound + delivery status) — unauthenticated;
+// Twilio can't sign in. Mounted BEFORE requireUser. Twilio POSTs
+// application/x-www-form-urlencoded, so a scoped urlencoded parser runs here
+// (the global parser is JSON-only). The router verifies X-Twilio-Signature.
+app.use('/api/webhooks/twilio', express.urlencoded({ extended: false }), twilioWebhooksRouter);
+
 // Everything below requires a signed-in user.
 app.use('/api', requireUser);
 
@@ -135,6 +144,9 @@ app.use('/api/admin/settings', requireAdmin, settingsRouter);
 app.use('/api/admin/volunteer-signups', requireAdmin, volunteerSignupsAdminRouter);
 app.use('/api/admin/duplicates', requireAdmin, duplicatesRouter);
 app.use('/api/admin', requireAdmin, adminRouter);
+
+// Communications settings — SMS provider, org email, fallback inbox. Admin only.
+app.use('/api/settings/communications', requireAdmin, communicationsSettingsRouter);
 
 // Agency-application review queue — Program Manager (or Admin) only.
 app.use('/api/agencies/applications', requireProgramManager, agencyApplicationsReviewRouter);
@@ -181,6 +193,7 @@ app.use('/api/quick-create', requireStaff, quickCreateRouter);
 app.use('/api/shifts',     requireStaff, shiftsRouter);
 app.use('/api/receipts',   requireStaff, receiptsRouter);
 app.use('/api/mailbox',    requireStaff, mailboxRouter);
+app.use('/api/messages',   requireStaff, messagesRouter);
 app.use('/api/attachments', requireStaff, attachmentsRouter);
 app.use('/api/reports',    requireStaff, reportsRouter);
 app.use('/api/shift-templates', requireAdmin, shiftTemplatesRouter);

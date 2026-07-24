@@ -1,0 +1,185 @@
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Install the latest PowerShell for new features and improvements! https://aka.ms/PSWindows
+
+PS C:\Users\prest> cd furnish-hope
+PS C:\Users\prest\furnish-hope> cd api
+PS C:\Users\prest\furnish-hope\api> npm run dev
+
+> furnish-hope-api@0.8.0 dev
+> tsx watch src/index.ts
+
+[dedup-cron] scheduled nightly client-dedup scan at 02:00 server time
+Furnish Hope API listening on http://localhost:4000 (development)
+[shutdown] SIGINT received, draining...
+PS C:\Users\prest\furnish-hope\api> npm run dev
+
+> furnish-hope-api@0.8.0 dev
+> tsx watch src/index.ts
+
+Migration "tbl_user_account.is_admin" failed: SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string
+Auth migrations failed — aborting startup: Error: SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string
+    at C:\Users\prest\furnish-hope\api\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async query (C:\Users\prest\furnish-hope\api\src\db\pool.ts:41:18)
+    at async Object.run (C:\Users\prest\furnish-hope\api\src\auth\migrations.ts:20:7)
+    at async runAuthMigrations (C:\Users\prest\furnish-hope\api\src\auth\migrations.ts:3043:7)
+PS C:\Users\prest\furnish-hope\api> sudo -u postgres psql -c "ALTER USER getreality WITH PASSWORD 'furnishhope';"
+sudo : The term 'sudo' is not recognized as the name of a cmdlet, function, script file, or operable program. Check
+the spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ sudo -u postgres psql -c "ALTER USER getreality WITH PASSWORD 'furnis ...
++ ~~~~
+    + CategoryInfo          : ObjectNotFound: (sudo:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\prest\furnish-hope\api> wsl
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ sudo -u postgres psql -c "ALTER USER getreality WITH PASSWORD 'furnishhope';"
+[sudo] password for getreality:
+Sorry, try again.
+[sudo] password for getreality:
+Sorry, try again.
+[sudo] password for getreality:
+ALTER ROLE
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ cd /mnt/c/Users/prest/furnish-hope/api
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ sudo -u postgres psql -c "ALTER USER getreality WITH PASSWORD 'furnishhope';"
+ALTER ROLE
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ sed -i 's/^PGPASSWORD=.*/PGPASSWORD=furnishhope/' .env
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ npm run dev
+
+> furnish-hope-api@0.8.0 dev
+> tsx watch src/index.ts
+
+
+node:internal/process/esm_loader:40
+      internalBinding('errors').triggerUncaughtException(
+                                ^
+Error [TransformError]:
+You installed esbuild for another platform than the one you're currently using.
+This won't work because esbuild is written with native code and needs to
+install a platform-specific binary executable.
+
+Specifically the "@esbuild/win32-x64" package is present but this platform
+needs the "@esbuild/linux-x64" package instead. People often get into this
+situation by installing esbuild on Windows or macOS and copying "node_modules"
+into a Docker image that runs Linux, or by copying "node_modules" between
+Windows and WSL environments.
+
+If you are installing with npm, you can try not copying the "node_modules"
+directory when you copy the files over, and running "npm ci" or "npm install"
+on the destination platform after the copy. Or you could consider using yarn
+instead of npm which has built-in support for installing a package on multiple
+platforms simultaneously.
+
+If you are installing with yarn, you can try listing both this platform and the
+other platform in your ".yarnrc.yml" file using the "supportedArchitectures"
+feature: https://yarnpkg.com/configuration/yarnrc/#supportedArchitectures
+Keep in mind that this means multiple copies of esbuild will be present.
+
+Another alternative is to use the "esbuild-wasm" package instead, which works
+the same way on all platforms. But it comes with a heavy performance cost and
+can sometimes be 10x slower than the "esbuild" package, so you may also not
+want to do that.
+
+    at generateBinPath (/mnt/c/Users/prest/furnish-hope/api/node_modules/esbuild/lib/main.js:2029:17)
+    at esbuildCommandAndArgs (/mnt/c/Users/prest/furnish-hope/api/node_modules/esbuild/lib/main.js:2110:33)
+    at ensureServiceIsRunning (/mnt/c/Users/prest/furnish-hope/api/node_modules/esbuild/lib/main.js:2267:25)
+    at transform (/mnt/c/Users/prest/furnish-hope/api/node_modules/esbuild/lib/main.js:2168:37)
+    at file:///mnt/c/Users/prest/furnish-hope/api/node_modules/tsx/dist/index-XurvG3JN.mjs:14:3037
+    at applyTransformers (file:///mnt/c/Users/prest/furnish-hope/api/node_modules/tsx/dist/index-XurvG3JN.mjs:14:1266)
+    at transform (file:///mnt/c/Users/prest/furnish-hope/api/node_modules/tsx/dist/index-XurvG3JN.mjs:14:2984)
+    at load2 (file:///mnt/c/Users/prest/furnish-hope/api/node_modules/tsx/dist/register-D_B8UL5H.mjs:2:4934)
+    at async nextLoad (node:internal/modules/esm/hooks:864:22)
+    at async Hooks.load (node:internal/modules/esm/hooks:447:20)
+
+Node.js v18.19.1
+^C
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 16555  100 16555    0     0  74933      0 --:--:-- --:--:-- --:--:-- 74909
+=> Downloading nvm from git to '/home/getreality/.nvm'
+=> Cloning into '/home/getreality/.nvm'...
+remote: Enumerating objects: 461, done.
+remote: Counting objects: 100% (461/461), done.
+remote: Compressing objects: 100% (383/383), done.
+remote: Total 461 (delta 68), reused 222 (delta 51), pack-reused 0 (from 0)
+Receiving objects: 100% (461/461), 458.03 KiB | 4.09 MiB/s, done.
+Resolving deltas: 100% (68/68), done.
+* (HEAD detached at FETCH_HEAD)
+  master
+=> Compressing and cleaning up git repository
+
+=> Appending nvm source string to /home/getreality/.bashrc
+=> Appending bash_completion source string to /home/getreality/.bashrc
+=> You currently have modules installed globally with `npm`. These will no
+=> longer be linked to the active version of Node when you install a new node
+=> with `nvm`; and they may (depending on how you construct your `$PATH`)
+=> override the binaries of modules installed with `nvm`:
+
+/home/getreality/.npm-global/lib
+├── @anthropic-ai/claude-code@1.0.88
+├── eas-cli@16.28.0
+└── expo-cli@6.3.10
+=> If you wish to uninstall them at a later point (or re-install them under your
+=> `nvm` Nodes), you can remove them from the system Node as follows:
+
+     $ nvm use system
+     $ npm uninstall -g a_module
+
+=> Close and reopen your terminal to start using nvm or run the following to use it now:
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ ^C
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ source ~/.bashrc
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ nvm install 22
+Downloading and installing node v22.23.1...
+Downloading https://nodejs.org/dist/v22.23.1/node-v22.23.1-linux-x64.tar.xz...
+################################################################################################################# 100.0%
+Computing checksum with sha256sum
+Checksums matched!
+Your user’s .npmrc file (${HOME}/.npmrc)
+has a `globalconfig` and/or a `prefix` setting, which are incompatible with nvm.
+Run `nvm use --delete-prefix v22.23.1` to unset it.
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ nvm use --delete-prefix v22.23.1
+Now using node v22.23.1 (npm v10.9.8)
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ node --version
+v22.23.1
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ rm -rf node_modules package-lock.json
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ npm install
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm warn deprecated rimraf@2.7.1: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated lodash.isequal@4.5.0: This package is deprecated. Use require('node:util').isDeepStrictEqual instead.
+npm warn deprecated fstream@1.0.12: This package is no longer supported.
+npm warn deprecated uuid@8.3.2: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+
+added 358 packages, and audited 359 packages in 56s
+
+48 packages are looking for funding
+  run `npm fund` for details
+
+4 vulnerabilities (3 moderate, 1 high)
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+getreality@Enki:/mnt/c/Users/prest/furnish-hope/api$ npm run dev
+
+> furnish-hope-api@0.8.0 dev
+> tsx watch src/index.ts
+
+
+************************************************************************
+INITIAL ADMIN ACCOUNT CREATED
+  Username: admin
+  Temporary password: oak-pin-tan-214
+  CHANGE THIS PASSWORD on first login.
+************************************************************************
+
+[dedup-cron] scheduled nightly client-dedup scan at 02:00 server time
+Furnish Hope API listening on http://localhost:4000 (development)

@@ -3034,6 +3034,182 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  // ============================================================
+  // Communications system — Phase 1 (2026-07-23)
+  // Organizational messaging layer: SMS (Twilio) + org email, with a
+  // message log, org-wide templates, triggers, in-app notifications,
+  // an undeliverable queue, and TCPA/CAN-SPAM consent tracking.
+  // See docs/COMMUNICATIONS_DESIGN.md §3, §16. All idempotent.
+  // ============================================================
+  {
+    name: 'tbl_contact consent columns',
+    async run() {
+      await query(`
+        ALTER TABLE tbl_contact
+          ADD COLUMN IF NOT EXISTS sms_consent_at                  TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS sms_consent_source              VARCHAR(64),
+          ADD COLUMN IF NOT EXISTS sms_consent_facility_staff_id   INTEGER REFERENCES tbl_facility_staff(facility_staff_id),
+          ADD COLUMN IF NOT EXISTS sms_opted_out_at                TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS email_consent_at                TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS email_consent_source            VARCHAR(64),
+          ADD COLUMN IF NOT EXISTS email_consent_facility_staff_id INTEGER REFERENCES tbl_facility_staff(facility_staff_id),
+          ADD COLUMN IF NOT EXISTS email_opted_out_at              TIMESTAMPTZ
+      `);
+    },
+  },
+  {
+    name: 'communications messaging tables',
+    async run() {
+      // Templates first — tbl_message_trigger and tbl_message FK to them.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_message_template (
+          message_template_id          SERIAL PRIMARY KEY,
+          channel                      VARCHAR(8)  NOT NULL CHECK (channel IN ('sms','email')),
+          name                         VARCHAR(120) NOT NULL,
+          description                  VARCHAR(300),
+          subject                      TEXT,
+          body                         TEXT NOT NULL,
+          body_html                    TEXT,
+          append_reference_code        BOOLEAN NOT NULL DEFAULT true,
+          is_active                    BOOLEAN NOT NULL DEFAULT true,
+          created_by_facility_staff_id INTEGER NOT NULL REFERENCES tbl_facility_staff(facility_staff_id),
+          created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      // Trigger automation rules — FK to templates + lkp_staff_role.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_message_trigger (
+          message_trigger_id           SERIAL PRIMARY KEY,
+          name                         VARCHAR(120) NOT NULL,
+          description                  VARCHAR(300),
+          event_key                    VARCHAR(64) NOT NULL,
+          sms_template_id              INTEGER REFERENCES tbl_message_template(message_template_id),
+          email_template_id            INTEGER REFERENCES tbl_message_template(message_template_id),
+          on_reply_notify_source       VARCHAR(32),
+          on_reply_notify_role_id      INTEGER REFERENCES lkp_staff_role(staff_role_id),
+          on_reply_notify_staff_id     INTEGER REFERENCES tbl_facility_staff(facility_staff_id),
+          is_active                    BOOLEAN NOT NULL DEFAULT true,
+          created_by_facility_staff_id INTEGER NOT NULL REFERENCES tbl_facility_staff(facility_staff_id),
+          created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          CHECK (sms_template_id IS NOT NULL OR email_template_id IS NOT NULL)
+        )
+      `);
+
+      // The message log itself.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_message (
+          message_id                    SERIAL PRIMARY KEY,
+          direction                     VARCHAR(8)  NOT NULL CHECK (direction IN ('outbound','inbound')),
+          channel                       VARCHAR(16) NOT NULL CHECK (channel IN ('sms','email','fallback_email')),
+          contact_id                    INTEGER REFERENCES tbl_contact(contact_id),
+          to_address                    VARCHAR(255) NOT NULL,
+          from_address                  VARCHAR(255) NOT NULL,
+          subject                       TEXT,
+          body_rendered                 TEXT NOT NULL,
+          sent_at                       TIMESTAMPTZ NOT NULL,
+          sent_by_facility_staff_id     INTEGER REFERENCES tbl_facility_staff(facility_staff_id),
+          sent_by_trigger_id            INTEGER REFERENCES tbl_message_trigger(message_trigger_id),
+          message_template_id           INTEGER REFERENCES tbl_message_template(message_template_id),
+          provider_message_id           VARCHAR(255),
+          delivery_status               VARCHAR(32) NOT NULL DEFAULT 'queued'
+                                          CHECK (delivery_status IN ('queued','sent','delivered','failed','undelivered')),
+          delivery_status_updated_at    TIMESTAMPTZ,
+          delivery_error_code           VARCHAR(32),
+          delivery_error_message        TEXT,
+          context_type                  VARCHAR(32),
+          context_id                    INTEGER,
+          context_confidence            VARCHAR(16) NOT NULL DEFAULT 'unlinked'
+                                          CHECK (context_confidence IN ('confirmed','inferred','unlinked')),
+          context_reference_code        VARCHAR(16),
+          thread_id                     INTEGER REFERENCES tbl_message(message_id),
+          reply_to_message_id           INTEGER REFERENCES tbl_message(message_id),
+          reviewed_at                   TIMESTAMPTZ,
+          reviewed_by_facility_staff_id INTEGER REFERENCES tbl_facility_staff(facility_staff_id),
+          created_at                    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_message_contact ON tbl_message (contact_id, sent_at DESC)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_message_context ON tbl_message (context_type, context_id, sent_at DESC)`);
+      await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_message_reference_code ON tbl_message (context_reference_code) WHERE context_reference_code IS NOT NULL`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_message_provider_id ON tbl_message (provider_message_id)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_message_thread ON tbl_message (thread_id, sent_at)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_message_unread ON tbl_message (reviewed_at, sent_by_facility_staff_id)`);
+
+      // Template scoping joins.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_message_template_form (
+          message_template_form_id  SERIAL PRIMARY KEY,
+          message_template_id       INTEGER NOT NULL REFERENCES tbl_message_template(message_template_id) ON DELETE CASCADE,
+          form_key                  VARCHAR(64) NOT NULL,
+          UNIQUE (message_template_id, form_key)
+        )
+      `);
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_message_template_recipient_type (
+          message_template_recipient_type_id SERIAL PRIMARY KEY,
+          message_template_id                INTEGER NOT NULL REFERENCES tbl_message_template(message_template_id) ON DELETE CASCADE,
+          recipient_type                     VARCHAR(32) NOT NULL,
+          UNIQUE (message_template_id, recipient_type)
+        )
+      `);
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_message_template_sender_role (
+          message_template_sender_role_id SERIAL PRIMARY KEY,
+          message_template_id             INTEGER NOT NULL REFERENCES tbl_message_template(message_template_id) ON DELETE CASCADE,
+          staff_role_id                   INTEGER NOT NULL REFERENCES lkp_staff_role(staff_role_id),
+          UNIQUE (message_template_id, staff_role_id)
+        )
+      `);
+
+      // Trigger recipients (fan-out).
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_message_trigger_recipient (
+          message_trigger_recipient_id SERIAL PRIMARY KEY,
+          message_trigger_id           INTEGER NOT NULL REFERENCES tbl_message_trigger(message_trigger_id) ON DELETE CASCADE,
+          recipient_source             VARCHAR(64) NOT NULL,
+          custom_phone                 VARCHAR(20),
+          custom_email                 VARCHAR(255),
+          staff_role_id                INTEGER REFERENCES lkp_staff_role(staff_role_id),
+          specific_staff_id            INTEGER REFERENCES tbl_facility_staff(facility_staff_id)
+        )
+      `);
+
+      // In-app "you got a reply" notifications.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_message_notification (
+          message_notification_id SERIAL PRIMARY KEY,
+          facility_staff_id       INTEGER NOT NULL REFERENCES tbl_facility_staff(facility_staff_id),
+          message_id              INTEGER NOT NULL REFERENCES tbl_message(message_id) ON DELETE CASCADE,
+          notified_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          dismissed_at            TIMESTAMPTZ
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_message_notification_badge ON tbl_message_notification (facility_staff_id, dismissed_at, notified_at DESC)`);
+
+      // Undeliverable admin queue.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_message_undeliverable (
+          message_undeliverable_id      SERIAL PRIMARY KEY,
+          contact_id                    INTEGER NOT NULL REFERENCES tbl_contact(contact_id),
+          attempted_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          trigger_id                    INTEGER REFERENCES tbl_message_trigger(message_trigger_id),
+          sent_by_facility_staff_id     INTEGER REFERENCES tbl_facility_staff(facility_staff_id),
+          intended_body                 TEXT NOT NULL,
+          intended_subject              TEXT,
+          reason                        VARCHAR(64) NOT NULL,
+          context_type                  VARCHAR(32),
+          context_id                    INTEGER,
+          resolved_at                   TIMESTAMPTZ,
+          resolved_by_facility_staff_id INTEGER REFERENCES tbl_facility_staff(facility_staff_id),
+          resolution_note               TEXT
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_message_undeliverable_open ON tbl_message_undeliverable (resolved_at, attempted_at DESC)`);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

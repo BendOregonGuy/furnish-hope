@@ -91,6 +91,10 @@ import { AdminAttachmentStorage } from './pages/admin/AdminAttachmentStorage.tsx
 import { AdminShiftTemplates } from './pages/admin/AdminShiftTemplates.tsx';
 import { AdminHolidays } from './pages/admin/AdminHolidays.tsx';
 import { DuplicateClients } from './pages/admin/DuplicateClients.tsx';
+import { CommunicationsIndex } from './pages/settings/CommunicationsIndex.tsx';
+import { CommunicationsSmsProvider } from './pages/settings/CommunicationsSmsProvider.tsx';
+import { CommunicationsOrgEmail } from './pages/settings/CommunicationsOrgEmail.tsx';
+import { CommunicationsFallbackInbox } from './pages/settings/CommunicationsFallbackInbox.tsx';
 import { AgencyShell } from './pages/agency/AgencyShell.tsx';
 import { AgencyDashboard } from './pages/agency/AgencyDashboard.tsx';
 import { AgencyReferrals } from './pages/agency/AgencyReferrals.tsx';
@@ -284,6 +288,10 @@ function AppShell() {
           <Route path="/admin" element={<RequireAdmin><AdminIndex /></RequireAdmin>} />
           <Route path="/admin/activity" element={<RequireAdmin><AdminActivity /></RequireAdmin>} />
           <Route path="/admin/settings" element={<RequireAdmin><AdminSettings /></RequireAdmin>} />
+          <Route path="/settings/communications" element={<RequireAdmin><CommunicationsIndex /></RequireAdmin>} />
+          <Route path="/settings/communications/sms-provider" element={<RequireAdmin><CommunicationsSmsProvider /></RequireAdmin>} />
+          <Route path="/settings/communications/org-email" element={<RequireAdmin><CommunicationsOrgEmail /></RequireAdmin>} />
+          <Route path="/settings/communications/fallback-inbox" element={<RequireAdmin><CommunicationsFallbackInbox /></RequireAdmin>} />
           <Route path="/admin/quickbooks" element={<RequireAdmin><AdminQuickBooks /></RequireAdmin>} />
           <Route path="/admin/attachment-storage" element={<RequireAdmin><AdminAttachmentStorage /></RequireAdmin>} />
           <Route path="/admin/shift-templates" element={<RequireAdmin><AdminShiftTemplates /></RequireAdmin>} />
