@@ -61,8 +61,13 @@ communicationsSettingsRouter.put('/sms-provider', async (req, res, next) => {
 
 communicationsSettingsRouter.post('/sms-provider/test', async (req, res, next) => {
   try {
-    const to = String(req.body?.to ?? '').trim();
+    // Normalize toward E.164: keep a leading '+' and digits only, dropping
+    // spaces/dots/dashes/parens that Twilio rejects (e.g. "+1 541.610.7183").
+    const to = String(req.body?.to ?? '').replace(/[^\d+]/g, '');
     if (!to) return res.status(400).json({ error: 'A destination phone number is required.' });
+    if (!/^\+\d{8,15}$/.test(to)) {
+      return res.status(400).json({ error: 'Enter the number in E.164 format, e.g. +15416107183 (include +country code, digits only).' });
+    }
     const provider = await getSmsProvider();
     if (!provider) return res.status(400).json({ error: 'Save valid Twilio credentials before testing.' });
     const result = await provider.send(to, 'Furnish Hope — test message. Your SMS integration is working.');

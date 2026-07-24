@@ -53,6 +53,9 @@ export class TwilioProvider implements SmsProvider {
     const authHeader = 'Basic ' + Buffer.from(`${this.cfg.accountSid}:${this.cfg.authToken}`).toString('base64');
 
     try {
+      // Hard timeout so a slow/blocked network never hangs the request past
+      // the platform gateway (which would surface as a 504). Fail fast with a
+      // real error instead.
       const res = await fetch(url, {
         method: 'POST',
         headers: {
@@ -60,6 +63,7 @@ export class TwilioProvider implements SmsProvider {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: form.toString(),
+        signal: AbortSignal.timeout(15000),
       });
       const data = (await res.json().catch(() => ({}))) as {
         sid?: string; status?: string; error_code?: number | string | null; message?: string;
@@ -81,12 +85,15 @@ export class TwilioProvider implements SmsProvider {
         errorMessage: null,
       };
     } catch (err: any) {
+      const timedOut = err?.name === 'TimeoutError' || err?.name === 'AbortError';
       return {
         ok: false,
         providerMessageId: null,
         status: 'failed',
-        errorCode: 'network_error',
-        errorMessage: err?.message ?? 'Network error contacting Twilio',
+        errorCode: timedOut ? 'timeout' : 'network_error',
+        errorMessage: timedOut
+          ? 'Timed out contacting Twilio after 15s — check network egress and that the credentials/From number are valid.'
+          : (err?.message ?? 'Network error contacting Twilio'),
       };
     }
   }
