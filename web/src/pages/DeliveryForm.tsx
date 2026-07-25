@@ -21,7 +21,7 @@ import { SubformList, type SubformRow } from '../components/forms/SubformList.ts
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges.ts';
 
 const CORE_FIELDS: ColumnMeta[] = [
-  { name: 'client_provisioning_request_id', label: 'Provisioning request', type: 'fk',   required: true, isPk: false, isFk: true, fkTable: 'tbl_client_provisioning_request' },
+  { name: 'client_provisioning_request_id', label: 'Packing list', type: 'fk',   required: true, isPk: false, isFk: true, fkTable: 'tbl_client_provisioning_request' },
   { name: 'facility_staff_id',              label: 'Scheduled by',         type: 'fk',   required: true, isPk: false, isFk: true, fkTable: 'tbl_facility_staff' },
   { name: 'delivery_status_id',             label: 'Status',               type: 'fk',   required: true, isPk: false, isFk: true, fkTable: 'lkp_delivery_status' },
   { name: 'delivery_date',                  label: 'Date',                 type: 'date', required: true, isPk: false, isFk: false },
@@ -732,7 +732,7 @@ function initialVehicleFkLabel(d: any, columnName: string): string | undefined {
 
 /* ----------------------------------------------------------------- */
 /*  Copy-items-from-request button                                    */
-/*  Pulls the reserved inventory items off the selected provisioning  */
+/*  Pulls the reserved inventory items off the selected packing list  */
 /*  request and adds them to the delivery's "Items loaded" list. Lets */
 /*  staff skip the tedious re-entry that "we already matched these to */
 /*  the request, why am I picking them again?" implies.               */

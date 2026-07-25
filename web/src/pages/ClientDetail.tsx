@@ -253,7 +253,7 @@ export function ClientDetail() {
 
           <div className="card">
           <div className="card-head">
-            <h3 className="font-display font-medium text-[17px] m-0">Provisioning requests</h3>
+            <h3 className="font-display font-medium text-[17px] m-0">Packing lists</h3>
             <span className="text-xs text-ink-faint">{data.requests.length} total</span>
           </div>
 

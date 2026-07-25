@@ -129,8 +129,8 @@ export function ImpactData() {
                 <div>
                   <div className="font-medium text-sm">Individuals served — enter to populate</div>
                   <div className="text-xs text-ink-soft mt-1">
-                    Children, female adults, and male adults are now tracked per provisioning request. Enter the
-                    counts on a request under Database Admin → Provisioning requests and this section fills in
+                    Children, female adults, and male adults are now tracked per packing list. Enter the
+                    counts on a request under Database Admin → Packing lists and this section fills in
                     automatically for the selected period.
                   </div>
                 </div>

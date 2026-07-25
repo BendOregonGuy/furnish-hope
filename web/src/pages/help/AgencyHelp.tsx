@@ -47,7 +47,7 @@ export function AgencyHelp() {
         <ul>
           <li>The number of referrals your agency has submitted.</li>
           <li>Recent referral activity — newest first.</li>
-          <li>A summary of provisioning request status across all your referrals.</li>
+          <li>A summary of packing list status across all your referrals.</li>
         </ul>
         <ScreenshotSlot slug="agency-dashboard" description="The caseworker portal dashboard." url="/agency" audience="agency" />
       </section>
@@ -78,7 +78,7 @@ export function AgencyHelp() {
         <p>Click any referral from your list to see its status:</p>
         <ul>
           <li>Household info you submitted.</li>
-          <li>Furniture provisioning requests Furnish Hope has opened for this household.</li>
+          <li>Furniture packing lists Furnish Hope has opened for this household.</li>
           <li>Each request shows: items requested, items reserved from inventory, scheduled delivery date (if scheduled).</li>
           <li>Your original notes about the household.</li>
         </ul>

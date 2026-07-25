@@ -3323,6 +3323,165 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  // ============================================================
+  // Packing List — redesign of the provisioning request (2026-07-25)
+  // Adds reference codes, delivery/pickup logistics, household type +
+  // per-child rows, situation + internal notes, per-line pull/pack
+  // tracking, and an editable checklist template (3BR/3BA + garage seed).
+  // "Provisioning Request" is renamed to "Packing List" in the UI only;
+  // the physical table name is unchanged. All idempotent.
+  // ============================================================
+  {
+    name: 'packing list fields, children, template',
+    async run() {
+      // Human-friendly reference code (FH-######), generated from a sequence.
+      await query(`CREATE SEQUENCE IF NOT EXISTS seq_packing_list_ref START 100000`);
+
+      await query(`
+        ALTER TABLE tbl_client_provisioning_request
+          ADD COLUMN IF NOT EXISTS reference_code            VARCHAR(20),
+          ADD COLUMN IF NOT EXISTS fulfillment_type          VARCHAR(16),
+          ADD COLUMN IF NOT EXISTS appointment_at            TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS trailer_size              VARCHAR(40),
+          ADD COLUMN IF NOT EXISTS crew_size                 INTEGER,
+          ADD COLUMN IF NOT EXISTS loading_notes             TEXT,
+          ADD COLUMN IF NOT EXISTS residence_type            VARCHAR(60),
+          ADD COLUMN IF NOT EXISTS delivery_logistics_notes  TEXT,
+          ADD COLUMN IF NOT EXISTS situation_notes           TEXT,
+          ADD COLUMN IF NOT EXISTS situation_tags            VARCHAR(300),
+          ADD COLUMN IF NOT EXISTS internal_notes            TEXT,
+          ADD COLUMN IF NOT EXISTS household_type            VARCHAR(16)
+      `);
+      await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_pl_reference_code
+        ON tbl_client_provisioning_request (reference_code) WHERE reference_code IS NOT NULL`);
+      // Backfill a reference code for any existing rows that don't have one.
+      await query(`
+        UPDATE tbl_client_provisioning_request
+           SET reference_code = 'FH-' || LPAD(nextval('seq_packing_list_ref')::text, 6, '0')
+         WHERE reference_code IS NULL
+      `);
+
+      // Per-line pull/pack tracking + typed room grouping + freeform item name.
+      // Packing-list rows are keyed by a typed item_name (from the template);
+      // item_category_id becomes optional (kept for inventory/valuation links).
+      await query(`
+        ALTER TABLE tbl_client_request_items
+          ADD COLUMN IF NOT EXISTS item_name   VARCHAR(120),
+          ADD COLUMN IF NOT EXISTS room        VARCHAR(60),
+          ADD COLUMN IF NOT EXISTS pulled      BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS qty_given   INTEGER,
+          ADD COLUMN IF NOT EXISTS is_na       BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS is_declined BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS sort_order  INTEGER
+      `);
+      await query(`ALTER TABLE tbl_client_request_items ALTER COLUMN item_category_id DROP NOT NULL`);
+      // Backfill item_name from the linked category for existing rows.
+      await query(`
+        UPDATE tbl_client_request_items i
+           SET item_name = c.item_category
+          FROM lkp_item_category c
+         WHERE i.item_category_id = c.item_category_id AND i.item_name IS NULL
+      `);
+
+      // Per-child household detail.
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_request_child (
+          request_child_id SERIAL PRIMARY KEY,
+          client_provisioning_request_id INTEGER NOT NULL
+            REFERENCES tbl_client_provisioning_request(client_provisioning_request_id) ON DELETE CASCADE,
+          gender VARCHAR(20),
+          age    INTEGER,
+          notes  VARCHAR(200)
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_request_child_request
+        ON tbl_request_child (client_provisioning_request_id)`);
+
+      // Editable checklist template (standard items by room).
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_packing_template_room (
+          packing_template_room_id SERIAL PRIMARY KEY,
+          room_name  VARCHAR(60) NOT NULL,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          is_active  BOOLEAN NOT NULL DEFAULT true
+        )
+      `);
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_packing_template_item (
+          packing_template_item_id SERIAL PRIMARY KEY,
+          packing_template_room_id INTEGER NOT NULL
+            REFERENCES tbl_packing_template_room(packing_template_room_id) ON DELETE CASCADE,
+          item_name        VARCHAR(120) NOT NULL,
+          default_qty      INTEGER NOT NULL DEFAULT 1,
+          item_category_id INTEGER REFERENCES lkp_item_category(item_category_id),
+          sort_order       INTEGER NOT NULL DEFAULT 0,
+          is_active        BOOLEAN NOT NULL DEFAULT true
+        )
+      `);
+
+      // Seed the 3-bed / 3-bath + attached-garage template — once, only if empty.
+      await query(`
+        INSERT INTO tbl_packing_template_room (room_name, sort_order)
+        SELECT room, ord FROM (VALUES
+          ('Primary Bedroom',1),('Bedroom 2',2),('Bedroom 3',3),('Living Room',4),
+          ('Dining Room',5),('Kitchen',6),('Bathroom 1',7),('Bathroom 2',8),('Bathroom 3',9),
+          ('Laundry & Cleaning',10),('Garage (attached)',11),('Baby / Children (if applicable)',12),
+          ('Whole-home essentials',13)
+        ) AS v(room, ord)
+        WHERE NOT EXISTS (SELECT 1 FROM tbl_packing_template_room)
+      `);
+      await query(`
+        INSERT INTO tbl_packing_template_item (packing_template_room_id, item_name, default_qty, sort_order)
+        SELECT r.packing_template_room_id, v.item, v.qty, v.ord
+        FROM (VALUES
+          ('Primary Bedroom','Queen bed frame',1,1),('Primary Bedroom','Queen mattress',1,2),
+          ('Primary Bedroom','Queen box spring',1,3),('Primary Bedroom','Queen bedding set',1,4),
+          ('Primary Bedroom','Pillows',2,5),('Primary Bedroom','Dresser',1,6),
+          ('Primary Bedroom','Nightstand',2,7),('Primary Bedroom','Bedside lamp',2,8),
+          ('Primary Bedroom','Mirror',1,9),('Primary Bedroom','Curtains',1,10),('Primary Bedroom','Clothes hangers (set)',1,11),
+          ('Bedroom 2','Full bed frame',1,1),('Bedroom 2','Full mattress',1,2),('Bedroom 2','Full box spring',1,3),
+          ('Bedroom 2','Full bedding set',1,4),('Bedroom 2','Pillows',2,5),('Bedroom 2','Dresser',1,6),
+          ('Bedroom 2','Nightstand',1,7),('Bedroom 2','Lamp',1,8),('Bedroom 2','Curtains',1,9),('Bedroom 2','Clothes hangers (set)',1,10),
+          ('Bedroom 3','Twin bed frame',1,1),('Bedroom 3','Twin mattress',1,2),('Bedroom 3','Twin box spring',1,3),
+          ('Bedroom 3','Twin bedding set',1,4),('Bedroom 3','Pillow',1,5),('Bedroom 3','Dresser',1,6),
+          ('Bedroom 3','Nightstand',1,7),('Bedroom 3','Lamp',1,8),('Bedroom 3','Curtains',1,9),('Bedroom 3','Clothes hangers (set)',1,10),
+          ('Living Room','Sofa / couch',1,1),('Living Room','Loveseat or armchair',1,2),('Living Room','Coffee table',1,3),
+          ('Living Room','End table',2,4),('Living Room','TV stand',1,5),('Living Room','Floor lamp',1,6),
+          ('Living Room','Table lamp',1,7),('Living Room','Area rug',1,8),('Living Room','Curtains',2,9),('Living Room','Wall clock',1,10),
+          ('Dining Room','Dining table',1,1),('Dining Room','Dining chairs',6,2),
+          ('Kitchen','Pots & pans set',1,1),('Kitchen','Cooking utensils set',1,2),('Kitchen','Dishware (service for 6)',1,3),
+          ('Kitchen','Glasses (set)',1,4),('Kitchen','Mugs (set)',1,5),('Kitchen','Silverware set',1,6),
+          ('Kitchen','Mixing bowls',1,7),('Kitchen','Cutting board',1,8),('Kitchen','Knife set',1,9),
+          ('Kitchen','Bakeware set',1,10),('Kitchen','Microwave',1,11),('Kitchen','Coffee maker',1,12),
+          ('Kitchen','Toaster',1,13),('Kitchen','Dish towels (set)',1,14),('Kitchen','Kitchen trash can',1,15),
+          ('Kitchen','Broom & dustpan',1,16),('Kitchen','Kitchen essentials kit',1,17),
+          ('Bathroom 1','Towel set (2 bath / hand / wash)',1,1),('Bathroom 1','Bath mat',1,2),
+          ('Bathroom 1','Shower curtain & rings',1,3),('Bathroom 1','Bathroom trash can',1,4),('Bathroom 1','Toilet brush & plunger',1,5),
+          ('Bathroom 2','Towel set (2 bath / hand / wash)',1,1),('Bathroom 2','Bath mat',1,2),
+          ('Bathroom 2','Shower curtain & rings',1,3),('Bathroom 2','Bathroom trash can',1,4),('Bathroom 2','Toilet brush & plunger',1,5),
+          ('Bathroom 3','Towel set (2 bath / hand / wash)',1,1),('Bathroom 3','Bath mat',1,2),
+          ('Bathroom 3','Shower curtain & rings',1,3),('Bathroom 3','Bathroom trash can',1,4),('Bathroom 3','Toilet brush & plunger',1,5),
+          ('Laundry & Cleaning','Laundry basket',2,1),('Laundry & Cleaning','Hamper',1,2),('Laundry & Cleaning','Mop & bucket',1,3),
+          ('Laundry & Cleaning','Vacuum',1,4),('Laundry & Cleaning','Iron & ironing board',1,5),
+          ('Laundry & Cleaning','Cleaning supplies kit',1,6),('Laundry & Cleaning','Broom / dustpan',1,7),
+          ('Garage (attached)','Storage shelving unit',2,1),('Garage (attached)','Storage bins / totes (set)',1,2),
+          ('Garage (attached)','Trash & recycling bins',2,3),('Garage (attached)','Outdoor doormat',1,4),
+          ('Garage (attached)','Folding chairs',4,5),('Garage (attached)','Basic tool kit',1,6),
+          ('Garage (attached)','Extension cord',1,7),('Garage (attached)','Step stool',1,8),('Garage (attached)','Push broom',1,9),
+          ('Baby / Children (if applicable)','Crib',1,1),('Baby / Children (if applicable)','Crib mattress',1,2),
+          ('Baby / Children (if applicable)','Crib bedding',1,3),('Baby / Children (if applicable)','Highchair',1,4),
+          ('Baby / Children (if applicable)','Stroller',1,5),('Baby / Children (if applicable)','Pack-n-play',1,6),
+          ('Baby / Children (if applicable)','Toys & books',1,7),
+          ('Whole-home essentials','Light bulbs (assorted)',1,1),('Whole-home essentials','Power strips',2,2),
+          ('Whole-home essentials','Box fan',2,3),('Whole-home essentials','Space heater',1,4),
+          ('Whole-home essentials','First aid kit',1,5),('Whole-home essentials','Nightlights',2,6),
+          ('Whole-home essentials','Wastebaskets',3,7),('Whole-home essentials','Welcome / cleaning caddy',1,8)
+        ) AS v(room, item, qty, ord)
+        JOIN tbl_packing_template_room r ON r.room_name = v.room
+        WHERE NOT EXISTS (SELECT 1 FROM tbl_packing_template_item)
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

@@ -30,7 +30,7 @@ const sections: NavSection[] = [
     label: 'Clients',
     items: [
       { to: '/clients',   name: 'Clients',             icon: 'users' },
-      { to: '/requests',  name: 'Provisioning Requests', icon: 'list-check' },
+      { to: '/requests',  name: 'Packing Lists', icon: 'list-check' },
       { to: '/requests/review', name: 'Review queue',  icon: 'list-check' },
       { to: '/visits',    name: 'Visits',              icon: 'schedule' },
     ],

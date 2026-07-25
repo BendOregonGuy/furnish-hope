@@ -82,7 +82,7 @@ export function Dashboard() {
         helpSection="dashboard"
         title={`${greeting()},`}
         emphasis={firstName}
-        subtitle={`${data.metrics.open_requests} provisioning request${data.metrics.open_requests === 1 ? '' : 's'} awaiting review · ${formatMoney(data.giving.ytd_giving)} raised year-to-date.`}
+        subtitle={`${data.metrics.open_requests} packing list${data.metrics.open_requests === 1 ? '' : 's'} awaiting review · ${formatMoney(data.giving.ytd_giving)} raised year-to-date.`}
         actions={
           <>
             <Link to="/donations/new" className="btn-ghost">+ New donation</Link>
@@ -150,7 +150,7 @@ export function Dashboard() {
           {/* Pending requests */}
           <div className="card">
             <div className="card-head">
-              <h3 className="font-display font-medium text-[17px] m-0">Pending provisioning requests</h3>
+              <h3 className="font-display font-medium text-[17px] m-0">Pending packing lists</h3>
               <Link to="/requests" className="text-xs text-terracotta font-medium">View all →</Link>
             </div>
             {data.pendingRequests.length === 0 ? (

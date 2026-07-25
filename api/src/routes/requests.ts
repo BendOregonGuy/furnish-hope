@@ -10,10 +10,24 @@ export const requestsRouter = Router();
 
 interface RequestItemPayload {
   client_request_items_id?: number | null;
-  item_category_id: number;
+  item_name: string;                       // Packing List: free-text item label (required)
+  item_category_id?: number | null;        // Optional link to a rate-card category (for valuation)
   item_notes?: string | null;
-  quantity: number;
+  quantity: number;                        // Qty requested
+  qty_given?: number | null;               // Qty actually pulled/given
   priority?: string | null;
+  room?: string | null;                    // Free-text room grouping ("Primary Bedroom", …)
+  pulled?: boolean | null;                 // Checked when the item has been pulled from the warehouse
+  is_na?: boolean | null;                  // Marked N/A for this household
+  is_declined?: boolean | null;            // Household declined this item
+  sort_order?: number | null;              // Ordering within its room
+}
+
+interface ChildPayload {
+  request_child_id?: number | null;
+  gender?: string | null;
+  age?: number | null;
+  notes?: string | null;
 }
 
 interface RequestWritePayload {
@@ -27,6 +41,19 @@ interface RequestWritePayload {
   child_count?: number | null;
   adult_female_count?: number | null;
   adult_male_count?: number | null;
+  // Packing List extensions (all optional).
+  fulfillment_type?: string | null;        // 'delivery' | 'pickup'
+  appointment_at?: string | null;          // scheduled delivery/pickup datetime
+  trailer_size?: string | null;
+  crew_size?: number | null;
+  loading_notes?: string | null;
+  residence_type?: string | null;
+  delivery_logistics_notes?: string | null;
+  situation_notes?: string | null;
+  situation_tags?: string | null;          // comma-separated situation chips
+  internal_notes?: string | null;          // staff-only
+  household_type?: string | null;          // 'individual' | 'family'
+  children?: ChildPayload[];
   items: RequestItemPayload[];
 }
 
@@ -137,6 +164,7 @@ requestsRouter.get('/', async (req, res, next) => {
     const rows = await query(`
       SELECT
         r.client_provisioning_request_id AS request_id,
+        r.reference_code,
         r.request_at,
         c.client_id,
         contact.first_name || ' ' || contact.last_name AS client_name,
@@ -155,6 +183,46 @@ requestsRouter.get('/', async (req, res, next) => {
 });
 
 /* ----------------------------------------------------------------- */
+/*  Packing-list template — default rooms + items for a new list      */
+/* ----------------------------------------------------------------- */
+
+/** GET /api/requests/template — the standard 3-bed / 3-bath checklist,
+ *  grouped by room, used to pre-populate a new Packing List. */
+requestsRouter.get('/template', async (_req, res, next) => {
+  try {
+    const rooms = await query<{ packing_template_room_id: number; room_name: string; sort_order: number }>(`
+      SELECT packing_template_room_id, room_name, sort_order
+        FROM tbl_packing_template_room
+       WHERE is_active
+       ORDER BY sort_order, room_name
+    `);
+    const items = await query<{
+      packing_template_item_id: number; packing_template_room_id: number;
+      item_name: string; default_qty: number | null; item_category_id: number | null; sort_order: number;
+    }>(`
+      SELECT packing_template_item_id, packing_template_room_id, item_name,
+             default_qty, item_category_id, sort_order
+        FROM tbl_packing_template_item
+       WHERE is_active
+       ORDER BY sort_order, item_name
+    `);
+    const byRoom = rooms.map(room => ({
+      room_name: room.room_name,
+      sort_order: room.sort_order,
+      items: items
+        .filter(i => i.packing_template_room_id === room.packing_template_room_id)
+        .map(i => ({
+          item_name: i.item_name,
+          default_qty: i.default_qty ?? 1,
+          item_category_id: i.item_category_id,
+          sort_order: i.sort_order,
+        })),
+    }));
+    res.json({ rooms: byRoom });
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
 /*  Read one                                                          */
 /* ----------------------------------------------------------------- */
 
@@ -167,6 +235,7 @@ requestsRouter.get('/:id', async (req, res, next) => {
     const request = await queryOne(`
       SELECT
         r.client_provisioning_request_id AS request_id,
+        r.reference_code,
         r.client_id,
         r.client_request_note,
         r.request_at,
@@ -176,6 +245,17 @@ requestsRouter.get('/:id', async (req, res, next) => {
         r.child_count,
         r.adult_female_count,
         r.adult_male_count,
+        r.fulfillment_type,
+        r.appointment_at,
+        r.trailer_size,
+        r.crew_size,
+        r.loading_notes,
+        r.residence_type,
+        r.delivery_logistics_notes,
+        r.situation_notes,
+        r.situation_tags,
+        r.internal_notes,
+        r.household_type,
         contact.first_name || ' ' || contact.last_name AS client_name,
         ct.client_type,
         addr.address,
@@ -206,20 +286,35 @@ requestsRouter.get('/:id', async (req, res, next) => {
       SELECT
         i.client_request_items_id,
         i.client_provisioning_request_id,
+        i.item_name,
         i.item_category_id,
         i.item_notes,
         i.quantity,
+        i.qty_given,
         i.priority,
+        i.room,
+        i.pulled,
+        i.is_na,
+        i.is_declined,
+        i.sort_order,
         cat.item_category,
         (SELECT COUNT(*)::int FROM tbl_inventory_reservation res
            JOIN tbl_corp_facility_inventory_item inv
              ON inv.corp_facility_inventory_item_id = res.corp_facility_inventory_item_id
           WHERE res.client_provisioning_request_id = i.client_provisioning_request_id
+            AND i.item_category_id IS NOT NULL
             AND inv.item_category_id = i.item_category_id) AS matched_qty
       FROM tbl_client_request_items i
-      JOIN lkp_item_category cat ON cat.item_category_id = i.item_category_id
+      LEFT JOIN lkp_item_category cat ON cat.item_category_id = i.item_category_id
       WHERE i.client_provisioning_request_id = $1
-      ORDER BY i.client_request_items_id
+      ORDER BY i.sort_order NULLS LAST, i.client_request_items_id
+    `, [id]);
+
+    const children = await query(`
+      SELECT request_child_id, gender, age, notes
+        FROM tbl_request_child
+       WHERE client_provisioning_request_id = $1
+       ORDER BY request_child_id
     `, [id]);
 
     const matches = await query(`
@@ -246,7 +341,7 @@ requestsRouter.get('/:id', async (req, res, next) => {
     `, [id]);
 
     const { prevId, nextId } = await neighborIds(id);
-    res.json({ request, items, matches, prevId, nextId });
+    res.json({ request, items, children, matches, prevId, nextId });
   } catch (err) { next(err); }
 });
 
@@ -287,23 +382,28 @@ requestsRouter.post('/', async (req, res, next) => {
         INSERT INTO tbl_client_provisioning_request
           (client_id, client_request_note, fulfillment_corp_facility_id,
            request_receipt_origin_id, client_request_creator_facility_staff_id, request_at,
-           child_count, adult_female_count, adult_male_count)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           child_count, adult_female_count, adult_male_count,
+           fulfillment_type, appointment_at, trailer_size, crew_size, loading_notes,
+           residence_type, delivery_logistics_notes, situation_notes, situation_tags,
+           internal_notes, household_type,
+           reference_code)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+                $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+                'FH-' || LPAD(nextval('seq_packing_list_ref')::text, 6, '0'))
         RETURNING *
       `, [
         body.client_id, body.client_request_note ?? null, body.fulfillment_corp_facility_id,
         body.request_receipt_origin_id, body.client_request_creator_facility_staff_id, body.request_at,
         intOrNull(body.child_count), intOrNull(body.adult_female_count), intOrNull(body.adult_male_count),
+        body.fulfillment_type ?? null, body.appointment_at ?? null, body.trailer_size ?? null,
+        intOrNull(body.crew_size), body.loading_notes ?? null, body.residence_type ?? null,
+        body.delivery_logistics_notes ?? null, body.situation_notes ?? null, body.situation_tags ?? null,
+        body.internal_notes ?? null, body.household_type ?? null,
       ]);
 
-      for (const item of body.items ?? []) {
-        await tx.query(`
-          INSERT INTO tbl_client_request_items
-            (client_provisioning_request_id, item_category_id, item_notes, quantity, priority, time_stamp)
-          VALUES ($1, $2, $3, $4, $5, $6)
-        `, [r!.client_provisioning_request_id, item.item_category_id, item.item_notes ?? null,
-            item.quantity, item.priority ?? null, body.request_at]);
-      }
+      await insertChildren(tx, r!.client_provisioning_request_id, body.children);
+      await insertItems(tx, r!.client_provisioning_request_id, body.items, body.request_at);
+
       await auditCreate(req, 'tbl_client_provisioning_request', r!.client_provisioning_request_id, r!, tx);
       return r!.client_provisioning_request_id;
     });
@@ -339,15 +439,26 @@ requestsRouter.put('/:id', async (req, res, next) => {
         UPDATE tbl_client_provisioning_request
            SET client_id = $1, client_request_note = $2, fulfillment_corp_facility_id = $3,
                request_receipt_origin_id = $4, client_request_creator_facility_staff_id = $5,
-               request_at = $6, child_count = $7, adult_female_count = $8, adult_male_count = $9
-         WHERE client_provisioning_request_id = $10
+               request_at = $6, child_count = $7, adult_female_count = $8, adult_male_count = $9,
+               fulfillment_type = $10, appointment_at = $11, trailer_size = $12, crew_size = $13,
+               loading_notes = $14, residence_type = $15, delivery_logistics_notes = $16,
+               situation_notes = $17, situation_tags = $18, internal_notes = $19, household_type = $20
+         WHERE client_provisioning_request_id = $21
          RETURNING *
       `, [
         body.client_id, body.client_request_note ?? null, body.fulfillment_corp_facility_id,
         body.request_receipt_origin_id, body.client_request_creator_facility_staff_id, body.request_at,
-        intOrNull(body.child_count), intOrNull(body.adult_female_count), intOrNull(body.adult_male_count), id,
+        intOrNull(body.child_count), intOrNull(body.adult_female_count), intOrNull(body.adult_male_count),
+        body.fulfillment_type ?? null, body.appointment_at ?? null, body.trailer_size ?? null,
+        intOrNull(body.crew_size), body.loading_notes ?? null, body.residence_type ?? null,
+        body.delivery_logistics_notes ?? null, body.situation_notes ?? null, body.situation_tags ?? null,
+        body.internal_notes ?? null, body.household_type ?? null, id,
       ]);
       if (after) await auditUpdate(req, 'tbl_client_provisioning_request', id, before, after, tx);
+
+      // Children: replace-all (small list, no stable client-side identity needed).
+      await tx.query(`DELETE FROM tbl_request_child WHERE client_provisioning_request_id = $1`, [id]);
+      await insertChildren(tx, id, body.children);
 
       // Items diff: collect incoming IDs; delete rows whose ID isn't in the
       // incoming set; update existing; insert new.
@@ -363,19 +474,28 @@ requestsRouter.put('/:id', async (req, res, next) => {
           await tx.query(`DELETE FROM tbl_client_request_items WHERE client_request_items_id = $1`, [row.client_request_items_id]);
         }
       }
+      let order = 0;
       for (const item of body.items ?? []) {
+        const sort = item.sort_order ?? order++;
         if (item.client_request_items_id) {
           await tx.query(`
             UPDATE tbl_client_request_items
-               SET item_category_id = $1, item_notes = $2, quantity = $3, priority = $4
-             WHERE client_request_items_id = $5
-          `, [item.item_category_id, item.item_notes ?? null, item.quantity, item.priority ?? null, item.client_request_items_id]);
+               SET item_name = $1, item_category_id = $2, item_notes = $3, quantity = $4,
+                   qty_given = $5, priority = $6, room = $7, pulled = $8,
+                   is_na = $9, is_declined = $10, sort_order = $11
+             WHERE client_request_items_id = $12
+          `, [item.item_name, intOrNull(item.item_category_id), item.item_notes ?? null, item.quantity,
+              intOrNull(item.qty_given), item.priority ?? null, item.room ?? null, !!item.pulled,
+              !!item.is_na, !!item.is_declined, sort, item.client_request_items_id]);
         } else {
           await tx.query(`
             INSERT INTO tbl_client_request_items
-              (client_provisioning_request_id, item_category_id, item_notes, quantity, priority, time_stamp)
-            VALUES ($1, $2, $3, $4, $5, $6)
-          `, [id, item.item_category_id, item.item_notes ?? null, item.quantity, item.priority ?? null, body.request_at]);
+              (client_provisioning_request_id, item_name, item_category_id, item_notes, quantity,
+               qty_given, priority, room, pulled, is_na, is_declined, sort_order, time_stamp)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          `, [id, item.item_name, intOrNull(item.item_category_id), item.item_notes ?? null, item.quantity,
+              intOrNull(item.qty_given), item.priority ?? null, item.room ?? null, !!item.pulled,
+              !!item.is_na, !!item.is_declined, sort, body.request_at]);
         }
       }
     });
@@ -422,6 +542,32 @@ function withStatus(status: number, message: string): Error {
   return e;
 }
 
+/** Insert per-child demographic rows for a request. */
+async function insertChildren(tx: any, requestId: number, children?: ChildPayload[]): Promise<void> {
+  for (const child of children ?? []) {
+    await tx.query(`
+      INSERT INTO tbl_request_child (client_provisioning_request_id, gender, age, notes)
+      VALUES ($1, $2, $3, $4)
+    `, [requestId, child.gender ?? null, intOrNull(child.age), child.notes ?? null]);
+  }
+}
+
+/** Insert packing-list line items (used by create; update diffs inline). */
+async function insertItems(tx: any, requestId: number, items: RequestItemPayload[] | undefined, requestAt: string): Promise<void> {
+  let order = 0;
+  for (const item of items ?? []) {
+    const sort = item.sort_order ?? order++;
+    await tx.query(`
+      INSERT INTO tbl_client_request_items
+        (client_provisioning_request_id, item_name, item_category_id, item_notes, quantity,
+         qty_given, priority, room, pulled, is_na, is_declined, sort_order, time_stamp)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    `, [requestId, item.item_name, intOrNull(item.item_category_id), item.item_notes ?? null, item.quantity,
+        intOrNull(item.qty_given), item.priority ?? null, item.room ?? null, !!item.pulled,
+        !!item.is_na, !!item.is_declined, sort, requestAt]);
+  }
+}
+
 /** Coerce an optional numeric-ish demographic field to an integer or null. */
 function intOrNull(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;
@@ -439,12 +585,12 @@ function validateWritePayload(body: RequestWritePayload): string[] {
   if (!body.request_at) errs.push('request_at required');
   if (!Array.isArray(body.items)) errs.push('items must be an array');
   else for (const item of body.items) {
-    if (!Number.isInteger(item.item_category_id) || item.item_category_id <= 0) {
-      errs.push('every item needs item_category_id');
+    if (!item.item_name || typeof item.item_name !== 'string' || !item.item_name.trim()) {
+      errs.push('every item needs an item name');
       break;
     }
-    if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
-      errs.push('every item needs a positive quantity');
+    if (!Number.isInteger(item.quantity) || item.quantity < 0) {
+      errs.push('every item needs a non-negative quantity');
       break;
     }
   }

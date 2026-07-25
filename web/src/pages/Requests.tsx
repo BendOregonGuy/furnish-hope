@@ -23,9 +23,9 @@ export function Requests() {
     <>
       <PageHeader
         helpSection="requests"
-        title="Provisioning"
-        emphasis="requests"
-        subtitle="Each request represents one household's needs. Match items, schedule delivery, complete the cycle."
+        title="Packing"
+        emphasis="lists"
+        subtitle="Each packing list represents one household's needs. Match items, schedule delivery, complete the cycle."
         actions={
           <Link to="/requests/new" className="btn-primary">
             <span className="text-base leading-none">+</span> New request

@@ -33,7 +33,7 @@ export function RequestDetail() {
   });
 
   function handleDelete() {
-    if (window.confirm('Permanently delete this provisioning request and its items? This cannot be undone.')) {
+    if (window.confirm('Permanently delete this packing list and its items? This cannot be undone.')) {
       deleteMut.mutate();
     }
   }
@@ -47,7 +47,7 @@ export function RequestDetail() {
   return (
     <>
       <DetailNavBar
-        listLabel="requests" singularLabel="request" basePath="/requests"
+        listLabel="packing lists" singularLabel="packing list" basePath="/requests"
         prevId={data.prevId} nextId={data.nextId}
         actions={
           <>
@@ -55,7 +55,7 @@ export function RequestDetail() {
               to="/requests/new"
               className="text-xs text-ink-soft hover:text-terracotta border border-hairline-strong px-3 py-1 rounded-md hover:border-terracotta"
             >
-              + New request
+              + New packing list
             </Link>
             <Link to={`/requests/${id}/edit`} className="btn-primary text-xs py-1.5">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -75,7 +75,10 @@ export function RequestDetail() {
           <div className="flex items-baseline gap-3.5 mb-1">
             <div className="font-display text-2xl font-medium">{request.client_name}</div>
             <span className="pill pill-terra">{request.client_type}</span>
-            <span className="text-xs text-ink-faint">Request #{request.request_id} · {formatLongDate(request.request_at)}</span>
+            <span className="text-xs text-ink-faint">
+              {request.reference_code ? <span className="font-mono text-terracotta-deep">{request.reference_code}</span> : `Packing list #${request.request_id}`}
+              {' · '}{formatLongDate(request.request_at)}
+            </span>
           </div>
           <div className="flex gap-4 text-sm text-ink-soft flex-wrap">
             {request.address && <span>{request.address}, {request.city}</span>}
@@ -100,7 +103,7 @@ export function RequestDetail() {
       <div className="grid grid-cols-[1fr_320px] gap-5">
         <div className="card">
           <div className="card-head">
-            <h3 className="font-display font-medium text-[17px] m-0">Requested items</h3>
+            <h3 className="font-display font-medium text-[17px] m-0">Packing list items</h3>
             <div className="flex gap-1.5">
               <span className="pill pill-sage">{matches.length} matched</span>
             </div>
@@ -113,7 +116,12 @@ export function RequestDetail() {
           {items.map((it: any) => (
             <div key={it.client_request_items_id} className="grid grid-cols-[1fr_60px_90px_140px] gap-3 items-center py-3 border-b border-hairline last:border-0">
               <div>
-                <div className="text-sm font-medium">{it.item_category}</div>
+                <div className="text-sm font-medium">
+                  {it.item_name ?? it.item_category}
+                  {it.pulled && <span className="ml-2 pill pill-sage">pulled</span>}
+                  {it.is_declined && <span className="ml-2 pill pill-muted">declined</span>}
+                </div>
+                {it.room && <div className="text-[11px] text-ink-faint">{it.room}</div>}
                 {it.item_notes && <div className="text-[11px] text-ink-faint">{it.item_notes}</div>}
               </div>
               <div className="text-sm text-ink-soft">{it.quantity}</div>
@@ -156,7 +164,7 @@ export function RequestDetail() {
             disabled={deleteMut.isPending}
             className="text-xs text-terracotta hover:text-terracotta-deep disabled:opacity-50 self-start"
           >
-            {deleteMut.isPending ? 'Deleting…' : 'Delete this request'}
+            {deleteMut.isPending ? 'Deleting…' : 'Delete this packing list'}
           </button>
         </div>
       </div>

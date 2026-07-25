@@ -133,7 +133,7 @@ export function VisitForm() {
     }
   }
 
-  // Provisioning requests scoped to the chosen client. Re-fetches whenever
+  // Packing lists scoped to the chosen client. Re-fetches whenever
   // client_id changes. Disabled with a hint when no client is picked yet.
   const { data: clientRequests, isFetching: loadingRequests } = useQuery<Array<{
     request_id: number;
@@ -268,7 +268,7 @@ export function VisitForm() {
               <div className="field-input text-ink-faint italic">Loading requests…</div>
             ) : !clientRequests || clientRequests.length === 0 ? (
               <div className="field-input bg-cream/40 text-ink-faint italic">
-                This client has no provisioning requests yet.
+                This client has no packing lists yet.
               </div>
             ) : (
               <select
@@ -287,7 +287,7 @@ export function VisitForm() {
               </select>
             )}
             <div className="text-[11px] text-ink-faint mt-1">
-              Optional — link this visit to the provisioning request it serves.
+              Optional — link this visit to the packing list it serves.
             </div>
           </div>
         </Section>

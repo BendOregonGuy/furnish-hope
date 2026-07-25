@@ -135,7 +135,7 @@ export async function generateWaiverPdf(d: WaiverPdfData): Promise<Buffer> {
     );
     doc.y += 12;
   }
-  doc.fontSize(9).fillColor('#666').text(`Provisioning Request #${d.request.request_id} · Opened ${formatDate(d.request.request_at)}`, 54, doc.y);
+  doc.fontSize(9).fillColor('#666').text(`Packing List #${d.request.request_id} · Opened ${formatDate(d.request.request_at)}`, 54, doc.y);
   doc.y += 22;
 
   /* ---------- Body (parsed from markdown template) ---------- */

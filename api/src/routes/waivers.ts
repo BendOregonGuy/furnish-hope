@@ -180,7 +180,7 @@ export function mountWaiverOnRequests(router: Router) {
         LEFT JOIN lkp_state st    ON st.state_id      = addr.state_id
         WHERE r.client_provisioning_request_id = $1
       `, [reqId]);
-      if (!reqRow) return res.status(404).json({ error: 'Provisioning request not found.' });
+      if (!reqRow) return res.status(404).json({ error: 'Packing list not found.' });
 
       const template = await queryOne<any>(`
         SELECT waiver_template_id, title, subtitle, body_markdown, version_label

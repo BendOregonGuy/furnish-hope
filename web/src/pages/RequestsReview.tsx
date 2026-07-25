@@ -1,5 +1,5 @@
 /**
- * Staff triage queue — every agency-submitted provisioning request that
+ * Staff triage queue — every agency-submitted packing list that
  * is sitting in review_status='awaiting_review', oldest first so nothing
  * gets forgotten.
  *
@@ -56,7 +56,7 @@ export function RequestsReview() {
     <>
       <PageHeader
         title="Review queue"
-        subtitle="Provisioning requests submitted by agency partners, awaiting staff review."
+        subtitle="Packing lists submitted by agency partners, awaiting staff review."
       />
 
       {!data || data.length === 0 ? (

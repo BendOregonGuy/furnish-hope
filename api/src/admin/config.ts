@@ -164,8 +164,8 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
   },
   tbl_client_provisioning_request: {
     group: 'Clients & Referrals',
-    label: 'Provisioning Requests',
-    singular: 'Provisioning Request',
+    label: 'Packing Lists',
+    singular: 'Packing List',
     displaySql: "(SELECT c.first_name || ' ' || c.last_name FROM tbl_contact c JOIN tbl_client cl ON cl.contact_id = c.contact_id WHERE cl.client_id = t.client_id) || ' • ' || to_char(t.request_at::date,'YYYY-MM-DD')",
     listColumns: ['client_provisioning_request_id', 'client_id', 'fulfillment_corp_facility_id', 'request_at'],
     searchColumns: ['client_request_note'],

@@ -1,6 +1,6 @@
 /**
  * Detail of one of THIS caseworker's referrals. Read-only view of
- * the household + the status of each provisioning request Furnish
+ * the household + the status of each packing list Furnish
  * Hope has opened for them. No internal data (staff names, vehicle
  * info, donor matches) — just what a referring caseworker needs to
  * follow up.
@@ -72,7 +72,7 @@ export function AgencyReferralDetail() {
             </div>
             {data.requests.length === 0 ? (
               <div className="text-sm text-ink-faint italic">
-                Furnish Hope hasn't opened a provisioning request for this household yet.
+                Furnish Hope hasn't opened a packing list for this household yet.
                 They'll reach out to coordinate once they have. Check back in a few days.
               </div>
             ) : (

@@ -17,7 +17,7 @@ const TOC: TocEntry[] = [
   { id: 'donations', label: 'Donations' },
   { id: 'pledges', label: 'Pledges' },
   { id: 'clients', label: 'Clients (households)' },
-  { id: 'requests', label: 'Provisioning requests' },
+  { id: 'requests', label: 'Packing lists' },
   { id: 'waivers', label: 'Furniture waivers' },
   { id: 'pickups', label: 'Pickups' },
   { id: 'visits', label: 'Visits' },
@@ -109,7 +109,7 @@ export function Help() {
             <tbody>
               <tr><td>Overview</td><td>Dashboard, Reports</td></tr>
               <tr><td>Email</td><td>Mailbox, Compose, Templates, Accounts</td></tr>
-              <tr><td>Clients</td><td>Clients, Provisioning Requests</td></tr>
+              <tr><td>Clients</td><td>Clients, Packing Lists</td></tr>
               <tr><td>Operations</td><td>Calendar, Deliveries, Pickups, Inventory, Vendors</td></tr>
               <tr><td>Network</td><td>Volunteers, Shifts</td></tr>
               <tr><td>Fundraising</td><td>Campaigns, Events, Donors, Donations, Acknowledgements, Pledges</td></tr>
@@ -216,7 +216,7 @@ export function Help() {
 
       {/* ============================================================ */}
       <section id="requests">
-        <h2>Provisioning requests</h2>
+        <h2>Packing lists</h2>
         <p>A <strong>request</strong> is what a household has asked for — beds, dining table, couch, dressers. Capture as soon as the household is intaked, then track through fulfillment.</p>
         <ol>
           <li>From the client's detail page, click <strong>+ New Request</strong>.</li>
@@ -254,7 +254,7 @@ export function Help() {
         <h2>Visits</h2>
         <p>
           Once a client has been referred (or self-presented) and has a
-          provisioning request open, a <strong>visit</strong> is the
+          packing list open, a <strong>visit</strong> is the
           scheduled moment where they pick out their furniture. Visits are
           a soft requirement — most clients have one, but staff can also
           make choices on the client's behalf if a visit isn't practical.
@@ -271,7 +271,7 @@ export function Help() {
           <li>Open the client's detail page (Sidebar → <strong>Clients → Clients</strong> → click the name).</li>
           <li>In the <strong>Visits</strong> card at the top, click <strong>+ Schedule visit</strong>.</li>
           <li>The form pre-fills the client. Pick a date, time window, mode, status, host (the staff member running the visit), and a location (only required for in-person).</li>
-          <li>Optionally link the visit to the provisioning request it serves.</li>
+          <li>Optionally link the visit to the packing list it serves.</li>
           <li>Save.</li>
         </ol>
         <p>
