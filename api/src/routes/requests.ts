@@ -53,6 +53,7 @@ interface RequestWritePayload {
   situation_tags?: string | null;          // comma-separated situation chips
   internal_notes?: string | null;          // staff-only
   household_type?: string | null;          // 'individual' | 'family'
+  referral_id?: number | null;             // links this list to an approved agency referral
   children?: ChildPayload[];
   items: RequestItemPayload[];
 }
@@ -237,6 +238,7 @@ requestsRouter.get('/:id', async (req, res, next) => {
         r.client_provisioning_request_id AS request_id,
         r.reference_code,
         r.client_id,
+        r.referral_id,
         r.client_request_note,
         r.request_at,
         r.fulfillment_corp_facility_id,
@@ -385,10 +387,10 @@ requestsRouter.post('/', async (req, res, next) => {
            child_count, adult_female_count, adult_male_count,
            fulfillment_type, appointment_at, trailer_size, crew_size, loading_notes,
            residence_type, delivery_logistics_notes, situation_notes, situation_tags,
-           internal_notes, household_type,
+           internal_notes, household_type, referral_id,
            reference_code)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-                $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+                $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
                 'FH-' || LPAD(nextval('seq_packing_list_ref')::text, 6, '0'))
         RETURNING *
       `, [
@@ -398,7 +400,7 @@ requestsRouter.post('/', async (req, res, next) => {
         body.fulfillment_type ?? null, body.appointment_at ?? null, body.trailer_size ?? null,
         intOrNull(body.crew_size), body.loading_notes ?? null, body.residence_type ?? null,
         body.delivery_logistics_notes ?? null, body.situation_notes ?? null, body.situation_tags ?? null,
-        body.internal_notes ?? null, body.household_type ?? null,
+        body.internal_notes ?? null, body.household_type ?? null, intOrNull(body.referral_id),
       ]);
 
       await insertChildren(tx, r!.client_provisioning_request_id, body.children);
@@ -442,8 +444,9 @@ requestsRouter.put('/:id', async (req, res, next) => {
                request_at = $6, child_count = $7, adult_female_count = $8, adult_male_count = $9,
                fulfillment_type = $10, appointment_at = $11, trailer_size = $12, crew_size = $13,
                loading_notes = $14, residence_type = $15, delivery_logistics_notes = $16,
-               situation_notes = $17, situation_tags = $18, internal_notes = $19, household_type = $20
-         WHERE client_provisioning_request_id = $21
+               situation_notes = $17, situation_tags = $18, internal_notes = $19, household_type = $20,
+               referral_id = $21
+         WHERE client_provisioning_request_id = $22
          RETURNING *
       `, [
         body.client_id, body.client_request_note ?? null, body.fulfillment_corp_facility_id,
@@ -452,7 +455,7 @@ requestsRouter.put('/:id', async (req, res, next) => {
         body.fulfillment_type ?? null, body.appointment_at ?? null, body.trailer_size ?? null,
         intOrNull(body.crew_size), body.loading_notes ?? null, body.residence_type ?? null,
         body.delivery_logistics_notes ?? null, body.situation_notes ?? null, body.situation_tags ?? null,
-        body.internal_notes ?? null, body.household_type ?? null, id,
+        body.internal_notes ?? null, body.household_type ?? null, intOrNull(body.referral_id), id,
       ]);
       if (after) await auditUpdate(req, 'tbl_client_provisioning_request', id, before, after, tx);
 

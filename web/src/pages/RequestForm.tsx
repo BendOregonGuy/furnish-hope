@@ -86,6 +86,16 @@ interface RequestDetailResponse {
 interface TemplateResponse {
   rooms: Array<{ room_name: string; items: Array<{ item_name: string; default_qty: number; item_category_id: number | null }> }>;
 }
+interface ClientReferral {
+  referral_id: number;
+  referral_date?: string | null;
+  agency_name: string;
+  agency_is_approved?: boolean;
+  caseworker_name: string;
+  caseworker_email: string | null;
+  caseworker_phone: string | null;
+  referral_note?: string | null;
+}
 
 let keySeq = 0;
 const nextKey = () => `k${++keySeq}-${Math.round(Math.random() * 1e6)}`;
@@ -129,6 +139,19 @@ export function RequestForm() {
   const [savedFlash, setSavedFlash] = useState(false);
   const templateLoadedFor = useRef<string | null>(null);
   const savedFlashTimer = useRef<number | null>(null);
+
+  // Referral / agency + caseworker for the selected client (if any). Fetched
+  // whenever a client is chosen, so it works for both new and existing lists.
+  const selectedClientId = values.client_id ? Number(values.client_id) : null;
+  const { data: clientReferrals } = useQuery<ClientReferral[]>({
+    queryKey: ['client-referrals', selectedClientId],
+    // approvedOnly — only referrals from FH-approved agencies appear in the picker.
+    queryFn: () => apiGet(`/api/clients/${selectedClientId}/referrals`, { approvedOnly: '1' }),
+    enabled: !!selectedClientId,
+    staleTime: 60 * 1000,
+  });
+  const referrals = clientReferrals ?? [];
+  const selectedReferral = referrals.find(r => r.referral_id === Number(values.referral_id)) ?? null;
 
   /* Populate from an existing packing list. */
   useEffect(() => {
@@ -222,7 +245,12 @@ export function RequestForm() {
   if (loadError) return <ErrorBox error={loadError} />;
 
   function setField(name: string, v: any) {
-    setValues(prev => ({ ...prev, [name]: v }));
+    setValues(prev => {
+      const next = { ...prev, [name]: v };
+      // A referral belongs to a specific client — changing the client invalidates it.
+      if (name === 'client_id') next.referral_id = null;
+      return next;
+    });
     if (submitAttempted) {
       const col = REQUEST_FIELDS.find(c => c.name === name);
       if (col) {
@@ -318,6 +346,7 @@ export function RequestForm() {
       situation_tags:           tags.length ? tags.join(',') : null,
       internal_notes:           values.internal_notes || null,
       household_type:           values.household_type || null,
+      referral_id:              values.referral_id ? Number(values.referral_id) : null,
       children: children
         .filter(c => c.gender || c.age || c.notes)
         .map(c => ({
@@ -410,6 +439,50 @@ export function RequestForm() {
               );
             })}
           </FieldGrid>
+
+          {/* Approved Referral — pick which FH-approved agency referral this
+              packing list serves; the caseworker + contact info below update
+              to match. Only shown when the client has approved referrals. */}
+          {selectedClientId && referrals.length > 0 && (
+            <div className="mt-4">
+              <label className="field-label">Approved referral</label>
+              <select
+                className="field-input"
+                value={values.referral_id ?? ''}
+                onChange={e => setField('referral_id', e.target.value === '' ? null : Number(e.target.value))}
+              >
+                <option value="">— No referral (walk-in / direct) —</option>
+                {referrals.map(r => (
+                  <option key={r.referral_id} value={r.referral_id}>
+                    {r.agency_name}
+                    {r.referral_date ? ` · ${new Date(r.referral_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
+                    {r.caseworker_name ? ` · ${r.caseworker_name}` : ''}
+                  </option>
+                ))}
+              </select>
+
+              {selectedReferral && (
+                <div className="mt-2 rounded-md border border-hairline bg-cream/60 px-4 py-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="pill pill-sage">Approved referral</span>
+                    <span className="text-sm font-medium text-ink">{selectedReferral.agency_name}</span>
+                    {selectedReferral.referral_date && (
+                      <span className="text-xs text-ink-faint">referred {new Date(selectedReferral.referral_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-ink-soft mt-1.5">
+                    Caseworker: <span className="text-ink font-medium">{selectedReferral.caseworker_name}</span>
+                    {selectedReferral.caseworker_email && <> · {selectedReferral.caseworker_email}</>}
+                    {selectedReferral.caseworker_phone && <> · {selectedReferral.caseworker_phone}</>}
+                  </div>
+                  {selectedReferral.referral_note && (
+                    <div className="text-xs text-ink-soft mt-1.5 italic">“{selectedReferral.referral_note}”</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="mt-4">
             <label className="field-label">Caseworker note</label>
             <textarea className="field-input" rows={2}
@@ -754,6 +827,7 @@ function blankValues(): Record<string, any> {
     situation_notes: '',
     internal_notes: '',
     household_type: '',
+    referral_id: null,
   };
 }
 
@@ -778,6 +852,7 @@ function valuesFromRequest(r: any): Record<string, any> {
     situation_notes: r.situation_notes ?? '',
     internal_notes: r.internal_notes ?? '',
     household_type: r.household_type ?? '',
+    referral_id: r.referral_id ?? null,
   };
 }
 

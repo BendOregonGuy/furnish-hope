@@ -186,6 +186,11 @@ clientsRouter.get('/:id/referrals', async (req, res, next) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
 
+    // Optional filter: only referrals from FH-approved agencies. Used by the
+    // Packing List form's "Approved Referral" picker; the full history view
+    // (client detail) omits it and sees every referral.
+    const approvedOnly = req.query.approvedOnly === '1' || req.query.approvedOnly === 'true';
+
     const rows = await query(`
       SELECT
         r.referral_id,
@@ -193,6 +198,7 @@ clientsRouter.get('/:id/referrals', async (req, res, next) => {
         r.description AS referral_note,
         ag.agency_id,
         ag.agency_name,
+        ag.is_approved AS agency_is_approved,
         ac.agency_contact_id,
         rc.first_name || ' ' || rc.last_name AS caseworker_name,
         rc.email                              AS caseworker_email,
@@ -215,6 +221,7 @@ clientsRouter.get('/:id/referrals', async (req, res, next) => {
       JOIN tbl_agency ag         ON ag.agency_id         = ac.agency_id
       JOIN tbl_contact rc        ON rc.contact_id        = ac.contact_id
       WHERE r.client_id = $1
+        ${approvedOnly ? 'AND ag.is_approved = true' : ''}
       ORDER BY r.referral_date DESC, r.referral_id DESC
     `, [id]);
     res.json(rows);
