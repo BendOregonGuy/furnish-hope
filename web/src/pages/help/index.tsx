@@ -217,20 +217,24 @@ export function Help() {
       {/* ============================================================ */}
       <section id="requests">
         <h2>Packing lists</h2>
-        <p>A <strong>request</strong> is what a household has asked for — beds, dining table, couch, dressers. Capture as soon as the household is intaked, then track through fulfillment.</p>
+        <p>A <strong>packing list</strong> (formerly "provisioning request") is one household's furnishing document — what they need, what you've pulled, and how it gets to them. Each one carries a unique reference number like <code>FH-100042</code>.</p>
         <ol>
-          <li>From the client's detail page, click <strong>+ New Request</strong>.</li>
-          <li>List the items they need, urgency, special notes.</li>
-          <li>Save.</li>
+          <li>Sidebar → <strong>Packing Lists → + New packing list</strong> (or from a client's detail page).</li>
+          <li>Pick the recipient. If they came in through an agency referral, choose the <strong>Approved referral</strong> in the dropdown — only referrals from FH-approved agencies show, and picking one fills in the agency + caseworker and saves the link.</li>
+          <li>Set <strong>delivery vs. pickup</strong>, the appointment, and crew logistics (trailer/crew size, loading notes, access notes).</li>
+          <li>Enter <strong>household composition</strong> (adults + a row per child) and tag the <strong>situation</strong> — these feed the Impact Data report.</li>
+          <li>Work the <strong>pull &amp; pack checklist</strong>: items are grouped by room and pre-loaded from the home template (a full 3-bed / 3-bath home). Check <strong>Pulled</strong> as you gather each item, fill in <strong>Qty given</strong>, and mark <strong>N/A</strong> or <strong>Declined</strong> as needed. The progress bar tracks how much is pulled. Add or remove rooms and items per family.</li>
+          <li>Use <strong>Internal notes</strong> for anything staff-only, then Save.</li>
         </ol>
-        <p>When the request is filled, create a delivery that links to it — closes the loop and lets you report on time-from-request-to-delivery.</p>
+        <p>Agency-submitted packing lists arrive in the <strong>Review queue</strong> (Packing Lists → Review queue) as "Awaiting review" for you to approve, edit, or reject. When a list is filled, create a delivery that links to it to close the loop.</p>
+        <p className="text-ink-faint text-sm">Admins: the room/item template that pre-loads new lists is editable under <strong>Database Admin → Packing Template — Rooms / Items</strong>, no developer needed.</p>
       </section>
 
       {/* ============================================================ */}
       <section id="waivers">
         <h2>Furniture waivers</h2>
         <p>Before a household receives furniture, they sign a <strong>furniture waiver</strong> — the standard liability release used by the nonprofit.</p>
-        <p>From the request detail page, click <strong>Sign waiver</strong>. The client types their legal name, draws their signature with a finger or mouse, checks the agreement box, and signs. A PDF is generated automatically and attached to the request with full audit trail (timestamp, IP, witness staff member).</p>
+        <p>From the packing list detail page, click <strong>Sign waiver</strong>. The client types their legal name, draws their signature with a finger or mouse, checks the agreement box, and signs. A PDF is generated automatically and attached to the packing list with full audit trail (timestamp, IP, witness staff member).</p>
         <p>Clients don't log in — staff witness the signing in person on the same device.</p>
       </section>
 

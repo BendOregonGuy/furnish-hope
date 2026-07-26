@@ -68,7 +68,7 @@ The vertical menu on the left side of the screen is the **sidebar**. It's how yo
 
 | Group | What lives here |
 |---|---|
-| **Operations** | Clients, Requests, Pickups, Deliveries, Inventory |
+| **Operations** | Clients, Packing Lists, Pickups, Deliveries, Inventory |
 | **Fundraising** | Donors, Donations, Pledges, Campaigns, Events |
 | **People** | Volunteers, Shifts, Calendar |
 | **Communication** | Mailbox, Compose |
@@ -238,16 +238,38 @@ Sidebar → **Database Admin** → search for `lkp_client_type` → **+ New** �
 
 A household can be referred by **more than one agency** (~5% of clients). The system keeps **one client record** but stacks multiple referrals against them. On the client detail page, scroll to **Referral history** to see every agency, caseworker, date, and the requests each referral spawned.
 
-If two agencies refer the same family in the same week for the same furniture, each agency's request goes into the **review queue** for staff to triage. Each request stays tied to its originating referral (and agency); you can approve one and reject the other, or approve both if they're for different things.
+If two agencies refer the same family in the same week for the same furniture, each agency's packing list goes into the **review queue** for staff to triage. Each packing list stays tied to its originating referral (and agency); you can approve one and reject the other, or approve both if they're for different things.
 
-### Requests
+### Packing lists
 
-A **request** is what a household has asked for — beds, dining table, couch, dressers, etc.
+A **packing list** (formerly called a "provisioning request") is the working document for one household's furnishing — what they need, what you've pulled from the warehouse, and how it gets to them. Every packing list gets a unique **reference number** in the form `FH-######` (e.g. `FH-100042`), shown at the top of the list and in the Packing Lists table. When you import the agency's historical Base44 lists, their existing reference numbers can be carried into this same field for continuity.
 
-Requests reach Furnish Hope two ways:
+> **Naming note.** Throughout the app and the database, "Packing List" is the label; the underlying table is still named `tbl_client_provisioning_request` and the browser URLs are still `/requests/...`. Nothing changed except the words on screen — bookmarks and links keep working.
 
-1. **Staff-created** — you open the client detail page, click **+ New Request**, list items, save. These land approved and join the matching pipeline immediately.
-2. **Agency-submitted** — a caseworker fills in items on their referral form, which atomically creates the client + referral + request + items. These land with **review status = "Awaiting review"** so you can confirm them before matching starts.
+Packing lists reach Furnish Hope two ways:
+
+1. **Staff-created** — Sidebar → **Packing Lists → + New packing list** (or **+ New packing list** from a client's detail page). These land approved and join the matching pipeline immediately.
+2. **Agency-submitted** — a caseworker fills in items on their referral form, which atomically creates the client + referral + packing list + items. These land with **review status = "Awaiting review"** so you can confirm them before matching starts.
+
+#### The packing list form
+
+The form is organized top-to-bottom as a pull-and-pack workflow:
+
+**Packing list details.** The client (recipient), the fulfilling facility, how the list came in, who recorded it, and the date. If the recipient came in through an agency referral, an **Approved referral** dropdown appears here listing that client's referrals from **FH-approved agencies only**, most recent first. Pick one and the panel below fills in the **referring agency, caseworker, caseworker email/phone, and referral date/note**. Your choice is saved with the packing list, so the delivery crew and the review queue always show the right agency and caseworker. Changing the recipient clears the referral (a referral belongs to one client).
+
+**Fulfillment & logistics.** A **Delivery / Donation-center pickup** toggle, the appointment date & time, and — for deliveries — trailer/vehicle size and crew size. Free-text **loading notes** (gate codes, where to park) and **crew logistics** (stairs, elevator, parking) surface for the delivery team, plus a **residence type** field.
+
+**Household composition.** Household type (Individual / Family), the count of adult females and adult males, and a row per **child** (age + gender + optional note). These counts feed the **Impact Data → individuals served** report, captured as of the day the list is created.
+
+**Need & situation.** Quick-pick **situation tags** (Recovery graduate, Veteran, DV survivor, Houseless, etc.) plus a free-text situation-notes field for anything the caseworker shared.
+
+**Items — pull & pack checklist.** The heart of the form. Items are grouped by **room** (the room name is a free-typed, editable field). A brand-new list is **pre-loaded from the home template** — a complete 3-bed / 3-bath home with an attached garage (13 rooms, ~106 items) — which staff then trim or extend per family. Each line has: **Pulled** (check it off as you pull from the warehouse), **Qty req.**, **Qty given**, **N/A**, **Declined**, and **Notes**. Each room shows a running "X / Y pulled" subtotal and a **"✓ Mark all pulled"** shortcut, and a **progress bar** at the top of the section tracks pulled vs. total across the whole list. Use **+ Add item** within a room and **+ Add room** at the bottom to customize.
+
+**Internal notes.** A staff-only (dark) notes box — never shown to caseworkers or recipients.
+
+#### The home template
+
+The default room/item checklist that pre-loads every new packing list is stored in the database and is **editable without a developer**: Sidebar → **Database Admin** → `tbl_packing_template_room` (the rooms) and `tbl_packing_template_item` (the items, each linked to a room). Add, rename, reorder (via `sort_order`), or deactivate (`is_active`) entries and every new packing list picks up the change.
 
 ### Resolving duplicate clients
 
@@ -265,14 +287,14 @@ Two manual triggers exist for impatient cases:
 - **Run scan now** button on the queue page (top of the Duplicate Clients view). Runs the same scan immediately and shows the result counter.
 - **Check for duplicates** button on each client's detail page (admin-only, top-right of the header). Searches the rest of the database against THIS client and shows top matches inline so you can decide whether to merge.
 
-### The review queue (agency-submitted requests)
+### The review queue (agency-submitted packing lists)
 
-Sidebar → **Clients → Review queue** (red badge shows pending count). The queue lists every awaiting-review request oldest first.
+Sidebar → **Packing Lists → Review queue** (red badge shows pending count). The queue lists every awaiting-review packing list oldest first.
 
 For each:
 
-- **Edit** — open the full RequestDetail to adjust items, assign the correct facility, pick the right origin/creator, then save and approve.
-- **Approve** — accept the request as-is. Status flips to **Approved** and the request joins the matching pipeline.
+- **Edit** — open the full packing list to adjust items, assign the correct facility, pick the right origin/creator, then save and approve.
+- **Approve** — accept the packing list as-is. Status flips to **Approved** and it joins the matching pipeline.
 - **Reject** — opens a modal for a brief note. The agency caseworker sees that note in their portal so they know what to fix or contact Furnish Hope about. Be brief and constructive.
 
 The badge clears when the queue is empty.
@@ -517,6 +539,8 @@ What's there:
 
 > `[Screenshot: reports-overview.png — the Reports page showing a few of the top charts.]`
 
+**Overview / Impact Data pages.** Separate from the charts above, the **Overview** section carries the ED's board-facing summaries — **Impact Data** (households and individuals served, by city, situation, and referring agency), **Landfill Diversion**, and **Value of Goods** (fair-market value of goods delivered, from the standardized rate card). Each supports Daily / Monthly / Yearly windows plus monthly-trend and annual-trend views, and exports to PDF / XLSX / DOCX. The **individuals-served** figures (children, adult females, adult males, total individuals) come from the **household composition** entered on each packing list — enter those counts on the packing list and this report fills in for the selected period.
+
 > 💡 **Boardroom-friendly.** Take a screenshot of any chart by right-clicking → Save Image. Drop into a board presentation.
 
 ---
@@ -660,6 +684,21 @@ Lookup tables (their names start with `lkp_`) are the dropdown choices throughou
 3. New entries immediately appear in dropdowns across the app.
 
 > ⚠️ **Don't delete lookup entries that are in use.** If any record references that entry, deleting will fail (the app protects you). Instead, mark it inactive if the table has an active flag.
+
+### Managing the packing-list template
+
+Every new packing list pre-loads a default room-by-room checklist (a full 3-bed / 3-bath home with an attached garage). That checklist lives in two tables you can edit without a developer:
+
+- Admin → **Packing Template — Rooms** (`tbl_packing_template_room`) — the room headings. `sort_order` controls the order they appear; uncheck `is_active` to retire a room without deleting it.
+- Admin → **Packing Template — Items** (`tbl_packing_template_item`) — the items under each room. Each row points at a room (`packing_template_room_id`), has a `default_qty`, an optional `sort_order`, an `is_active` flag, and an optional link to a valuation category (`item_category_id`).
+
+Changes take effect on the **next** new packing list; existing lists are untouched. Editing the template never changes any household's saved list.
+
+> 💡 The individual line items on a saved packing list live in **Packing List Items** (`tbl_client_request_items`), and each household's children live in **Packing List — Children** (`tbl_request_child`). You'll rarely edit these directly — the packing list form is the right place — but they're there if you need to correct data in bulk.
+
+#### New packing-list fields (for reference)
+
+The packing list (`tbl_client_provisioning_request`) gained several columns with this release: `reference_code` (the `FH-######` number, unique, auto-generated), `referral_id` (the selected approved referral), `fulfillment_type`, `appointment_at`, `trailer_size`, `crew_size`, `loading_notes`, `residence_type`, `delivery_logistics_notes`, `situation_notes`, `situation_tags`, `internal_notes`, `household_type`, and the demographic counts (`child_count`, `adult_female_count`, `adult_male_count`). All are optional. The database schema diagram (`docs/FurnishHopeERD.pdf`, also served from **System → Database Admin → View ERD (PDF)**) reflects these — regenerate it with `scripts/generate_erd_pdf.py` whenever the schema changes (see `docs/REGENERATE_ERD.md`).
 
 ### Shift templates
 

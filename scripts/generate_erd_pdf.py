@@ -79,8 +79,9 @@ THEMES: list[tuple[str, str, list[str]]] = [
     ),
     (
         "Clients & Households",
-        "The client lifecycle — referral, intake, provisioning request, visit, "
-        "waiver, and delivery. Container pickup tables live here too.",
+        "The client lifecycle — referral, intake, packing list (provisioning "
+        "request) with its per-child rows + room/item template, visit, waiver, "
+        "and delivery. Container pickup tables live here too.",
         [
             "tbl_client",
             "tbl_client_client_type",
@@ -88,6 +89,9 @@ THEMES: list[tuple[str, str, list[str]]] = [
             "tbl_client_provisioning_request",
             "tbl_client_request_items",
             "tbl_request_item_inv_matches",
+            "tbl_request_child",
+            "tbl_packing_template_room",
+            "tbl_packing_template_item",
             "tbl_client_visit",
             "tbl_client_waiver",
             "tbl_waiver_template",
@@ -148,6 +152,7 @@ THEMES: list[tuple[str, str, list[str]]] = [
         [
             "tbl_corp_facility_inventory_item",
             "tbl_inventory_reservation",
+            "tbl_item_category_value",
             "lkp_item_category",
             "lkp_item_condition",
             "lkp_item_size",
@@ -253,7 +258,8 @@ THEMES: list[tuple[str, str, list[str]]] = [
     ),
     (
         "Communications, Files & Notes",
-        "Email accounts, cached IMAP messages, templates, the generic "
+        "Email accounts, cached IMAP messages, templates, the outbound/inbound "
+        "messaging layer (SMS + email with templates and triggers), the generic "
         "per-entity attachment table, and free-form notes.",
         [
             "tbl_email_account",
@@ -262,6 +268,15 @@ THEMES: list[tuple[str, str, list[str]]] = [
             "tbl_email_attachment",
             "tbl_email_template",
             "tbl_communication_log",
+            "tbl_message",
+            "tbl_message_notification",
+            "tbl_message_undeliverable",
+            "tbl_message_template",
+            "tbl_message_template_form",
+            "tbl_message_template_recipient_type",
+            "tbl_message_template_sender_role",
+            "tbl_message_trigger",
+            "tbl_message_trigger_recipient",
             "tbl_note",
             "tbl_entity_attachment",
             "tbl_attachment",
