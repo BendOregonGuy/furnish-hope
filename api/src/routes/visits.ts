@@ -66,11 +66,18 @@ visitsRouter.get('/', async (req, res, next) => {
     const upcoming = req.query.upcoming === 'true';
     const limit = Math.min(500, Math.max(1, Number(req.query.limit ?? 100)));
 
+    const visitType = (req.query.visit_type as string | undefined)?.trim() || null;
+    const selectionType = (req.query.selection_type as string | undefined)?.trim() || null;
+    const facilityId = req.query.corp_facility_id ? Number(req.query.corp_facility_id) : null;
+
     if (clientId) { params.push(clientId); conds.push(`v.client_id = $${params.length}`); }
     if (statusId) { params.push(statusId); conds.push(`v.visit_status_id = $${params.length}`); }
     if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) { params.push(from); conds.push(`v.visit_date >= $${params.length}::date`); }
     if (to   && /^\d{4}-\d{2}-\d{2}$/.test(to))   { params.push(to);   conds.push(`v.visit_date <= $${params.length}::date`); }
     if (upcoming) conds.push(`v.visit_date >= CURRENT_DATE`);
+    if (visitType && (VISIT_TYPES as readonly string[]).includes(visitType)) { params.push(visitType); conds.push(`v.visit_type = $${params.length}`); }
+    if (selectionType && (SELECTION_TYPES as readonly string[]).includes(selectionType)) { params.push(selectionType); conds.push(`v.selection_type = $${params.length}`); }
+    if (facilityId && Number.isInteger(facilityId) && facilityId > 0) { params.push(facilityId); conds.push(`v.corp_facility_id = $${params.length}`); }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
     params.push(limit);

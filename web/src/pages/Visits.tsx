@@ -1,6 +1,7 @@
 /**
  * Client visits list — scheduled and past appointments where a client
- * chooses their furniture. Filterable by date, status, and mode.
+ * chooses their furniture. Filterable by date, status, mode, visit type,
+ * selection type, and location.
  */
 
 import { useQuery } from '@tanstack/react-query';
@@ -9,6 +10,9 @@ import { useState } from 'react';
 import { apiGet, formatShortDate } from '../lib/api.ts';
 import { PageHeader, Loading, ErrorBox, EmptyState, StatusPill } from '../components/ui.tsx';
 import { FkSelect } from '../components/admin/FkSelect.tsx';
+
+const VISIT_TYPE_OPTIONS = ['Delivery', 'Donation Center Pick Up', 'Selection of Items'];
+const SELECTION_TYPE_OPTIONS = ['Guest Selection Appointment', 'Video Call Appointment', 'Volunteer Selection'];
 
 interface VisitRow {
   client_visit_id: number;
@@ -19,6 +23,8 @@ interface VisitRow {
   end_time: string | null;
   visit_mode: string;
   visit_status: string;
+  visit_type: string | null;
+  selection_type: string | null;
   facility_name: string | null;
   host_name: string | null;
 }
@@ -27,17 +33,23 @@ export function Visits() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [statusId, setStatusId] = useState<number | null>(null);
+  const [visitType, setVisitType] = useState('');
+  const [selectionType, setSelectionType] = useState('');
+  const [facilityId, setFacilityId] = useState<number | null>(null);
 
   const { data, isLoading, error } = useQuery<VisitRow[]>({
-    queryKey: ['visits', from, to, statusId],
+    queryKey: ['visits', from, to, statusId, visitType, selectionType, facilityId],
     queryFn: () => apiGet('/api/visits', {
       from: from || undefined,
       to:   to   || undefined,
       status_id: statusId ? String(statusId) : undefined,
+      visit_type: visitType || undefined,
+      selection_type: selectionType || undefined,
+      corp_facility_id: facilityId ? String(facilityId) : undefined,
     }),
   });
 
-  const filtersActive = !!(from || to || statusId);
+  const filtersActive = !!(from || to || statusId || visitType || selectionType || facilityId);
 
   return (
     <>
@@ -65,6 +77,24 @@ export function Visits() {
             <label className="field-label">Status</label>
             <FkSelect fkTable="lkp_visit_status" value={statusId} onChange={setStatusId} />
           </div>
+          <div>
+            <label className="field-label">Visit type</label>
+            <select className="field-input" value={visitType} onChange={e => setVisitType(e.target.value)}>
+              <option value="">All types</option>
+              {VISIT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="field-label">Selection type</label>
+            <select className="field-input" value={selectionType} onChange={e => setSelectionType(e.target.value)}>
+              <option value="">All selection types</option>
+              {SELECTION_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="field-label">Location</label>
+            <FkSelect fkTable="tbl_corp_facility" value={facilityId} onChange={setFacilityId} />
+          </div>
         </div>
       </div>
 
@@ -85,6 +115,8 @@ export function Visits() {
                 <Th>Client</Th>
                 <Th>Time</Th>
                 <Th>Mode</Th>
+                <Th>Visit type</Th>
+                <Th>Selection type</Th>
                 <Th>Host</Th>
                 <Th>Where</Th>
                 <Th>Status</Th>
@@ -107,6 +139,8 @@ export function Visits() {
                       : v.start_time ? formatTime(v.start_time) : '—'}
                   </td>
                   <td className="px-5 py-3 text-xs text-ink-soft">{v.visit_mode}</td>
+                  <td className="px-5 py-3 text-xs text-ink-soft">{v.visit_type ?? '—'}</td>
+                  <td className="px-5 py-3 text-xs text-ink-soft">{v.selection_type ?? '—'}</td>
                   <td className="px-5 py-3 text-xs text-ink-soft">{v.host_name ?? '—'}</td>
                   <td className="px-5 py-3 text-xs text-ink-soft">{v.facility_name ?? '—'}</td>
                   <td className="px-5 py-3"><StatusPill status={v.visit_status} /></td>

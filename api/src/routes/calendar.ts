@@ -200,6 +200,7 @@ calendarRouter.get('/', async (req, res, next) => {
       id: number; title: string; date: string;
       start_time: string | null; end_time: string | null;
       visit_mode: string; visit_status: string;
+      visit_type: string | null; selection_type: string | null;
     }>(`
       SELECT
         v.client_visit_id AS id,
@@ -208,7 +209,9 @@ calendarRouter.get('/', async (req, res, next) => {
         v.start_time::text AS start_time,
         v.end_time::text   AS end_time,
         vm.visit_mode,
-        vs.visit_status
+        vs.visit_status,
+        v.visit_type,
+        v.selection_type
       FROM tbl_client_visit v
       JOIN tbl_client c ON c.client_id = v.client_id
       JOIN tbl_contact contact ON contact.contact_id = c.contact_id
@@ -327,7 +330,7 @@ calendarRouter.get('/', async (req, res, next) => {
         allDay: false,
         url: `/visits/${v.id}`,
         color: '#A5644E', // warm copper — distinct from delivery sage and pickup terracotta
-        meta: { mode: v.visit_mode, status: v.visit_status },
+        meta: { mode: v.visit_mode, status: v.visit_status, visit_type: v.visit_type, selection_type: v.selection_type },
       });
     }
 

@@ -303,9 +303,11 @@ export function Help() {
           and deliveries.
         </p>
         <p>
-          Sidebar → <strong>Clients → Visits</strong> shows every visit across all clients,
-          filterable by date range and status. A client's visit history is also visible on
-          their detail page (most recent eight, with a link to the full list).
+          Sidebar → <strong>Clients → Visits</strong> shows every visit across all clients —
+          the list now includes <strong>Visit type</strong> and <strong>Selection type</strong>
+          columns, and is filterable by date range, status, <strong>visit type</strong>,
+          <strong>selection type</strong>, and <strong>location</strong>. A client's visit history
+          is also visible on their detail page (most recent eight, with a link to the full list).
         </p>
         <ScreenshotSlot slug="visits-list" description="The visits list with date and status filters." url="/visits" />
       </section>
@@ -448,10 +450,11 @@ export function Help() {
       {/* ============================================================ */}
       <section id="calendar">
         <h2>Calendar</h2>
-        <p>The Calendar shows everything on one view — pickups, deliveries, shifts, events. Color-coded by type.</p>
+        <p>The Calendar shows everything on one view — pickups, deliveries, events, campaigns, and client visits. Color-coded by type.</p>
         <ul>
           <li>Click any entry to jump to its detail page.</li>
-          <li>Toggle event types at the top to filter.</li>
+          <li>Toggle event types at the top to filter — including <strong>Visits</strong>.</li>
+          <li>When <strong>Visits</strong> is turned on, the <strong>Visit type</strong> and <strong>Selection type</strong> chips below become active, so you can narrow the calendar to (for example) only "Selection of Items" visits, or only "Guest Selection Appointment" ones. Turn Visits off and those chips are disabled.</li>
           <li>Switch month / week / day views.</li>
         </ul>
         <ScreenshotSlot slug="calendar-month" description="The calendar in month view with pickups, deliveries, and events visible." url="/calendar" />
