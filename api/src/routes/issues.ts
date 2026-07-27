@@ -239,6 +239,60 @@ issuesRouter.get('/:id', async (req, res, next) => {
 });
 
 /* ----------------------------------------------------------------- */
+/*  Notes thread (developer) — list newest-first + add                */
+/* ----------------------------------------------------------------- */
+
+/** GET /api/issues/:id/notes — every triage note for an issue, most recent
+ *  first, with the author's display name resolved. */
+issuesRouter.get('/:id/notes', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+    const rows = await query(`
+      SELECT
+        n.issue_note_id, n.issue_id, n.note, n.created_at,
+        n.author_user_account_id,
+        COALESCE(NULLIF(btrim(sc.first_name || ' ' || sc.last_name), ''), ua.username) AS author_name
+      FROM tbl_app_issue_note n
+      LEFT JOIN tbl_user_account  ua ON ua.user_account_id = n.author_user_account_id
+      LEFT JOIN tbl_facility_staff fs ON fs.facility_staff_id = ua.facility_staff_id
+      LEFT JOIN tbl_contact        sc ON sc.contact_id = fs.contact_id
+      WHERE n.issue_id = $1
+      ORDER BY n.created_at DESC, n.issue_note_id DESC
+    `, [id]);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+/** POST /api/issues/:id/notes — append a note authored by the current user. */
+issuesRouter.post('/:id/notes', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+    const note = String(req.body?.note ?? '').trim();
+    if (!note) return res.status(400).json({ error: 'note required' });
+
+    const created = await withTransaction(async (tx) => {
+      const issue = await tx.queryOne<{ issue_id: number }>(
+        `SELECT issue_id FROM tbl_app_issue WHERE issue_id = $1`, [id],
+      );
+      if (!issue) { const e: any = new Error('Issue not found'); e.status = 404; throw e; }
+      const row = await tx.queryOne<Record<string, any>>(`
+        INSERT INTO tbl_app_issue_note (issue_id, author_user_account_id, note)
+        VALUES ($1, $2, $3)
+        RETURNING issue_note_id, issue_id, note, created_at, author_user_account_id
+      `, [id, req.user!.user_account_id, note]);
+      // Touch the parent issue so it sorts as recently active.
+      await tx.query(`UPDATE tbl_app_issue SET updated_at = NOW() WHERE issue_id = $1`, [id]);
+      await auditCreate(req, 'tbl_app_issue_note', row!.issue_note_id, row!, tx);
+      return row!;
+    });
+
+    res.status(201).json(created);
+  } catch (err) { next(err); }
+});
+
+/* ----------------------------------------------------------------- */
 /*  Screenshot stream (developer)                                     */
 /* ----------------------------------------------------------------- */
 

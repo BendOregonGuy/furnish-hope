@@ -5,7 +5,7 @@
  * closed) and write resolution notes.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiGet, apiPost, apiPut, formatLongDate } from '../../lib/api.ts';
@@ -38,6 +38,22 @@ interface IssueDetail {
   has_screenshot: boolean;
 }
 
+interface IssueNote {
+  issue_note_id: number;
+  issue_id: number;
+  note: string;
+  created_at: string;
+  author_user_account_id: number | null;
+  author_name: string | null;
+}
+
+/** "May 22, 2026, 3:04 PM" — date + time for the notes thread. */
+function fmtDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 export function DevIssueDetail() {
   const { id } = useParams();
   const qc = useQueryClient();
@@ -48,11 +64,24 @@ export function DevIssueDetail() {
     queryFn: () => apiGet(`/api/issues/${id}`),
   });
 
-  const [resolutionNotes, setResolutionNotes] = useState('');
-  useEffect(() => { if (data?.resolution_notes != null) setResolutionNotes(data.resolution_notes); }, [data?.resolution_notes]);
+  const { data: notes = [] } = useQuery<IssueNote[]>({
+    queryKey: ['dev-issue-notes', id],
+    queryFn: () => apiGet(`/api/issues/${id}/notes`),
+  });
+
+  const [noteText, setNoteText] = useState('');
+  const addNoteMut = useMutation({
+    mutationFn: (note: string) => apiPost(`/api/issues/${id}/notes`, { note }),
+    onSuccess: () => {
+      setNoteText('');
+      qc.invalidateQueries({ queryKey: ['dev-issue-notes', id] });
+      qc.invalidateQueries({ queryKey: ['dev-issue', id] });
+    },
+    onError: (e: any) => window.alert(e?.message ?? 'Add note failed'),
+  });
 
   const updateMut = useMutation({
-    mutationFn: (body: { status?: Status; severity?: Severity; resolution_notes?: string }) => apiPut(`/api/issues/${id}`, body),
+    mutationFn: (body: { status?: Status; severity?: Severity }) => apiPut(`/api/issues/${id}`, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['dev-issue', id] });
       qc.invalidateQueries({ queryKey: ['dev-issues'] });
@@ -133,6 +162,43 @@ export function DevIssueDetail() {
             )}
           </div>
 
+          {/* Notes thread — newest first, each stamped with author + date. */}
+          <div className="card">
+            <div className="card-head"><h3 className="font-display font-medium text-base m-0">Notes</h3></div>
+            <div className="mb-4">
+              <textarea
+                className="field-input"
+                rows={2}
+                value={noteText}
+                onChange={e => setNoteText(e.target.value)}
+                placeholder="Add a note — what you found, what you changed, follow-up needed."
+              />
+              <div className="flex justify-end mt-2">
+                <button
+                  type="button"
+                  onClick={() => { const t = noteText.trim(); if (t) addNoteMut.mutate(t); }}
+                  disabled={!noteText.trim() || addNoteMut.isPending}
+                  className="btn-primary text-xs disabled:opacity-60"
+                >{addNoteMut.isPending ? 'Adding…' : 'Add note'}</button>
+              </div>
+            </div>
+            {notes.length === 0 ? (
+              <div className="text-xs text-ink-faint italic">No notes yet — add the first one above.</div>
+            ) : (
+              <ul className="space-y-3 m-0 p-0 list-none">
+                {notes.map(n => (
+                  <li key={n.issue_note_id} className="border-t border-hairline pt-3 first:border-t-0 first:pt-0">
+                    <div className="flex items-baseline justify-between gap-2 mb-1">
+                      <span className="text-xs font-medium text-ink">{n.author_name ?? 'Unknown user'}</span>
+                      <span className="text-[11px] text-ink-faint whitespace-nowrap">{fmtDateTime(n.created_at)}</span>
+                    </div>
+                    <pre className="text-sm text-ink whitespace-pre-wrap font-sans m-0">{n.note}</pre>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           {data.has_screenshot && (
             <div className="card">
               <div className="card-head"><h3 className="font-display font-medium text-base m-0">Screenshot</h3></div>
@@ -178,22 +244,7 @@ export function DevIssueDetail() {
                 <option value="critical">Critical</option>
               </select>
             </div>
-            <div>
-              <label className="field-label">Resolution notes</label>
-              <textarea
-                className="field-input"
-                rows={4}
-                value={resolutionNotes}
-                onChange={e => setResolutionNotes(e.target.value)}
-                onBlur={() => {
-                  if (resolutionNotes !== (data.resolution_notes ?? '')) {
-                    updateMut.mutate({ resolution_notes: resolutionNotes });
-                  }
-                }}
-                placeholder="What you found, what you changed, follow-up needed."
-              />
-            </div>
-            <div className="mt-3 pt-3 border-t border-hairline">
+            <div className="pt-1 border-t border-hairline">
               <button
                 type="button"
                 onClick={() => {

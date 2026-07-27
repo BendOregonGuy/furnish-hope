@@ -756,6 +756,19 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
       user_agent:      { hideInList: true },
     },
   },
+  tbl_app_issue_note: {
+    group: 'System',
+    label: 'App Issue Notes',
+    singular: 'App Issue Note',
+    description: 'Threaded triage notes on reported issues. Normally added from the issue detail page at /dev/issues, newest first.',
+    displaySql: "'#' || t.issue_id::text || ' note ' || t.issue_note_id::text",
+    listColumns: ['issue_note_id', 'issue_id', 'author_user_account_id', 'created_at'],
+    searchColumns: ['note'],
+    defaultSort: { column: 'created_at', direction: 'desc' },
+    columns: {
+      note: { type: 'textarea', label: 'Note' },
+    },
+  },
   tbl_app_broadcast: {
     group: 'System',
     label: 'App Broadcasts',

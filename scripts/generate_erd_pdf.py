@@ -295,6 +295,7 @@ THEMES: list[tuple[str, str, list[str]]] = [
             "tbl_audit_log",
             "tbl_app_setting",
             "tbl_app_issue",
+            "tbl_app_issue_note",
             "tbl_app_broadcast",
             "tbl_app_broadcast_dismissal",
             "tbl_org_branding",

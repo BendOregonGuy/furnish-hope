@@ -127,7 +127,7 @@ Plus row-level scoping for agency caseworkers (they only see their own org's ref
 8. **Vendors** — outside service providers + service log
 9. **Partner Agencies** — self-serve agency onboarding pipeline: public `/apply-to-refer` form → PM review queue at `/agencies/applications` → atomic approval creates the agency + caseworker invitation tokens → caseworker signs up at `/caseworker-register/:token` → lands in `/agency/*`. The enhanced caseworker dashboard shows KPIs (this-month referrals + total + open + delivered), request status pills, a merged activity feed (referrals + requests + deliveries), and a team table with Active / Invited-until-DATE / Expired / Revoked pills. Every `/api/agency/*` endpoint scopes by `req.user.agency_id`; admin dropdowns use a table-level `fkOptionsFilter` so unapproved agencies (and their contacts) can't be picked for new referrals even while existing rows continue to display their agency name.
 10. **Communications, Files & Notes** — per-user email accounts (IMAP/SMTP), Mailbox view, email templates, generic per-entity attachments
-11. **System** — user accounts, audit log, app settings, in-app issue tracker, broadcast banner, org branding, user-manual screenshots
+11. **System** — user accounts, audit log, app settings, in-app issue tracker (with threaded triage notes in `tbl_app_issue_note`), broadcast banner, org branding, user-manual screenshots
 
 ---
 
@@ -190,7 +190,7 @@ That's how all ~160 tables get an editor without ~160 hand-written forms.
 - **Per-entity widgets**: Email widget (your mail with this donor/client), Attachments widget (per-entity files), and Notes widget all attach to any detail page via `(entity_type, entity_id)`.
 - **Quick-create modals**: from any FK dropdown, "+ New …" inline-creates the referenced row (Donor, Address, Vehicle, Contact, Facility, Staff, Pledge, Campaign).
 - **In-app User Manual** at `/help` with sticky TOC, anchor-aware Help buttons on every page header, retry-loop scroll for late-loading content, single-tab reuse.
-- **Issue reporter**: admin-only "Report issue" button captures a screenshot via `html2canvas`, posts to `/api/issues`. Developer console at `/dev/issues` triages with status workflow + broadcast banners.
+- **Issue reporter**: admin-only "Report issue" button captures a screenshot via `html2canvas`, posts to `/api/issues`. Developer console at `/dev/issues` triages with status workflow + broadcast banners + a **threaded notes** thread (`tbl_app_issue_note`, newest-first, each note stamped with author + timestamp).
 - **ERD PDF**: 12 themed pages, regenerated via `python scripts/generate_erd_pdf.py`, served from `/api/admin/erd`.
 
 ---

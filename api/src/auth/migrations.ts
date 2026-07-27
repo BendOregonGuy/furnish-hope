@@ -3482,6 +3482,33 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: 'tbl_app_issue_note — threaded triage notes',
+    async run() {
+      await query(`
+        CREATE TABLE IF NOT EXISTS tbl_app_issue_note (
+          issue_note_id          SERIAL PRIMARY KEY,
+          issue_id               INTEGER NOT NULL REFERENCES tbl_app_issue(issue_id) ON DELETE CASCADE,
+          author_user_account_id INTEGER REFERENCES tbl_user_account(user_account_id) ON DELETE SET NULL,
+          note                   TEXT NOT NULL,
+          created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_app_issue_note_issue ON tbl_app_issue_note (issue_id, created_at DESC)`);
+      // Preserve any existing single resolution_notes as the first note in the
+      // thread so no history is lost. Guarded so it only runs once per issue.
+      await query(`
+        INSERT INTO tbl_app_issue_note (issue_id, author_user_account_id, note, created_at)
+        SELECT i.issue_id,
+               COALESCE(i.assignee_user_account_id, i.reporter_user_account_id),
+               i.resolution_notes,
+               COALESCE(i.resolved_at, i.updated_at, i.created_at)
+          FROM tbl_app_issue i
+         WHERE i.resolution_notes IS NOT NULL AND btrim(i.resolution_notes) <> ''
+           AND NOT EXISTS (SELECT 1 FROM tbl_app_issue_note n WHERE n.issue_id = i.issue_id)
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

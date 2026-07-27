@@ -874,7 +874,8 @@ export function Help() {
           <li>The full screenshot the reporter captured (click to open at full size in a new tab).</li>
           <li>The narrative — title, description, expected vs actual, steps to reproduce.</li>
           <li>Context — page URL, viewport size, browser version, reporter name, when it was filed.</li>
-          <li>Triage controls in the right sidebar — change Status, adjust Severity, write resolution notes.</li>
+          <li>Triage controls in the right sidebar — change Status and adjust Severity.</li>
+          <li>A <strong>Notes</strong> thread — add as many notes as you like as the investigation progresses. Each note is stamped with <strong>who wrote it</strong> and <strong>when</strong>, and the list shows the most recent note first.</li>
         </ul>
         <p><strong>Status workflow:</strong></p>
         <ul>
@@ -884,8 +885,9 @@ export function Help() {
           <li><strong>Closed</strong> — issue is verified fixed or otherwise closed out.</li>
         </ul>
         <p>
-          Resolution notes auto-save on blur (when you click outside the
-          textarea), so don't worry about pressing a Save button.
+          To record what you found or changed, type in the <strong>Notes</strong> box and click
+          <strong> Add note</strong> — it's added to the top of the thread with your name and the
+          date. Notes are append-only, so the full triage history stays intact.
         </p>
 
         <h3 id="developer-tools-broadcasts">Broadcasting to all users</h3>
