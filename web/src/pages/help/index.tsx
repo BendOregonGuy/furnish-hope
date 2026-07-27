@@ -270,11 +270,30 @@ export function Help() {
           <li><strong>Zoom</strong> — live video call where staff shows the showroom or catalog on screen.</li>
           <li><strong>Email</strong> — asynchronous; staff sends photos/a catalog, the client replies with picks.</li>
         </ul>
+        <p>Separately from the mode (how you communicate), each visit has a <strong>Visit type</strong>:</p>
+        <ul>
+          <li><strong>Delivery</strong> — the visit is tied to delivering furniture to the household.</li>
+          <li><strong>Donation Center Pick Up</strong> — the household collects items at the donation center.</li>
+          <li><strong>Selection of Items</strong> — the household is choosing what they want. When you pick this type, a second field, <strong>Selection type</strong>, becomes available:
+            <ul>
+              <li><strong>Guest Selection Appointment</strong> — the household selects in person.</li>
+              <li><strong>Video Call Appointment</strong> — selection happens over a video call.</li>
+              <li><strong>Volunteer Selection</strong> — a volunteer makes the selections on the household's behalf.</li>
+            </ul>
+          </li>
+        </ul>
+        <p>
+          The <strong>Selection type</strong> field is only enabled when Visit type is
+          "Selection of Items" — for Delivery or Donation Center Pick Up it stays disabled
+          (and is cleared automatically), so a selection type can never be attached to a
+          non-selection visit.
+        </p>
         <p>To schedule a visit:</p>
         <ol>
           <li>Open the client's detail page (Sidebar → <strong>Clients → Clients</strong> → click the name).</li>
           <li>In the <strong>Visits</strong> card at the top, click <strong>+ Schedule visit</strong>.</li>
           <li>The form pre-fills the client. Pick a date, time window, mode, status, host (the staff member running the visit), and a location (only required for in-person).</li>
+          <li>Choose the <strong>Visit type</strong> (and, for "Selection of Items", the <strong>Selection type</strong>).</li>
           <li>Optionally link the visit to the packing list it serves.</li>
           <li>Save.</li>
         </ol>

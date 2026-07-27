@@ -29,6 +29,26 @@ interface WritePayload {
   corp_facility_id?: number | null;
   client_provisioning_request_id?: number | null;
   notes?: string | null;
+  visit_type?: string | null;      // Delivery | Donation Center Pick Up | Selection of Items
+  selection_type?: string | null;  // only when visit_type = 'Selection of Items'
+}
+
+const VISIT_TYPES = ['Delivery', 'Donation Center Pick Up', 'Selection of Items'] as const;
+const SELECTION_TYPES = ['Guest Selection Appointment', 'Video Call Appointment', 'Volunteer Selection'] as const;
+const SELECTION_VISIT_TYPE = 'Selection of Items';
+
+/** Normalize the type pair: selection_type only survives when visit_type is
+ *  'Selection of Items' — mirrors the form's enable/disable rule so the data
+ *  can never carry a selection_type for a non-selection visit. */
+function normalizeTypes(b: WritePayload): { visit_type: string | null; selection_type: string | null } {
+  const visit_type = b.visit_type && (VISIT_TYPES as readonly string[]).includes(b.visit_type) ? b.visit_type : null;
+  let selection_type: string | null = null;
+  if (visit_type === SELECTION_VISIT_TYPE
+      && b.selection_type
+      && (SELECTION_TYPES as readonly string[]).includes(b.selection_type)) {
+    selection_type = b.selection_type;
+  }
+  return { visit_type, selection_type };
 }
 
 /* ----------------------------------------------------------------- */
@@ -67,6 +87,8 @@ visitsRouter.get('/', async (req, res, next) => {
         v.corp_facility_id,
         v.client_provisioning_request_id,
         v.notes,
+        v.visit_type,
+        v.selection_type,
         v.created_at,
         contact.first_name || ' ' || contact.last_name AS client_name,
         vm.visit_mode,
@@ -112,6 +134,8 @@ visitsRouter.get('/:id', async (req, res, next) => {
         v.corp_facility_id,
         v.client_provisioning_request_id,
         v.notes,
+        v.visit_type,
+        v.selection_type,
         v.created_at,
         v.updated_at,
         contact.first_name || ' ' || contact.last_name AS client_name,
@@ -162,14 +186,16 @@ visitsRouter.post('/', async (req, res, next) => {
     const errs = validate(body);
     if (errs.length) return res.status(400).json({ error: errs.join('; ') });
 
+    const types = normalizeTypes(body);
     const newId = await withTransaction(async (tx) => {
       const r = await tx.queryOne<Record<string, any>>(`
         INSERT INTO tbl_client_visit
           (client_id, visit_date, start_time, end_time,
            visit_mode_id, visit_status_id, host_facility_staff_id,
            corp_facility_id, client_provisioning_request_id, notes,
+           visit_type, selection_type,
            created_by_user_account_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING *
       `, [
         body.client_id,
@@ -182,6 +208,8 @@ visitsRouter.post('/', async (req, res, next) => {
         body.corp_facility_id ?? null,
         body.client_provisioning_request_id ?? null,
         body.notes?.trim() || null,
+        types.visit_type,
+        types.selection_type,
         req.user!.user_account_id,
       ]);
       await auditCreate(req, 'tbl_client_visit', r!.client_visit_id, r!, tx);
@@ -209,6 +237,7 @@ visitsRouter.put('/:id', async (req, res, next) => {
       );
       if (!before) { const e: any = new Error('Visit not found'); e.status = 404; throw e; }
 
+      const types = normalizeTypes(body);
       const after = await tx.queryOne<Record<string, any>>(`
         UPDATE tbl_client_visit
            SET client_id                      = $1,
@@ -221,8 +250,10 @@ visitsRouter.put('/:id', async (req, res, next) => {
                corp_facility_id               = $8,
                client_provisioning_request_id = $9,
                notes                          = $10,
+               visit_type                     = $11,
+               selection_type                 = $12,
                updated_at                     = NOW()
-         WHERE client_visit_id = $11
+         WHERE client_visit_id = $13
          RETURNING *
       `, [
         body.client_id,
@@ -235,6 +266,8 @@ visitsRouter.put('/:id', async (req, res, next) => {
         body.corp_facility_id ?? null,
         body.client_provisioning_request_id ?? null,
         body.notes?.trim() || null,
+        types.visit_type,
+        types.selection_type,
         id,
       ]);
       if (after) await auditUpdate(req, 'tbl_client_visit', id, before, after, tx);

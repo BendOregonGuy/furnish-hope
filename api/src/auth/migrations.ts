@@ -3509,6 +3509,19 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: 'visit type + selection type',
+    async run() {
+      // visit_type: 'Delivery' | 'Donation Center Pick Up' | 'Selection of Items'
+      // selection_type applies only when visit_type = 'Selection of Items':
+      //   'Guest Selection Appointment' | 'Video Call Appointment' | 'Volunteer Selection'
+      await query(`
+        ALTER TABLE tbl_client_visit
+          ADD COLUMN IF NOT EXISTS visit_type     VARCHAR(40),
+          ADD COLUMN IF NOT EXISTS selection_type VARCHAR(40)
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

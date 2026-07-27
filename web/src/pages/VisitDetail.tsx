@@ -26,6 +26,8 @@ interface VisitDetailResponse {
     facility_name: string | null;
     host_name: string | null;
     client_provisioning_request_id: number | null;
+    visit_type: string | null;
+    selection_type: string | null;
     notes: string | null;
     created_at: string;
   };
@@ -85,11 +87,15 @@ export function VisitDetail() {
               : v.start_time ? formatTime(v.start_time) : '—'}
           </Detail>
           <Detail label="Mode">{v.visit_mode}</Detail>
+          <Detail label="Visit type">{v.visit_type ?? '—'}</Detail>
+          {v.visit_type === 'Selection of Items' && (
+            <Detail label="Selection type">{v.selection_type ?? '—'}</Detail>
+          )}
           <Detail label="Host">{v.host_name ?? '—'}</Detail>
           <Detail label="Location">{v.facility_name ?? (v.visit_mode === 'In-person' ? '— (set a facility)' : '— (n/a)')}</Detail>
-          <Detail label="Linked request">
+          <Detail label="Linked packing list">
             {v.client_provisioning_request_id
-              ? <Link to={`/requests/${v.client_provisioning_request_id}`} className="text-terracotta hover:text-terracotta-deep">Request #{v.client_provisioning_request_id}</Link>
+              ? <Link to={`/requests/${v.client_provisioning_request_id}`} className="text-terracotta hover:text-terracotta-deep">Packing list #{v.client_provisioning_request_id}</Link>
               : <span className="text-ink-faint">—</span>}
           </Detail>
         </div>

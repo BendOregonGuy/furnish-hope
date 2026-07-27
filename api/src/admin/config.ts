@@ -228,6 +228,20 @@ export const TABLE_OVERRIDES: Record<string, TableOverride> = {
     searchColumns: ['item_name'],
     defaultSort: { column: 'sort_order', direction: 'asc' },
   },
+  tbl_client_visit: {
+    group: 'Clients & Referrals',
+    label: 'Client Visits',
+    singular: 'Client Visit',
+    displaySql: "(SELECT c.first_name || ' ' || c.last_name FROM tbl_contact c JOIN tbl_client cl ON cl.contact_id = c.contact_id WHERE cl.client_id = t.client_id) || ' • ' || to_char(t.visit_date,'YYYY-MM-DD')",
+    listColumns: ['client_visit_id', 'client_id', 'visit_date', 'visit_type', 'selection_type', 'visit_status_id'],
+    searchColumns: ['notes'],
+    defaultSort: { column: 'visit_date', direction: 'desc' },
+    columns: {
+      notes:          { type: 'textarea', label: 'Notes' },
+      visit_type:     { label: 'Visit type', enumValues: ['Delivery', 'Donation Center Pick Up', 'Selection of Items'] },
+      selection_type: { label: 'Selection type', enumValues: ['Guest Selection Appointment', 'Video Call Appointment', 'Volunteer Selection'] },
+    },
+  },
   tbl_request_item_inv_matches: {
     group: 'Clients & Referrals',
     label: 'Request → Inventory Matches',

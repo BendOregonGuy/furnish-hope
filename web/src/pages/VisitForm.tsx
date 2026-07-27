@@ -37,12 +37,17 @@ const FIELDS: ColumnMeta[] = [
   { name: 'notes',                  label: 'Notes',           type: 'textarea', required: false, isPk: false, isFk: false },
 ];
 
+const VISIT_TYPE_OPTIONS = ['Delivery', 'Donation Center Pick Up', 'Selection of Items'];
+const SELECTION_TYPE_OPTIONS = ['Guest Selection Appointment', 'Video Call Appointment', 'Volunteer Selection'];
+const SELECTION_VISIT_TYPE = 'Selection of Items';
+
 function blankState(): Record<string, any> {
   return {
     client_id: null, visit_date: '', start_time: '', end_time: '',
     visit_mode_id: null, visit_status_id: null,
     host_facility_staff_id: null, corp_facility_id: null,
     client_provisioning_request_id: null, notes: '',
+    visit_type: '', selection_type: '',
   };
 }
 
@@ -105,6 +110,8 @@ export function VisitForm() {
         corp_facility_id:               v.corp_facility_id,
         client_provisioning_request_id: v.client_provisioning_request_id,
         notes:                          v.notes ?? '',
+        visit_type:                     v.visit_type ?? '',
+        selection_type:                 v.selection_type ?? '',
       };
       setValues(init);
       setInitial(init);
@@ -121,6 +128,11 @@ export function VisitForm() {
       // stale (now-invalid) cross-client link into the submit body.
       if (name === 'client_id' && prev.client_id !== v) {
         next.client_provisioning_request_id = null;
+      }
+      // Selection Type only applies to a "Selection of Items" visit — clear it
+      // whenever the visit type is anything else (mirrors the disabled field).
+      if (name === 'visit_type' && v !== SELECTION_VISIT_TYPE) {
+        next.selection_type = '';
       }
       return next;
     });
@@ -195,6 +207,8 @@ export function VisitForm() {
       corp_facility_id: values.corp_facility_id ? Number(values.corp_facility_id) : null,
       client_provisioning_request_id: values.client_provisioning_request_id ? Number(values.client_provisioning_request_id) : null,
       notes: values.notes || null,
+      visit_type: values.visit_type || null,
+      selection_type: values.visit_type === SELECTION_VISIT_TYPE ? (values.selection_type || null) : null,
     };
     if (isNew) createMut.mutate(body); else updateMut.mutate(body);
   }
@@ -255,6 +269,39 @@ export function VisitForm() {
       <form onSubmit={handleSubmit} className="space-y-5 max-w-3xl">
         <Section title="Visit" hint="Who, when, and how the client will pick their furniture.">
           <FieldGrid>{FIELDS.map(renderField)}</FieldGrid>
+
+          {/* Visit Type + (conditional) Selection Type. Selection Type is only
+              enabled when Visit Type is "Selection of Items". */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-5">
+            <div>
+              <label className="field-label">Visit type</label>
+              <select
+                className="field-input"
+                value={values.visit_type ?? ''}
+                onChange={e => setField('visit_type', e.target.value)}
+              >
+                <option value="">— Select… —</option>
+                {VISIT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="field-label">
+                Selection type
+                {values.visit_type !== SELECTION_VISIT_TYPE && (
+                  <span className="text-ink-faint font-normal normal-case"> — only for "Selection of Items"</span>
+                )}
+              </label>
+              <select
+                className="field-input disabled:opacity-50 disabled:cursor-not-allowed"
+                value={values.selection_type ?? ''}
+                disabled={values.visit_type !== SELECTION_VISIT_TYPE}
+                onChange={e => setField('selection_type', e.target.value)}
+              >
+                <option value="">— Select… —</option>
+                {SELECTION_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
 
           {/* Linked request — filtered to the chosen client. Lives outside the
               field map so it can react to client_id changes. */}
