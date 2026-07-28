@@ -185,13 +185,22 @@ export function ApplyToRefer() {
   return (
     <div className="min-h-screen bg-paper py-10 px-4">
       <div className="max-w-3xl mx-auto">
-        <header className="mb-8">
+        <header className="mb-6">
           <h1 className="font-display text-3xl font-medium">Apply to refer households</h1>
           <p className="text-ink-soft mt-2">
             Tell us about your agency and the caseworkers who'll be sending
             referrals. Fields marked <span className="text-terracotta">*</span> are required.
           </p>
         </header>
+
+        {/* Steer already-registered partners' new caseworkers away from re-applying. */}
+        <div className="mb-6 p-4 rounded-lg border border-sage-soft bg-sage-soft/40 text-sm text-[#3F4A33]">
+          <strong className="font-display font-medium">Already a Furnish Hope partner?</strong>{' '}
+          You don't need to apply again. If you're a new caseworker at an agency that already
+          refers to us, ask your agency's admin — or email Furnish Hope — to send you a personal
+          invitation link, and you'll create your login from that. This form is only for agencies
+          that aren't registered yet.
+        </div>
 
         <form onSubmit={handleSubmit} className="card space-y-6">
           {/* Honeypot — off-screen, no label, bots fill it */}

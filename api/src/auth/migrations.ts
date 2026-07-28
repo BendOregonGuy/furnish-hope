@@ -3522,6 +3522,31 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: 'agency dedup — unique approved-agency name (guarded)',
+    async run() {
+      // Data-layer backstop against duplicate approved agencies. IMPORTANT:
+      // a unique index would FAIL to build (and thus crash every boot) if the
+      // table already contains duplicate normalized names. So we only create
+      // it when the data is already clean — if duplicates exist, we skip
+      // silently and leave dedup to the app-layer guards. Fully idempotent.
+      await query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM tbl_agency
+             WHERE is_approved
+             GROUP BY lower(btrim(agency_name))
+            HAVING count(*) > 1
+          ) THEN
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_agency_name_approved_norm
+              ON tbl_agency (lower(btrim(agency_name)))
+              WHERE is_approved;
+          END IF;
+        END $$;
+      `);
+    },
+  },
 ];
 
 /** Run every migration, then ensure there's an initial admin user. */

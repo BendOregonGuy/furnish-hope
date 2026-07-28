@@ -300,6 +300,25 @@ publicAgencyApplicationRouter.post('/agency-applications', applicationLimiter, a
     const errs = validateApplication(body);
     if (errs.length) return res.status(400).json({ error: errs.join('; ') });
 
+    // Duplicate guard (backstop for the client-side agency-name dropdown):
+    // reject if the normalized name or the EIN already belongs to an approved
+    // partner. Steers a returning caseworker to request an invite instead.
+    const einDigits = (body.ein ?? '').replace(/[^0-9]/g, '');
+    const dupe = await queryOne<{ agency_name: string }>(`
+      SELECT agency_name FROM tbl_agency
+       WHERE is_approved = true
+         AND (
+           lower(btrim(agency_name)) = lower(btrim($1))
+           OR ( length($2) >= 9 AND regexp_replace(coalesce(ein,''), '[^0-9]', '', 'g') = $2 )
+         )
+       LIMIT 1
+    `, [body.agency_name, einDigits]);
+    if (dupe) {
+      return res.status(409).json({
+        error: `"${dupe.agency_name}" is already a registered Furnish Hope partner. If you're a new caseworker there, ask your agency's admin (or Furnish Hope) to send you an invitation link — you don't need to submit a new application.`,
+      });
+    }
+
     const newId = await withTransaction(async (tx) => {
       const inserted = await tx.queryOne<{ agency_application_id: number }>(`
         INSERT INTO tbl_agency_application (
@@ -489,7 +508,47 @@ agencyApplicationsReviewRouter.get('/:id', async (req, res, next) => {
        ORDER BY ci.issued_at DESC
     `, [id]);
 
-    res.json({ application, caseworkers, populations, invitations });
+    // Possible-duplicate detection for the reviewer: approved agencies that
+    // match this application by normalized name, EIN, or main email; plus any
+    // application caseworker whose email already belongs to a registered
+    // caseworker. Read-only, authenticated context — safe to surface here
+    // (unlike the public apply form, which must not confirm caseworker emails).
+    const app: any = application;
+    const einDigits = (app.ein ?? '').replace(/[^0-9]/g, '');
+    const mainEmail = (app.main_email ?? '').trim();
+    const dupAgencies = await query(`
+      SELECT agency_id, agency_name, ein, main_email,
+             (lower(btrim(agency_name)) = lower(btrim($1)))                                              AS name_exact,
+             (length($2) >= 9 AND regexp_replace(coalesce(ein,''), '[^0-9]', '', 'g') = $2)              AS ein_match,
+             ($3 <> '' AND lower(coalesce(main_email,'')) = lower($3))                                   AS email_match
+        FROM tbl_agency
+       WHERE is_approved = true
+         AND (
+           lower(btrim(agency_name)) = lower(btrim($1))
+           OR agency_name ILIKE '%' || btrim($1) || '%'
+           OR (length($2) >= 9 AND regexp_replace(coalesce(ein,''), '[^0-9]', '', 'g') = $2)
+           OR ($3 <> '' AND lower(coalesce(main_email,'')) = lower($3))
+         )
+       ORDER BY name_exact DESC, agency_name
+       LIMIT 10
+    `, [app.agency_name, einDigits, mainEmail]);
+
+    const dupCaseworkers = await query(`
+      SELECT DISTINCT lower(ct.email)                     AS email,
+             ct.first_name || ' ' || ct.last_name         AS existing_name,
+             ag.agency_name                               AS existing_agency
+        FROM tbl_agency_application_caseworker acw
+        JOIN tbl_contact ct         ON ct.email IS NOT NULL AND lower(ct.email) = lower(acw.email)
+        JOIN tbl_agency_contact agc ON agc.contact_id = ct.contact_id
+        JOIN tbl_agency ag          ON ag.agency_id = agc.agency_id
+       WHERE acw.agency_application_id = $1
+       ORDER BY email
+    `, [id]);
+
+    res.json({
+      application, caseworkers, populations, invitations,
+      possible_duplicates: { agencies: dupAgencies, caseworker_emails: dupCaseworkers },
+    });
   } catch (err) { next(err); }
 });
 
@@ -511,6 +570,20 @@ agencyApplicationsReviewRouter.post('/:id/approve', async (req, res, next) => {
       if (!app) { const e: any = new Error('Application not found'); e.status = 404; throw e; }
       if (app.status !== 'pending') {
         const e: any = new Error(`Application is already ${app.status}`); e.status = 409; throw e;
+      }
+
+      // Duplicate guard: refuse to approve into a second agency with the same
+      // normalized name (also enforced by the unique index when present). Gives
+      // the Program Manager a clean message instead of a raw constraint error.
+      const existingAgency = await tx.queryOne<{ agency_name: string }>(`
+        SELECT agency_name FROM tbl_agency
+         WHERE is_approved = true
+           AND lower(btrim(agency_name)) = lower(btrim($1))
+         LIMIT 1
+      `, [app.agency_name]);
+      if (existingAgency) {
+        const e: any = new Error(`An approved agency named "${existingAgency.agency_name}" already exists. Reject this as a duplicate, or rename the application if it's genuinely a different organization.`);
+        e.status = 409; throw e;
       }
 
       // 2) Resolve lookup FKs for the address. City/county/state come as
@@ -597,19 +670,45 @@ agencyApplicationsReviewRouter.post('/:id/approve', async (req, res, next) => {
       }> = [];
 
       for (const cw of caseworkers) {
-        // Contact
-        const contact = await tx.queryOne<{ contact_id: number }>(`
-          INSERT INTO tbl_contact (contact_type_id, first_name, last_name, email, mobile_phone)
-          VALUES ($1, $2, $3, $4, $5)
-          RETURNING contact_id
-        `, [contactTypeId, cw.first_name, cw.last_name, cw.email, cw.phone]);
+        // Contact — reuse an existing person by email instead of creating a
+        // duplicate tbl_contact (a caseworker may already exist, e.g. at
+        // another agency). Only insert a fresh row when the email is new or
+        // blank. Existing rows keep their current name/phone.
+        let contactId: number;
+        const existingContact = cw.email
+          ? await tx.queryOne<{ contact_id: number }>(
+              `SELECT contact_id FROM tbl_contact WHERE lower(email) = lower($1) ORDER BY contact_id LIMIT 1`,
+              [cw.email],
+            )
+          : null;
+        if (existingContact) {
+          contactId = existingContact.contact_id;
+        } else {
+          const contact = await tx.queryOne<{ contact_id: number }>(`
+            INSERT INTO tbl_contact (contact_type_id, first_name, last_name, email, mobile_phone)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING contact_id
+          `, [contactTypeId, cw.first_name, cw.last_name, cw.email, cw.phone]);
+          contactId = contact!.contact_id;
+        }
 
-        // Agency contact
+        // Agency contact — link this (new or existing) person to the new
+        // agency. Guard against a duplicate link if the same person appears
+        // twice, or is somehow already linked to this agency.
         const agencyContact = await tx.queryOne<{ agency_contact_id: number }>(`
           INSERT INTO tbl_agency_contact (agency_id, contact_id, description)
-          VALUES ($1, $2, $3)
+          SELECT $1, $2, $3
+           WHERE NOT EXISTS (
+             SELECT 1 FROM tbl_agency_contact WHERE agency_id = $1 AND contact_id = $2
+           )
           RETURNING agency_contact_id
-        `, [agencyId, contact!.contact_id, cw.title || null]);
+        `, [agencyId, contactId, cw.title || null]);
+        // If the link already existed, fetch it so the rest of the loop works.
+        const agencyContactId = agencyContact?.agency_contact_id
+          ?? (await tx.queryOne<{ agency_contact_id: number }>(
+               `SELECT agency_contact_id FROM tbl_agency_contact WHERE agency_id = $1 AND contact_id = $2 LIMIT 1`,
+               [agencyId, contactId],
+             ))!.agency_contact_id;
 
         // Backfill the caseworker row on the application with the newly
         // minted agency_contact_id (audit trail for later reference).
@@ -617,7 +716,7 @@ agencyApplicationsReviewRouter.post('/:id/approve', async (req, res, next) => {
           UPDATE tbl_agency_application_caseworker
              SET agency_contact_id = $2
            WHERE agency_application_caseworker_id = $1
-        `, [cw.agency_application_caseworker_id, agencyContact!.agency_contact_id]);
+        `, [cw.agency_application_caseworker_id, agencyContactId]);
 
         // Invitation with a secure random 32-byte hex token
         const token = randomBytes(32).toString('hex');
@@ -626,11 +725,11 @@ agencyApplicationsReviewRouter.post('/:id/approve', async (req, res, next) => {
             (token, agency_id, agency_contact_id, email, status)
           VALUES ($1, $2, $3, $4, 'pending')
           RETURNING caseworker_invitation_id
-        `, [token, agencyId, agencyContact!.agency_contact_id, cw.email]);
+        `, [token, agencyId, agencyContactId, cw.email]);
 
         invitations.push({
           caseworker_invitation_id: invitation!.caseworker_invitation_id,
-          agency_contact_id: agencyContact!.agency_contact_id,
+          agency_contact_id: agencyContactId,
           email: cw.email,
           first_name: cw.first_name,
           last_name: cw.last_name,

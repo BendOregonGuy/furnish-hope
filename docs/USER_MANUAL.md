@@ -311,7 +311,12 @@ The self-serve flow that turns a curious agency into a caseworker who can submit
 
 Any agency can visit `https://<host>/apply-to-refer` (linked from the Furnish Hope website) and fill out a short form: their name, address, populations served (Veteran, Domestic violence survivor, etc.), typical needs, and one or more initial caseworkers. No login required. Submissions land in **Applications** with `status = pending`.
 
-**Duplicate prevention.** As the applicant types the **Agency name**, any already-approved partner whose name matches appears in a dropdown. If they pick an existing agency (or type an exact-name match), the form warns that the agency is already registered and **blocks the submission** — steering a new caseworker at an existing partner to request an invitation instead of creating a duplicate agency. The dropdown is fed by the public approved-agency list, so no private data is exposed.
+**Duplicate prevention.** Several layers keep duplicate agencies out:
+
+- A green banner at the top of the form tells returning partners' new caseworkers to request an invitation instead of applying.
+- As the applicant types the **Agency name**, any already-approved partner whose name matches appears in a dropdown; picking one (or typing an exact-name match) warns them and **blocks the submission**. The dropdown is fed by the public approved-agency list, so no private data is exposed.
+- The server independently rejects any submission whose normalized agency name **or EIN** already belongs to an approved partner — so a duplicate can't sneak through even if someone posts to the endpoint directly.
+- A data-layer unique index makes two approved agencies with the same normalized name impossible (added automatically only when existing data is already clean, so it never disrupts an upgrade).
 
 The form is rate-limited (5 per 15 minutes per IP) and honeypot-guarded, so bot fills are dropped silently.
 
@@ -319,9 +324,9 @@ The form is rate-limited (5 per 15 minutes per IP) and honeypot-guarded, so bot 
 
 Sidebar → **Partner Agencies → Applications** (badge shows pending count). This is visible to anyone whose account has **Administrator** OR **Program Manager** checked.
 
-Clicking a pending row shows the full application detail. Three actions:
+Clicking a pending row shows the full application detail. If the system spots a **possible duplicate**, an amber warning appears at the top of the detail listing any already-approved agency that matches by name, EIN, or main email, and any caseworker email that already belongs to a registered caseworker — so you can reject a duplicate instead of approving a second copy. Three actions:
 
-- **Approve** — atomically creates the `tbl_agency` row (flagged `is_approved = true`), inserts contacts + `agency_contact` links for each initial caseworker, and generates a 14-day one-time invitation token per caseworker. The application flips to `approved` and back-links the newly created agency.
+- **Approve** — atomically creates the `tbl_agency` row (flagged `is_approved = true`), inserts contacts + `agency_contact` links for each initial caseworker, and generates a 14-day one-time invitation token per caseworker. The application flips to `approved` and back-links the newly created agency. **De-dup at approval:** if a caseworker's email already exists as a contact, that existing person is reused (linked to the new agency) instead of creating a duplicate contact; and if an approved agency already has the same normalized name, the approval is refused with a clear message so you can reject the duplicate instead.
 - **Reject** — writes `status = rejected` + a required note. No agency is created. The applicant is not auto-notified.
 - **Copy invitation** — for each caseworker on an approved application, returns the invitation URL, an email subject, and both plaintext and HTML email bodies. Paste into your regular mail client (Gmail / Outlook / whatever) and send to the caseworker.
 

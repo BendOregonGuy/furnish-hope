@@ -62,11 +62,24 @@ interface Invitation {
   user_account_id: number | null;
 }
 
+interface DupAgency {
+  agency_id: number;
+  agency_name: string;
+  name_exact: boolean;
+  ein_match: boolean;
+  email_match: boolean;
+}
+interface DupCaseworker {
+  email: string;
+  existing_name: string;
+  existing_agency: string;
+}
 interface DetailPayload {
   application: QueueRow & Record<string, any>;
   caseworkers: Caseworker[];
   populations: Population[];
   invitations: Invitation[];
+  possible_duplicates?: { agencies: DupAgency[]; caseworker_emails: DupCaseworker[] };
 }
 
 type StatusFilter = 'pending' | 'approved' | 'rejected' | 'all';
@@ -209,6 +222,42 @@ function ApplicationDetail({ id, onChange }: { id: number; onChange: () => void 
           </div>
           <StatusPill status={app.status === 'pending' ? 'new' : app.status} />
         </div>
+
+        {(() => {
+          const dupA = data.possible_duplicates?.agencies ?? [];
+          const dupC = data.possible_duplicates?.caseworker_emails ?? [];
+          if (dupA.length === 0 && dupC.length === 0) return null;
+          return (
+            <div className="mb-4 p-3 rounded-md border border-[#E7D3A6] bg-gold-soft text-[#6B4D1E] text-sm">
+              <div className="font-display font-medium mb-1">⚠ Possible duplicate — check before approving</div>
+              {dupA.length > 0 && (
+                <div className="mb-1.5">
+                  Existing approved {dupA.length === 1 ? 'partner that may match' : 'partners that may match'}:
+                  <ul className="list-disc ml-5 mt-1">
+                    {dupA.map(a => (
+                      <li key={a.agency_id}>
+                        <strong>{a.agency_name}</strong>
+                        {a.name_exact ? ' — same name' : a.ein_match ? ' — same EIN' : a.email_match ? ' — same main email' : ' — similar name'}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="text-[11px] mt-1">If this is the same agency, reject as a duplicate rather than approving a second one.</div>
+                </div>
+              )}
+              {dupC.length > 0 && (
+                <div>
+                  {dupC.length} caseworker email{dupC.length === 1 ? '' : 's'} already registered:
+                  <ul className="list-disc ml-5 mt-1">
+                    {dupC.map((c, i) => (
+                      <li key={i}>{c.email} — {c.existing_name} at {c.existing_agency}</li>
+                    ))}
+                  </ul>
+                  <div className="text-[11px] mt-1">Approving links to the existing person instead of creating a duplicate contact.</div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {app.status === 'pending' && (
           <div className="flex items-center gap-2 mb-4">

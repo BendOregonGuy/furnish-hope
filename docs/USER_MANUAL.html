@@ -522,14 +522,24 @@ name, address, populations served (Veteran, Domestic violence survivor,
 etc.), typical needs, and one or more initial caseworkers. No login
 required. Submissions land in <strong>Applications</strong> with
 <code>status = pending</code>.</p>
-<p><strong>Duplicate prevention.</strong> As the applicant types the
-<strong>Agency name</strong>, any already-approved partner whose name
-matches appears in a dropdown. If they pick an existing agency (or type
-an exact-name match), the form warns that the agency is already
-registered and <strong>blocks the submission</strong> — steering a new
-caseworker at an existing partner to request an invitation instead of
-creating a duplicate agency. The dropdown is fed by the public
-approved-agency list, so no private data is exposed.</p>
+<p><strong>Duplicate prevention.</strong> Several layers keep duplicate
+agencies out:</p>
+<ul>
+<li>A green banner at the top of the form tells returning partners' new
+caseworkers to request an invitation instead of applying.</li>
+<li>As the applicant types the <strong>Agency name</strong>, any
+already-approved partner whose name matches appears in a dropdown;
+picking one (or typing an exact-name match) warns them and
+<strong>blocks the submission</strong>. The dropdown is fed by the
+public approved-agency list, so no private data is exposed.</li>
+<li>The server independently rejects any submission whose normalized
+agency name <strong>or EIN</strong> already belongs to an approved
+partner — so a duplicate can't sneak through even if someone posts to
+the endpoint directly.</li>
+<li>A data-layer unique index makes two approved agencies with the same
+normalized name impossible (added automatically only when existing data
+is already clean, so it never disrupts an upgrade).</li>
+</ul>
 <p>The form is rate-limited (5 per 15 minutes per IP) and
 honeypot-guarded, so bot fills are dropped silently.</p>
 <h3 id="the-applications-review-queue">The Applications review
@@ -538,15 +548,24 @@ queue</h3>
 shows pending count). This is visible to anyone whose account has
 <strong>Administrator</strong> OR <strong>Program Manager</strong>
 checked.</p>
-<p>Clicking a pending row shows the full application detail. Three
-actions:</p>
+<p>Clicking a pending row shows the full application detail. If the
+system spots a <strong>possible duplicate</strong>, an amber warning
+appears at the top of the detail listing any already-approved agency
+that matches by name, EIN, or main email, and any caseworker email that
+already belongs to a registered caseworker — so you can reject a
+duplicate instead of approving a second copy. Three actions:</p>
 <ul>
 <li><strong>Approve</strong> — atomically creates the
 <code>tbl_agency</code> row (flagged <code>is_approved = true</code>),
 inserts contacts + <code>agency_contact</code> links for each initial
 caseworker, and generates a 14-day one-time invitation token per
 caseworker. The application flips to <code>approved</code> and
-back-links the newly created agency.</li>
+back-links the newly created agency. <strong>De-dup at
+approval:</strong> if a caseworker's email already exists as a contact,
+that existing person is reused (linked to the new agency) instead of
+creating a duplicate contact; and if an approved agency already has the
+same normalized name, the approval is refused with a clear message so
+you can reject the duplicate instead.</li>
 <li><strong>Reject</strong> — writes <code>status = rejected</code> + a
 required note. No agency is created. The applicant is not
 auto-notified.</li>
