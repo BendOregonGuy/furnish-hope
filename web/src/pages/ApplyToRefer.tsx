@@ -7,7 +7,7 @@
  * Uses the public /api/public/* endpoints — no auth cookies required.
  */
 
-import { useState } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../lib/api.ts';
 import { Loading } from '../components/ui.tsx';
@@ -38,6 +38,13 @@ export function ApplyToRefer() {
   const { data: states } = useQuery<LookupRow[]>({
     queryKey: ['public-lookup', 'state'],
     queryFn: () => apiGet('/api/public/lookups/state'),
+    staleTime: 5 * 60_000,
+  });
+  // Already-registered partners — powers the agency-name autocomplete so an
+  // applicant can see (and avoid re-creating) an agency that already exists.
+  const { data: approvedAgencies } = useQuery<Array<{ agency_id: number; agency_name: string }>>({
+    queryKey: ['public-agencies'],
+    queryFn: () => apiGet('/api/public/agencies'),
     staleTime: 5 * 60_000,
   });
 
@@ -73,6 +80,14 @@ export function ApplyToRefer() {
   const [companySlogan, setCompanySlogan] = useState('');
 
   const [err, setErr] = useState<string | null>(null);
+
+  // If the typed agency name exactly matches an already-registered partner,
+  // this holds it — we warn and block the duplicate application.
+  const existingMatch = useMemo(() => {
+    const n = agencyName.trim().toLowerCase();
+    if (!n) return null;
+    return (approvedAgencies ?? []).find(a => a.agency_name.trim().toLowerCase() === n) ?? null;
+  }, [agencyName, approvedAgencies]);
 
   const submitMut = useMutation({
     mutationFn: () => apiPost<{ agency_application_id: number }>(
@@ -136,6 +151,10 @@ export function ApplyToRefer() {
     const validCws = caseworkers.filter(c => c.first_name.trim() && c.last_name.trim() && c.email.trim());
     if (validCws.length === 0)       missing.push('At least one caseworker');
     if (missing.length) { setErr(`Please fill in: ${missing.join(', ')}`); return; }
+    if (existingMatch) {
+      setErr(`${existingMatch.agency_name} is already a registered partner — please don't submit a duplicate application. If you're a new caseworker, ask to be invited instead.`);
+      return;
+    }
     submitMut.mutate();
   }
 
@@ -187,15 +206,31 @@ export function ApplyToRefer() {
             />
           </div>
 
-          <Section title="Your agency" hint="The basics we need to reach you.">
+          <Section title="Your agency" hint="The basics we need to reach you. Start typing your agency name — if it's already registered, pick it from the list instead of re-applying.">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Agency name" required value={agencyName} onChange={setAgencyName} />
+              <AgencyNameField
+                value={agencyName}
+                onChange={setAgencyName}
+                agencies={approvedAgencies ?? []}
+                matched={!!existingMatch}
+              />
               <Field label="Legal name" value={legalName} onChange={setLegalName} hint="If different from the working name." />
               <Field label="EIN" value={ein} onChange={setEin} />
               <Field label="Website" value={website} onChange={setWebsite} placeholder="https://..." />
               <Field label="Main phone" type="tel" value={mainPhone} onChange={setMainPhone} />
               <Field label="Main email" required type="email" value={mainEmail} onChange={setMainEmail} />
             </div>
+
+            {existingMatch && (
+              <div className="mt-3 p-3 bg-gold-soft border border-[#E7D3A6] rounded text-sm text-[#6B4D1E]">
+                <strong>{existingMatch.agency_name}</strong> is already a registered Furnish Hope
+                partner, so there's no need to submit a new application — doing so would create a
+                duplicate. If you're a new caseworker there, ask your agency's admin (or email
+                Furnish Hope) to send you a personal invitation link, and you can create your login
+                from that. If your agency genuinely has the same name but is a different
+                organization, adjust the name above to continue.
+              </div>
+            )}
           </Section>
 
           <Section title="Address">
@@ -280,11 +315,76 @@ export function ApplyToRefer() {
           )}
 
           <div className="flex justify-end pt-3 border-t border-hairline">
-            <button type="submit" disabled={submitMut.isPending} className="btn-primary disabled:opacity-60">
+            <button type="submit" disabled={submitMut.isPending || !!existingMatch} className="btn-primary disabled:opacity-60">
               {submitMut.isPending ? 'Submitting…' : 'Submit application'}
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- agency-name autocomplete (dedup) ---------- */
+
+function AgencyNameField({
+  value, onChange, agencies, matched,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  agencies: Array<{ agency_id: number; agency_name: string }>;
+  matched: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const q = value.trim().toLowerCase();
+  const matches = q.length >= 1
+    ? agencies.filter(a => a.agency_name.toLowerCase().includes(q)).slice(0, 8)
+    : [];
+
+  // Close the dropdown on outside click.
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <label className="field-label">
+        Agency name <span className="text-terracotta">*</span>
+      </label>
+      <input
+        type="text"
+        className={`field-input ${matched ? 'border-gold' : ''}`}
+        value={value}
+        autoComplete="off"
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Start typing…"
+      />
+      {open && matches.length > 0 && (
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-paper border border-hairline-strong rounded-md shadow-lg max-h-56 overflow-y-auto">
+          <div className="px-3 py-1.5 text-[11px] text-ink-faint border-b border-hairline">
+            Already registered with Furnish Hope — pick yours if it's here:
+          </div>
+          {matches.map(a => (
+            <button
+              key={a.agency_id}
+              type="button"
+              onClick={() => { onChange(a.agency_name); setOpen(false); }}
+              className="block w-full text-left px-3 py-2 text-sm hover:bg-terracotta/[0.05]"
+            >
+              {a.agency_name}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="text-[11px] text-ink-faint mt-0.5">
+        Not listed? Keep typing your agency's name to apply as a new partner.
       </div>
     </div>
   );

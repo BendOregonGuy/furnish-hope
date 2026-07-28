@@ -522,6 +522,14 @@ name, address, populations served (Veteran, Domestic violence survivor,
 etc.), typical needs, and one or more initial caseworkers. No login
 required. Submissions land in <strong>Applications</strong> with
 <code>status = pending</code>.</p>
+<p><strong>Duplicate prevention.</strong> As the applicant types the
+<strong>Agency name</strong>, any already-approved partner whose name
+matches appears in a dropdown. If they pick an existing agency (or type
+an exact-name match), the form warns that the agency is already
+registered and <strong>blocks the submission</strong> — steering a new
+caseworker at an existing partner to request an invitation instead of
+creating a duplicate agency. The dropdown is fed by the public
+approved-agency list, so no private data is exposed.</p>
 <p>The form is rate-limited (5 per 15 minutes per IP) and
 honeypot-guarded, so bot fills are dropped silently.</p>
 <h3 id="the-applications-review-queue">The Applications review

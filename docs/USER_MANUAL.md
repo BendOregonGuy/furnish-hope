@@ -311,6 +311,8 @@ The self-serve flow that turns a curious agency into a caseworker who can submit
 
 Any agency can visit `https://<host>/apply-to-refer` (linked from the Furnish Hope website) and fill out a short form: their name, address, populations served (Veteran, Domestic violence survivor, etc.), typical needs, and one or more initial caseworkers. No login required. Submissions land in **Applications** with `status = pending`.
 
+**Duplicate prevention.** As the applicant types the **Agency name**, any already-approved partner whose name matches appears in a dropdown. If they pick an existing agency (or type an exact-name match), the form warns that the agency is already registered and **blocks the submission** — steering a new caseworker at an existing partner to request an invitation instead of creating a duplicate agency. The dropdown is fed by the public approved-agency list, so no private data is exposed.
+
 The form is rate-limited (5 per 15 minutes per IP) and honeypot-guarded, so bot fills are dropped silently.
 
 ### The Applications review queue
