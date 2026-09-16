@@ -307,6 +307,17 @@ The badge clears when the queue is empty.
 
 The self-serve flow that turns a curious agency into a caseworker who can submit referrals directly. Full details in `docs/AGENCY_ONBOARDING.md`; this section covers what a Furnish Hope staff member needs to know.
 
+> 🔗 **Canonical public links (no login required).** These are the only public web addresses — share them exactly as written. Any other path (e.g. `/agencies/apply`) will bounce a visitor to the staff login page, because it isn't a real route. Replace `<host>` with your live address (currently `hammerhead-app-tk838.ondigitalocean.app`).
+>
+> | Page | URL |
+> |---|---|
+> | **Agency application form** | `https://<host>/apply-to-refer` |
+> | Public list of approved partner agencies | `https://<host>/referring-agencies` |
+> | Volunteer signup | `https://<host>/volunteer` |
+> | Caseworker registration | `https://<host>/caseworker-register/<token>` (token is emailed by the Program Manager; not browsable directly) |
+>
+> Everything else in the app requires a login. The staff app is at `https://<host>/` and the caseworker portal is at `https://<host>/agency`.
+
 ### The public application form
 
 Any agency can visit `https://<host>/apply-to-refer` (linked from the Furnish Hope website) and fill out a short form: their name, address, populations served (Veteran, Domestic violence survivor, etc.), typical needs, and one or more initial caseworkers. No login required. Submissions land in **Applications** with `status = pending`.

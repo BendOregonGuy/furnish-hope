@@ -1,6 +1,6 @@
 # Furnish Hope — Codebase Summary
 
-*Last regenerated: 2026-07-06*
+*Last regenerated: 2026-07-29*
 
 ## What it is
 
@@ -15,14 +15,16 @@ Built specifically for a **non-technical primary user** (a nonprofit's database 
 | Metric | Count |
 |---|---:|
 | TypeScript LOC (api + web) | ~56,000 |
-| Schema migrations | 90 |
+| Schema migrations | 97 |
 | Database tables (`tbl_*` + `lkp_*`) | 82 + 65 = 147 |
 | Foreign keys | 232 |
-| API route files | 40 |
-| API endpoints | 238 |
-| Frontend pages | 86 |
-| Commits on `main` | 138 |
+| API route files | 43 |
+| API endpoints | 262 |
+| Frontend pages | 96 |
+| Commits on `main` | 157 |
 | Production bundle size | ~1.9 MB JS, 506 KB gzipped |
+
+*Code-derived counts (migrations, route files, endpoints, pages, commits) refreshed 2026-07-29 from the current tree. Table / foreign-key counts are from the last database introspection; regenerate with the ERD script when the schema changes. A complete method-by-method endpoint list, grouped by actor/role, lives in [`docs/API_ENDPOINTS.md`](API_ENDPOINTS.md).*
 
 ---
 
@@ -149,7 +151,7 @@ Plus row-level scoping for agency caseworkers (they only see their own org's ref
 furnish-hope/
 ├── api/                      <- Node + Express + TypeScript
 │   └── src/
-│       ├── routes/           <- 38 files, 216 endpoints
+│       ├── routes/           <- 43 files, 262 endpoints (full list: docs/API_ENDPOINTS.md)
 │       ├── auth/             <- migrations, audit, session, middleware
 │       ├── admin/            <- metadata-driven generic admin (introspect.ts)
 │       ├── email/            <- IMAP sync, OAuth, crypto
@@ -158,7 +160,7 @@ furnish-hope/
 │       └── db/pool.ts        <- pg pool + withTransaction
 ├── web/                      <- React + Vite + TypeScript + Tailwind
 │   └── src/
-│       ├── pages/            <- 80 pages across staff / agency / dev / admin / help
+│       ├── pages/            <- 96 pages across staff / agency / dev / admin / help
 │       ├── components/       <- Sidebar, error boundary, issue reporter,
 │       │                       broadcast banner, FK select with create, etc.
 │       ├── lib/              <- API client, auth context, admin metadata
@@ -201,7 +203,7 @@ That's how all ~160 tables get an editor without ~160 hand-written forms.
 - **TypeScript** — `npx tsc --noEmit` for both; build verified via `vite build`
 - **No test suite** — verification is via `tsc` + `vite build` + manual smoke tests + the in-app issue tracker
 - **Deploy**: `git push origin main` → DigitalOcean rebuilds in 3–5 min → live at `hammerhead-app-tk838.ondigitalocean.app` (current dev URL)
-- **Docs**: 16+ markdown files under `docs/` cover setup (DO + Windows + Mac), integrations (QBO + email), ERD regen, user manual, OAuth setup, agency onboarding, third-party TODO list
+- **Docs**: 16+ markdown files under `docs/` cover setup (DO + Windows + Mac), integrations (QBO + email), ERD regen, user manual, OAuth setup, agency onboarding, the full REST endpoint reference (`API_ENDPOINTS.md`), and the third-party TODO list
 
 ---
 
