@@ -301,6 +301,10 @@ The badge clears when the queue is empty.
 
 > `[Screenshot: client-detail.png — a client detail page with their request history.]`
 
+### Client documents
+
+Each client has a **Documents** card for attaching files to that household — referral paperwork, IDs, signed forms, photos, spreadsheets, anything relevant. It appears in **two places**: on the client's **profile page** (bottom of the page) and on the **Edit Client** form (shown once the client has been saved). Drag files in or click to upload, then click any file name to preview it in the popup viewer (see [Files & Attachments](#files--attachments)). The documents belong to the client record and follow the same access rules as the rest of the client's information.
+
 ---
 
 ## Partner agency onboarding
@@ -518,15 +522,22 @@ You can attach files (photos, signed documents, PDFs, etc.) to most records — 
 
 > `[Screenshot: attachments-widget.png — the attachments widget with one file uploaded and visible in the list.]`
 
+### Viewing a file (in-app popup)
+
+- **Click the file name** (or the **View** link) to open the document in a popup viewer, right inside the app — no download needed.
+- **PDFs** open with full page-by-page navigation and zoom (the viewer uses your browser's built-in PDF reader). **Images**, **plain-text / Markdown / CSV**, **Word (.docx)**, and **Excel (.xlsx)** files also preview directly in the popup — Excel workbooks show a tab per sheet.
+- **‹ / › arrows** at the top of the popup (or your keyboard's left/right arrows) step through all the files on that record without closing the viewer; **Esc** closes it.
+- A few older or specialized formats (`.doc`, `.ppt`/`.pptx`, archives) can't be previewed in the browser — the popup gives you a **Download** button to open them in the matching app instead.
+
 ### Editing, downloading, deleting
 
-- **Click the file name** to download it.
-- **Pencil icon** to rename or change the description.
-- **Trash icon** to delete (you'll be asked to confirm).
+- **Download** link on each row saves the original file to your computer.
+- **Edit** to rename the file or change its description.
+- **Delete** to remove it (you'll be asked to confirm).
 
 ### What can I attach?
 
-Anything reasonable — PDFs, images, Word docs, spreadsheets, signed forms. The limit is **20MB per file**. For very large files (e.g., long video recordings), don't attach them — store them in cloud storage and put the link in a note.
+Anything reasonable — PDFs, images, Word docs, spreadsheets, signed forms. The limit is **10MB per file**. For very large files (e.g., long video recordings), don't attach them — store them in cloud storage and put the link in a note.
 
 ---
 

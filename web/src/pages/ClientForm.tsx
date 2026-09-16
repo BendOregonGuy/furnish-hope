@@ -20,6 +20,7 @@ import { PageHeader, Loading, ErrorBox } from '../components/ui.tsx';
 import { Field } from '../components/admin/Field.tsx';
 import { DedupSuggestions } from '../components/DedupSuggestions.tsx';
 import { CheckboxGroup } from '../components/CheckboxGroup.tsx';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 
 /* ----------------------------------------------------------------- */
 /*  Field configs                                                     */
@@ -439,6 +440,17 @@ export function ClientForm() {
           </div>
         </div>
       </form>
+
+      {/* Documents — attach/preview files for an existing client. Only
+          shown when editing (a brand-new client has no id yet to attach
+          files to). Backed by the shared per-entity attachments store,
+          so it follows the same access rules as the rest of the client
+          record. */}
+      {!isNew && id && (
+        <div className="mt-5 max-w-4xl">
+          <AttachmentsWidget entityType="client" entityId={Number(id)} />
+        </div>
+      )}
     </>
   );
 }

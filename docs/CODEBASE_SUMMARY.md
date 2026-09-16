@@ -1,6 +1,6 @@
 # Furnish Hope — Codebase Summary
 
-*Last regenerated: 2026-07-29*
+*Last regenerated: 2026-09-16*
 
 ## What it is
 
@@ -52,6 +52,7 @@ Built specifically for a **non-technical primary user** (a nonprofit's database 
 - **Recharts** for the 16-chart Reports page
 - **html2canvas** — captures the visible DOM as PNG for in-app issue reports
 - **qrcode** — generates QR codes for printable manifests (driver directions)
+- **mammoth** + **xlsx (SheetJS)** — lazy-loaded (dynamic `import()`, split into their own chunks) to render Word `.docx` and Excel `.xlsx` inside the in-app document-viewer popup; HTML they emit is sanitized with DOMPurify before rendering
 
 ### Database (`/db`)
 
@@ -128,7 +129,7 @@ Plus row-level scoping for agency caseworkers (they only see their own org's ref
 7. **Fundraising** — campaigns, events with attendees + sponsors, grants
 8. **Vendors** — outside service providers + service log
 9. **Partner Agencies** — self-serve agency onboarding pipeline: public `/apply-to-refer` form → PM review queue at `/agencies/applications` → atomic approval creates the agency + caseworker invitation tokens → caseworker signs up at `/caseworker-register/:token` → lands in `/agency/*`. The enhanced caseworker dashboard shows KPIs (this-month referrals + total + open + delivered), request status pills, a merged activity feed (referrals + requests + deliveries), and a team table with Active / Invited-until-DATE / Expired / Revoked pills. Every `/api/agency/*` endpoint scopes by `req.user.agency_id`; admin dropdowns use a table-level `fkOptionsFilter` so unapproved agencies (and their contacts) can't be picked for new referrals even while existing rows continue to display their agency name. **Duplicate prevention** runs at every layer: the public apply form offers an approved-agency-name dropdown + "already a partner?" banner; the submit endpoint rejects a normalized-name or EIN match to an approved agency; the reviewer's application detail flags possible duplicates (name/EIN/email + already-registered caseworker emails); approval reuses an existing contact by email instead of duplicating it and refuses a same-name second agency; and a guarded partial unique index (`uq_agency_name_approved_norm`, created only when data is already clean) is the data-layer backstop.
-10. **Communications, Files & Notes** — per-user email accounts (IMAP/SMTP), Mailbox view, email templates, generic per-entity attachments
+10. **Communications, Files & Notes** — per-user email accounts (IMAP/SMTP), Mailbox view, email templates, generic per-entity attachments. The attachments widget includes an in-app **document viewer** (`DocViewerModal`): one-click preview in a popup with prev/next navigation across a record's files — PDFs (browser-native page nav), images and text render directly; Word `.docx` (mammoth) and Excel `.xlsx` (SheetJS) render in-browser; other formats offer a download. Files are served inline from the session-authenticated `/api/attachments/:id/download`, so previews stay behind the access wall (no public URL, unlike the Microsoft/Google web viewers). The **Client** record surfaces this widget on both its detail page and its edit form.
 11. **System** — user accounts, audit log, app settings, in-app issue tracker (with threaded triage notes in `tbl_app_issue_note`), broadcast banner, org branding, user-manual screenshots
 
 ---

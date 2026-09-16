@@ -14,6 +14,7 @@ import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiGet, apiPost, apiPut } from '../../lib/api.ts';
 import { arrayBufferToBase64 } from '../email/attachments.tsx';
+import { DocViewerModal } from './DocViewerModal.tsx';
 
 interface AttachmentRow {
   attachment_id: number;
@@ -41,6 +42,7 @@ export function AttachmentsWidget({
   const [collapsed, setCollapsed] = useState(collapsedByDefault);
   const [topError, setTopError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   const { data, isLoading, error } = useQuery<AttachmentRow[]>({
     queryKey: ['attachments', entityType, entityId],
@@ -146,8 +148,9 @@ export function AttachmentsWidget({
           {data && data.length > 0 && (
             <table className="w-full text-sm">
               <tbody>
-                {data.map(a => (
+                {data.map((a, i) => (
                   <AttachmentRow key={a.attachment_id} row={a}
+                    onView={() => setViewerIndex(i)}
                     onDelete={() => {
                       if (window.confirm(`Delete "${a.filename}"? This cannot be undone.`)) {
                         deleteMut.mutate(a.attachment_id);
@@ -161,6 +164,18 @@ export function AttachmentsWidget({
           )}
         </>
       )}
+
+      {viewerIndex !== null && data && (
+        <DocViewerModal
+          files={data.map(a => ({
+            attachment_id: a.attachment_id,
+            filename: a.filename,
+            mime_type: a.mime_type,
+          }))}
+          startIndex={viewerIndex}
+          onClose={() => setViewerIndex(null)}
+        />
+      )}
     </div>
   );
 }
@@ -170,9 +185,10 @@ export function AttachmentsWidget({
 /* ----------------------------------------------------------------- */
 
 function AttachmentRow({
-  row, onDelete, onRefresh,
+  row, onView, onDelete, onRefresh,
 }: {
   row: AttachmentRow;
+  onView: () => void;
   onDelete: () => void;
   onRefresh: () => void;
 }) {
@@ -223,14 +239,14 @@ function AttachmentRow({
           </div>
         ) : (
           <>
-            <a
-              href={`/api/attachments/${row.attachment_id}/download`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-ink hover:text-terracotta"
+            <button
+              type="button"
+              onClick={onView}
+              className="font-medium text-ink hover:text-terracotta text-left"
+              title="Open in viewer"
             >
               {row.filename}
-            </a>
+            </button>
             {row.description && <div className="text-xs text-ink-soft mt-0.5">{row.description}</div>}
             <div className="text-[11px] text-ink-faint mt-1">
               {formatBytes(row.size_bytes)} ·
@@ -245,13 +261,16 @@ function AttachmentRow({
       </td>
       {!editing && (
         <td className="py-2.5 pr-3 text-right align-top whitespace-nowrap">
+          <button onClick={onView} className="text-xs text-ink-soft hover:text-terracotta mr-3">
+            View
+          </button>
           <a
             href={`/api/attachments/${row.attachment_id}/download`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-ink-soft hover:text-terracotta mr-3"
           >
-            Open
+            Download
           </a>
           <button onClick={() => setEditing(true)} className="text-xs text-ink-soft hover:text-terracotta mr-3">
             Edit
