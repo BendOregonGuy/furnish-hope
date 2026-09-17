@@ -515,8 +515,8 @@ You can attach files (photos, signed documents, PDFs, etc.) to most records — 
 
 ### Attaching a file
 
-1. Open the record (e.g., a donor's detail page).
-2. Find the **Attachments** section (usually at the bottom).
+1. Open the record — either its **detail/profile page** or its **Edit form**. The **Documents** card appears in both places for every record type that supports files (clients, packing lists, donations, pledges, campaigns, events, deliveries, pickups, inventory items, vendors, and volunteers). On an edit form the card shows once the record has been saved. (Donors are added and edited through a pop-up form, so their Documents card lives on the donor's detail page.)
+2. Find the **Documents** section (usually at the bottom).
 3. **Drag a file from your computer** onto the dotted area, or click to pick a file.
 4. The file uploads, and now lives with that record.
 

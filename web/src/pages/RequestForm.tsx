@@ -10,6 +10,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
+import { AttachmentsWidget } from '../components/attachments/AttachmentsWidget.tsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiDelete, apiGet, apiPost, apiPut } from '../lib/api.ts';
 import type { ColumnMeta } from '../lib/admin.ts';
@@ -774,6 +775,16 @@ export function RequestForm() {
           </div>
         </div>
       </form>
+
+      {/* Documents — attach/preview files for an existing record. Only
+          shown when editing (a new record has no id yet). Backed by the
+          shared per-entity attachments store, same access rules as the
+          record itself. */}
+      {!isNew && id && (
+        <div className="mt-5 max-w-4xl">
+          <AttachmentsWidget entityType="request" entityId={Number(id)} />
+        </div>
+      )}
     </>
   );
 }
